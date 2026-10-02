@@ -1,0 +1,42 @@
+# CS Party on one box: the game server and the browser relay, both on host networking so the relay
+# reaches the server at 127.0.0.1:27015 and nothing but the relay's HTTP port needs exposing.
+#
+#   1. tools/package_server.sh <your built server dir>       -> deploy/cs-party-server-overlay.tar.gz
+#   2. web/build_web.sh                                       -> web/public
+#   3. python3 web/pack_gamedata.py <CS 1.6 dir> deploy/gamedata.zip
+#   4. PARTY_KEY=pick-something docker compose up -d --build
+#   5. put your reverse proxy (with WebSocket upgrade on /relay) in front of :8080, send friends
+#      https://your.host/?key=pick-something
+services:
+  server:
+    build: { context: ., dockerfile: Dockerfile.server }
+    network_mode: host
+    environment:
+      MAP: de_dust2
+      SV_LAN: "1"          # 0 if native CS clients will join over the internet (forward UDP 27015 too)
+      RCON_PASSWORD: "${RCON_PASSWORD:-}"   # optional: tools/rcon.py csp_start
+    restart: unless-stopped
+    healthcheck:   # A2S_INFO over UDP: answers only when the server is up and running frames
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/udp/127.0.0.1/$${PORT:-27015}; printf '\\xff\\xff\\xff\\xffTSource Engine Query\\x00' >&3; timeout 3 head -c 5 <&3 | grep -qa ."]
+      interval: 30s
+      timeout: 8s
+      start_period: 60s
+      retries: 3
+
+  relay:
+    build: { context: ../web }
+    network_mode: host
+    environment:
+      PORT: "8080"
+      GAME: 127.0.0.1:27015
+      TRUST_PROXY: "1"     # behind SWAG: per-IP limits use X-Forwarded-For
+      PARTY_KEY: "${PARTY_KEY:?set PARTY_KEY - the relay serves Valve game data, keep it behind a key}"
+    volumes:
+      - ${GAMEDATA:-./gamedata.zip}:/app/public/gamedata.zip:ro
+    depends_on: [server]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 8080) + '/healthz').then((r) => process.exit(r.ok ? 0 : 1), => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

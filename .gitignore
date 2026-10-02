@@ -1,0 +1,5 @@
+maps/*.ext
+maps/*.log
+maps/*.prt
+maps/*.wa_
+__pycache__/

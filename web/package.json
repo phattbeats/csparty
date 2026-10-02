@@ -1,0 +1,13 @@
+{
+  "name": "cs-party-web",
+  "private": true,
+  "description": "CS Party browser client: static host + WebSocket-to-UDP relay",
+  "type": "module",
+  "scripts": {
+    "relay": "node relay.js --port 8080 --game 127.0.0.1:27015 --root public"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "ws": "8.22.0"
+  }
+}

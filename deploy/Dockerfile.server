@@ -1,0 +1,26 @@
+# CS Party game server: stock HLDS from SteamCMD + the CS Party overlay (ReHLDS, ReGameDLL_CS, Metamod-R,
+# AMX Mod X, ReAPI, the plugin, boards, minigame maps). Build the overlay first: tools/package_server.sh
+# Ubuntu 24.04 to match the glibc (2.38+) the overlay binaries were built against.
+ARG BASE=public.ecr.aws/docker/library/ubuntu:24.04
+FROM ${BASE} AS hlds
+RUN dpkg --add-architecture i386 && apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends ca-certificates curl lib32gcc-s1 lib32stdc++6 libc6:i386 \
+ && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /steamcmd && curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz -C /steamcmd
+# app 90 needs a few passes: the first ones only fetch the manifest. Loop until cstrike shows up.
+RUN for i in 1 2 3 4 5; do \
+      /steamcmd/steamcmd.sh +force_install_dir /hlds +login anonymous +app_set_config 90 mod cstrike \
+        +app_update 90 validate +quit >/tmp/steamcmd.log 2>&1; \
+      [ -f /hlds/cstrike/liblist.gam ] && [ -f /hlds/hlds_linux ] && break; done; \
+    tail -3 /tmp/steamcmd.log; test -f /hlds/cstrike/liblist.gam
+
+FROM hlds AS server
+COPY cs-party-server-overlay.tar.gz /tmp/overlay.tar.gz
+RUN tar xzf /tmp/overlay.tar.gz -C /hlds && rm /tmp/overlay.tar.gz \
+ && mkdir -p /root/.steam/sdk32 && ln -sf /hlds/steamclient.so /root/.steam/sdk32/steamclient.so \
+ && rm -f /hlds/cstrike/listenserver.cfg
+WORKDIR /hlds
+ENV MAP=de_dust2 MAXPLAYERS=10 PORT=27015 LD_LIBRARY_PATH=/hlds
+EXPOSE 27015/udp
+# RCON_PASSWORD (optional) enables remote console: tools/rcon.py csp_start
+CMD ["sh", "-c", "exec ./hlds_linux -game cstrike -bots +ip 0.0.0.0 +port $PORT +maxplayers $MAXPLAYERS +sv_lan ${SV_LAN:-1} ${RCON_PASSWORD:++rcon_password \"$RCON_PASSWORD\"} +map $MAP"]

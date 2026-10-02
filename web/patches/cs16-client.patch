@@ -1,0 +1,40 @@
+diff --git a/common/interface.cpp b/common/interface.cpp
+index a13a9fd..885e089 100644
+--- a/common/interface.cpp
++++ b/common/interface.cpp
+@@ -17,6 +17,9 @@
+ #elif XASH_APPLE == 1
+ #include <dlfcn.h>
+ #include <unistd.h>
++#elif defined __EMSCRIPTEN__
++#include <dlfcn.h>
++#include <unistd.h>
+ #endif
+ 
+ #if !defined( _WIN32 )
+diff --git a/3rdparty/mainui_cpp/sdk_includes/public/build.h b/3rdparty/mainui_cpp/sdk_includes/public/build.h
+index 8eb7396..24400e6 100644
+--- a/3rdparty/mainui_cpp/sdk_includes/public/build.h
++++ b/3rdparty/mainui_cpp/sdk_includes/public/build.h
+@@ -139,6 +139,8 @@ Then you can use another oneliner to query all variables:
+ 		#define XASH_PSVITA 1
+ 	#elif defined __wasi__
+ 		#define XASH_WASI 1
++	#elif defined __EMSCRIPTEN__
++		#define XASH_EMSCRIPTEN 1
+ 	#elif defined __sun__
+ 		#define XASH_SUNOS 1
+ 	#elif defined __gnu_hurd__
+diff --git a/3rdparty/mainui_cpp/sdk_includes/public/buildenums.h b/3rdparty/mainui_cpp/sdk_includes/public/buildenums.h
+index 77de60c..ec73e98 100644
+--- a/3rdparty/mainui_cpp/sdk_includes/public/buildenums.h
++++ b/3rdparty/mainui_cpp/sdk_includes/public/buildenums.h
+@@ -88,6 +88,8 @@ For more information, please refer to <http://unlicense.org/>
+ 	#define XASH_PLATFORM PLATFORM_PSVITA
+ #elif XASH_WASI
+ 	#define XASH_PLATFORM PLATFORM_WASI
++#elif XASH_EMSCRIPTEN
++	#define XASH_PLATFORM PLATFORM_EMSCRIPTEN
+ #elif XASH_SUNOS
+ 	#define XASH_PLATFORM PLATFORM_SUNOS
+ #elif XASH_HURD

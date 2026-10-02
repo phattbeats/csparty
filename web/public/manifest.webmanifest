@@ -1,0 +1,14 @@
+{
+  "name": "CS Party",
+  "short_name": "CS Party",
+  "description": "Mario Party rules, Counter-Strike everything.",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#121411",
+  "theme_color": "#121411",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

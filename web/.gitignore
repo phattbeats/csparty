@@ -1,0 +1,7 @@
+node_modules/
+public/*
+!public/index.html
+!public/boot.js
+!public/manifest.webmanifest
+!public/icon-192.png
+!public/icon-512.png

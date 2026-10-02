@@ -1,0 +1,39 @@
+## CS Party behind SWAG (linuxserver/swag). Copy to /config/nginx/proxy-confs/csparty.subdomain.conf,
+## set the host IP below, and add "csparty" to SUBDOMAINS (or use your wildcard cert).
+##
+## A subdomain, not a /cs/ path: the page opens its game socket at the absolute path /relay.
+## The relay runs with host networking (it reaches HLDS on 127.0.0.1:27015), so SWAG can't reach it
+## by container name. Point at the Unraid host's LAN IP instead.
+
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+
+    server_name csparty.*;
+
+    include /config/nginx/ssl.conf;
+
+    client_max_body_size 0;
+
+    location / {
+        include /config/nginx/proxy.conf;      # has the Upgrade/Connection headers WebSockets need
+        include /config/nginx/resolver.conf;
+        set $upstream_app 192.168.1.10;        # <- Unraid host IP
+        set $upstream_port 8080;               # <- relay PORT (change in compose if 8080 is taken)
+        set $upstream_proto http;
+        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+    }
+
+    # the game socket: one long-lived WebSocket per player
+    location /relay {
+        include /config/nginx/proxy.conf;
+        include /config/nginx/resolver.conf;
+        set $upstream_app 192.168.1.10;
+        set $upstream_port 8080;
+        set $upstream_proto http;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_buffering off;
+        proxy_pass $upstream_proto://$upstream_app:$upstream_port;
+    }
+}

@@ -1,0 +1,44 @@
+--- a/src/parseTools.mjs	2026-10-01 04:25:03.398222441 +0000
++++ b/src/parseTools.mjs	2026-10-01 04:25:03.409426874 +0000
+@@ -666,6 +666,8 @@
+ 
+     if (DYNCALLS) {
+       if (!hasExportedSymbol(`dynCall_${sig}`)) {
++        // CS Party: MAIN_MODULE + ASYNCIFY=1 forces DYNCALLS but never exports dynCall_*; use the table
++        return `((cb, ${args}) => getWasmTableEntry(cb)(${callArgs}))`;
+         if (ASSERTIONS) {
+           return `((${args}) => { throw 'Internal Error! Attempted to invoke wasm function pointer with signature "${sig}", but no such functions have gotten exported!' })`;
+         } else {
+@@ -680,6 +682,8 @@
+ 
+   if (DYNCALLS) {
+     if (!hasExportedSymbol(`dynCall_${sig}`)) {
++      // CS Party: see above
++      return `getWasmTableEntry(${funcPtr})`;
+       if (ASSERTIONS) {
+         return `((${args}) => { throw 'Internal Error! Attempted to invoke wasm function pointer with signature "${sig}", but no such functions have gotten exported!' })`;
+       } else {
+--- a/src/lib/libcore.js	2026-10-01 06:31:31.092703783 +0000
++++ b/src/lib/libcore.js	2026-10-01 06:31:31.105589287 +0000
+@@ -1709,11 +1709,11 @@
+ #if DYNCALLS || !WASM_BIGINT
+   $dynCalls__internal: true,
+   $dynCalls: {},
+-  $dynCallLegacy__deps: ['$dynCalls'],
++  $dynCallLegacy__deps: ['$dynCalls', '$getWasmTableEntry'],
+   $dynCallLegacy: (sig, ptr, args) => {
+     sig = sig.replace(/p/g, {{{ MEMORY64 ? "'j'" : "'i'" }}})
+ #if ASSERTIONS
+-    assert(sig in dynCalls, `bad function pointer type - sig is not in dynCalls: '${sig}'`);
++    // CS Party: MAIN_MODULE + ASYNCIFY=1 leaves dynCalls empty; the table call below covers it
+     if (args?.length) {
+ #if WASM_BIGINT
+       // j (64-bit integer) is fine, and is implemented as a BigInt. Without
+@@ -1729,6 +1729,7 @@
+     }
+ #endif
+     var f = dynCalls[sig];
++    if (!f) return getWasmTableEntry(ptr)(...args);   // CS Party: see above
+     return f(ptr, ...args);
+   },
+ #if DYNCALLS
