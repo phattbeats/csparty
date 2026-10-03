@@ -60,7 +60,7 @@ new const ITEM_PRICE[IT_COUNT]   = { 500, 1200, 900, 300, 400, 800, 1000, 4000 }
 // Menu hints, kept short: the browser client cuts menu lines at about a third of the screen (~24 characters
 // at the default 1.5x text), so a hint only shows when the whole line fits (menu_hint).
 new const ITEM_TIP[IT_COUNT][]   = { "2 crates", "3 crates", "pick a roll", "rival -3", "dodge traps", "trap a space", "swap places", "to hostages" };
-#define MENU_FIT 24
+#define MENU_FIT 22   // ~24 visible characters, minus the nav cursor's "* "
 new const SHOP_T[]  = { IT_KNIFE, IT_BHOP, IT_FAKE, IT_C4, IT_ROTATE, IT_RIGGED };
 new const SHOP_CT[] = { IT_KNIFE, IT_RIGGED, IT_SMOKE, IT_FAKE, IT_ROTATE, IT_INTEL };
 new const ARMORY_DROP[] = { IT_KNIFE, IT_KNIFE, IT_KNIFE, IT_FAKE, IT_FAKE, IT_SMOKE, IT_SMOKE, IT_C4, IT_C4, IT_RIGGED, IT_BHOP, IT_ROTATE };
@@ -1215,6 +1215,9 @@ spare_names()
 		if (!is_user_connected(id) || !is_user_bot(id) || seat_of(id) >= 0) continue;
 		new nm[32], key[32]; get_user_name(id, nm, charsmax(nm)); name_key(nm, key, charsmax(key));
 		if (nm[0] != '(' || equal(nm, key) || !key[0]) continue;
+		// ReGameDLL holds a dead player's new name until respawn (spare bots are always dead in a match):
+		// asking again every 0.5 s only spammed name changes to every client
+		if (get_member(id, m_bHasChangedName)) continue;
 		new alt[32]; formatex(alt, charsmax(alt), "%.24s II", key);
 		if (name_taken(alt)) formatex(alt, charsmax(alt), "%.24s III", key);
 		if (!name_taken(alt)) set_user_info(id, "name", alt);
@@ -3374,6 +3377,9 @@ mg_rules()
 {
 	new bool:ffa = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL);
 	set_cvar_string("mp_round_infinite", "0");
+	// csp_towers has no bomb or hostage: without this the round timer never ends a fight there, and since
+	// FFA/duels only end on the last kill, a stand-off went on forever. Time-out is a draw, scored by health.
+	set_cvar_string("mp_roundover", "1");
 	set_cvar_string("mp_freeforall", ffa ? "1" : "0");
 	set_cvar_string("bot_stop", "0");
 	set_cvar_string("mp_buytime", "0");
