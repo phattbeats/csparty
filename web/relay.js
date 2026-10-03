@@ -49,7 +49,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace(
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/wasm",
   ".so": "application/wasm", ".zip": "application/zip", ".pk3": "application/zip", ".css": "text/css",
-  ".png": "image/png", ".json": "application/json", ".webmanifest": "application/manifest+json" };
+  ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg", ".webmanifest": "application/manifest+json" };
 
 const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0 };
 
@@ -77,7 +77,9 @@ const server = http.createServer((req, res) => {
     const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
     const headers = { "Content-Type": TYPES[ext] || "application/octet-stream", "Content-Length": st.size, ETag: etag,
       // engine files are immutable per deploy; pages and scripts revalidate
-      "Cache-Control": [".zip", ".wasm", ".so", ".pk3"].includes(ext) ? "public, max-age=604800" : "no-cache" };
+      // the key-protected game data is Valve's content: never on a shared cache (Cloudflare kept serving a
+      // week-old copy after updates). Browsers keep it in their own Cache Storage, checked by ETag.
+      "Cache-Control": PROTECTED.has(url) ? "private, no-cache" : [".zip", ".wasm", ".so", ".pk3"].includes(ext) ? "public, max-age=604800" : "no-cache" };
     if (req.headers["if-none-match"] === etag) { res.writeHead(304, { ETag: etag }).end(); return; }
     res.writeHead(200, headers);
     if (req.method === "HEAD") { res.end(); return; }

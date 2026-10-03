@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>CS Party · Pick your character</title>
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="menu" id="cs-party">
+  <div class="window-bar"><span><span class="mini-die" aria-hidden="true">⁙</span> CS PARTY</span><span>PLAYER SETUP</span></div>
+  <header class="masthead">
+    <img class="logo" src="assets/logo-primary.png" alt="CS Party" width="1774" height="887">
+    <div class="intro"><p class="eyebrow">CHARACTER SELECT</p><h1>Pick your character.</h1><p>Each character has a different die.</p></div>
+  </header>
+  <form id="join-form">
+    <div class="layout">
+      <fieldset class="roster" id="chars"><legend class="sr-only">Pick your character</legend>
+        <div class="team-heading"><span>TERRORISTS</span><span class="team-line"></span><span class="team-short">T</span></div>
+        <div class="character-row" id="terrorists"></div>
+        <div class="team-heading ct"><span>COUNTER-TERRORISTS</span><span class="team-line"></span><span class="team-short">CT</span></div>
+        <div class="character-row" id="counter-terrorists"></div>
+        <label class="random-tile"><input type="radio" name="character" value="random"><span class="random-icon" aria-hidden="true">?</span><span class="random-copy"><strong>Random</strong><span>Let the server pick.</span></span><span class="random-check" aria-hidden="true">P1</span></label>
+      </fieldset>
+      <section class="detail bevel" aria-label="Selected character">
+        <div class="detail-bar"><span>YOUR CHARACTER</span><span id="detail-team">T</span></div>
+        <div class="preview-stage" id="preview-stage"><div class="preview-halo" aria-hidden="true"></div><div class="portrait preview-portrait" id="preview-portrait" aria-hidden="true"></div><div class="preview-random" id="preview-random" hidden aria-hidden="true">?</div><span class="badge preview-badge" id="preview-badge" aria-hidden="true">PX</span></div>
+        <div class="detail-copy"><p class="eyebrow" id="character-style">THE CLASSIC</p><h2 id="character-name">Phoenix Connexion</h2>
+          <div class="die-heading">CHARACTER DIE</div><div id="die-faces" class="die-faces" role="list" aria-label="Six equally likely die faces"></div>
+          <p class="summary" id="character-summary">The classic die. Anything from 1 to 6.</p>
+          <div class="selection-announcement sr-only" id="selection-announcement" role="status" aria-live="polite" aria-atomic="true"></div>
+          <label class="name-label" for="name">YOUR NAME</label><input type="text" name="name" id="name" placeholder="Player name" required maxlength="24" autocomplete="nickname">
+          <button class="join-button" id="go" type="submit">JOIN THE PARTY<span class="join-key" aria-hidden="true">↵</span></button>
+          <p class="demo-status" id="demo-status" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+    </div>
+  </form>
+  <footer class="footer"><p><span class="download-symbol" aria-hidden="true">↓</span> First visit downloads about 45 MB. After that, it's cached in your browser.</p><details><summary>Controls &amp; how to play</summary><p>On your turn, Jump selects “Jump at the crate”. Jump again rolls. Use number keys, or move up/down and Jump to pick; Use goes back. Keyboard: Space / W / S / E. Controller: stick or D-pad, A, B. Touch: on-screen stick. Type /help in chat for the rules. Click the game to capture the mouse; Esc opens the menu.</p></details></footer>
+  <noscript><p class="no-script">Turn on JavaScript to choose a character.</p></noscript>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

@@ -19,7 +19,7 @@ usage: pack_gamedata.py <dir containing valve/ and cstrike/> <out.zip> [extra ma
 import os, re, struct, sys, zipfile
 
 SRC, OUT = sys.argv[1], sys.argv[2]
-MAPS = ["de_dust2", "de_inferno", "de_aztec", "csp_surf", "csp_bhop", "csp_climb", "csp_maze"] + sys.argv[3:]
+MAPS = ["de_dust2", "de_inferno", "de_aztec", "csp_surf", "csp_bhop", "csp_climb", "csp_maze", "csp_towers"] + sys.argv[3:]
 HERE = os.path.dirname(os.path.abspath(__file__))
 WHOLE_WADS = {"decals.wad", "gfx.wad", "spraypaint.wad", "cached.wad", "fonts.wad"}
 SKIP_DIRS = ("/maps", "/dlls", "/cl_dlls", "/addons", "/logs", "/media", "/overviews", "/SAVE")

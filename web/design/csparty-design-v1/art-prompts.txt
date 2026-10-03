@@ -1,0 +1,24 @@
+# Portrait atlas
+
+Use case: stylized-concept. Asset type: a single production CHARACTER PORTRAIT ATLAS for a Counter-Strike 1.6 fan party game called CS Party.
+Create ONE wide PNG image, 2048x1024, exact 2:1 ratio, uniform 4 columns by 2 rows, eight equal square 512x512 cells. Genuinely transparent background throughout. Each cell contains ONE separate fully isolated waist/chest-up character bust, centered at the same scale, head plus entire shoulders completely inside its cell with 7% padding. No cell overlaps, no lettering, no labels, no numbers, no borders, no logos, no props around cells.
+Art direction: lovingly ugly 2000-2003 GoldSrc / Counter-Strike 1.6 model portraits, chunky low polygon geometry, angular faceted heads and shoulders, low-resolution painted texture maps, baked vertex lighting, visible polygon planes, simple blunt surfaces. A nostalgic character-select asset with modest humorous warmth and legible strong silhouettes. Not photoreal, not modern Call of Duty, not smooth PBR, not Fortnite, not vector cartoon, not bobblehead. Adult normal body proportions, slightly enlarged readable heads only. Bright warm front-side lighting and simple rim highlights for clarity at 96px. Eyes and brows deadpan/confident. No weapons or violence. All eight same rendering language, looking slightly toward camera.
+Cell order is strict, left to right:
+TOP ROW (Terrorist characters)
+1 Phoenix Connexion: black cloth balaclava with eye holes, charcoal knit cap integrated mask, reddish-brown vest over beige tan sleeves, broad square shoulders.
+2 Elite Crew: tan-skinned adult man, short dark hair, dark sunglasses, confident subtle smirk, olive-green collared shirt, brown tactical harness. Not bald.
+3 Arctic Avengers: pale white/light gray snow-camouflage hood, exposed dark eye slit and dark face covering, snow camo jacket, white hood strong silhouette.
+4 Guerilla Warfare: dark-haired olive-skinned rugged bearded adult man, tied red headband, olive drab military shirt and vest, faint crooked grin.
+BOTTOM ROW (Counter-Terrorist characters)
+1 SEAL Team 6: navy helmet with dark raised ballistic goggles, dark olive face scarf over mouth, navy vest and tan shoulder details.
+2 GSG-9: distinctive green military helmet, exposed light-skinned adult face, chin strap, deep blue tactical jacket and armor.
+3 SAS: iconic black hood and old black rubber gas mask with two ROUND big glass eye lenses and a single round filter on side of mouth, navy-black tactical jacket, totally distinctive mask silhouette.
+4 GIGN: blue-black helmet with a clear lifted/half lowered face visor and visible light-skinned eyes and nose, blue padded tactical uniform and heavy navy vest.
+Do not draw shadows outside the busts, use real alpha, equal exact layout, each bust self contained.
+
+# Primary logo
+
+Use case: logo-brand. Asset type: standalone transparent PRIMARY LOGO for original fan game CS PARTY.
+Make ONE large landscape logo centered on real transparent background with generous clear margin. The only text is "CS PARTY", spelled exactly. Two-tier lockup: "CS" modestly sized condensed military stencil on upper line, "PARTY" much larger friendly bold block letters on the lower line. Add ONE chunky amber-orange six-sided dice block integrated beside CS or at left, visible faces showing dark simple pips and one crosshair pip. Readable game logo silhouette.
+Art direction: Counter-Strike 1.6 / GoldSrc LAN café nostalgia meets Nintendo 64/GameCube-era board-game party menu exuberance. Flat-shaded low-poly beveled letter faces and short very thick dark olive extruded shadows; sharp readable geometry, thick warm cream outline. CS amber-yellow. PARTY letters use orange, warm gold, light blue, moss green and muted ivory (five letters, five colors), slightly playfully staggered while still a compact horizontal word. The image must feel made in 2002, a cheerful amateur Source/GoldSrc game mod title polished with graphic taste. Olive, amber and cream establish the base, colorful lettering supplies the party. Never imitate an existing Mario Party logotype exactly. No weapons, no soldier silhouette, no Mario characters, no subtitle, no background, no gloss or chrome, no neon, no fine grain, no extra letters, no confetti clutter. Crisp edges and opaque colored parts, production cutout asset.
+

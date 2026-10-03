@@ -36,11 +36,15 @@
 
 #define TASK_FLOW   41000
 #define TASK_CAM    42000
+#define TASK_MAPOV  49000
 #define TASK_RINGS  43000
 #define TASK_HUD    44000
 #define TASK_NADE   45000
 #define TASK_DICE   46000
 #define TASK_RACE   47000
+#define TASK_LOBBY  48000
+#define TASK_SEATWATCH 50000
+#define TASK_VOICE  51000
 
 // ---------------------------------------------------------------- data --
 enum { NT_BLUE = 0, NT_RED, NT_EVENT, NT_SITE, NT_START, NT_SHOP, NT_CAMPER, NT_ARMORY, NT_VIP, NT_DUEL, NT_NEGOT };
@@ -79,11 +83,20 @@ new const EQ_PRICE[EQ_COUNT] = { 650, 1000, 200, 300, 300, 200 };
 enum { SK_PHOENIX = 0, SK_ELITE, SK_ARCTIC, SK_GUERILLA, SK_SEAL, SK_GSG9, SK_SAS, SK_GIGN, SK_COUNT };
 new const SKIN_NAME[SK_COUNT][]  = { "Phoenix Connexion", "Elite Crew", "Arctic Avengers", "Guerilla Warfare", "SEAL Team 6", "GSG-9", "SAS", "GIGN" };
 new const SKIN_MODEL[SK_COUNT][] = { "terror", "leet", "arctic", "guerilla", "urban", "gsg9", "sas", "gign" };
+enum { VO_BLUE, VO_RED, VO_GOOD, VO_BAD, VO_WON, VO_LOST }
+new const VO_LINES[][][] = {
+	{ "radio/letsgo.wav", "radio/locknload.wav", "radio/moveout.wav", "radio/roger.wav", "radio/bot/alright_lets_do_this.wav", "radio/bot/ok_cmdr_lets_go.wav", "radio/bot/sounds_like_a_plan.wav", "radio/bot/on_my_way.wav", "radio/bot/yesss.wav", "radio/bot/oh_yea.wav", "radio/bot/im_coming.wav", "radio/bot/whoo.wav" },
+	{ "radio/bot/uh_oh.wav", "radio/bot/oh_no.wav", "radio/bot/aww_man.wav", "radio/bot/yikes.wav", "radio/bot/ouch.wav", "radio/bot/thats_not_good.wav", "radio/bot/aw_hell.wav", "radio/ct_imhit.wav", "radio/negative.wav", "radio/fallback.wav", "radio/bot/oh_man.wav", "radio/bot/noo.wav" },
+	{ "radio/bot/whoo.wav", "radio/bot/whoo2.wav", "radio/bot/yesss.wav", "radio/bot/yesss2.wav", "radio/bot/oh_yea.wav", "radio/bot/yea_baby.wav", "radio/bot/nice.wav", "radio/bot/great.wav", "radio/bot/whos_the_man.wav", "radio/bot/good_one.wav", "radio/enemydown.wav", "radio/bot/thats_the_way_this_is_done.wav" },
+	{ "radio/bot/oh_no.wav", "radio/bot/aww_man.wav", "radio/bot/ouch.wav", "radio/bot/ow.wav", "radio/bot/yikes.wav", "radio/bot/uh_oh.wav", "radio/bot/thats_not_good.wav", "radio/bot/im_in_trouble.wav", "radio/bot/what_have_you_done.wav", "radio/bot/ow_its_me.wav", "radio/getout.wav", "radio/bot/noo.wav" },
+	{ "radio/bot/whoo.wav", "radio/bot/yesss.wav", "radio/bot/whos_the_man.wav", "radio/bot/we_owned_them.wav", "radio/bot/and_thats_how_its_done.wav", "radio/bot/owned.wav", "radio/bot/yea_baby.wav", "radio/enemydown.wav", "radio/bot/ruined_his_day.wav", "radio/bot/made_him_cry.wav", "radio/ctwin.wav", "radio/terwin.wav" },
+	{ "radio/bot/aww_man.wav", "radio/bot/oh_no_sad.wav", "radio/bot/aw_hell.wav", "radio/bot/noo.wav", "radio/bot/that_was_a_close_one.wav", "radio/bot/oh_man.wav", "radio/bot/thats_not_good.wav", "radio/bot/i_got_nothing.wav", "radio/negative.wav", "radio/bot/uh_oh.wav", "radio/bot/ow.wav", "radio/bot/no.wav" }
+};
 new const SKIN_DICE[SK_COUNT][6] = { {1,2,3,4,5,6}, {0,0,3,5,6,7}, {2,2,3,3,5,6}, {1,1,1,6,6,6},
                                      {3,3,3,4,4,4}, {0,2,2,5,5,7}, {1,3,3,3,5,6}, {2,2,2,2,6,7} };
 
-enum { MG_PLANT = 0, MG_PISTOL, MG_FULLBUY, MG_DEAGLE, MG_KNIFE, MG_SCOUTZ, MG_NADES, MG_HNS, MG_SURF, MG_BHOP, MG_CLIMB, MG_MAZE, MG_COUNT };
-new const MG_NAME[MG_COUNT][] = { "Plant the Bomb", "Pistol Round", "Full Buy", "Deagle Only", "Knife Fight", "Scoutzknivez", "Nades Only", "Hide and Seek", "Surf Race", "Bhop Course", "Climb", "Maze Run" };
+enum { MG_PLANT = 0, MG_PISTOL, MG_FULLBUY, MG_DEAGLE, MG_KNIFE, MG_SCOUTZ, MG_NADES, MG_HNS, MG_SURF, MG_BHOP, MG_CLIMB, MG_MAZE, MG_TOWERS, MG_COUNT };
+new const MG_NAME[MG_COUNT][] = { "Plant the Bomb", "Pistol Round", "Full Buy", "Deagle Only", "Knife Fight", "Scoutzknivez", "Nades Only", "Hide and Seek", "Surf Race", "Bhop Course", "Climb", "Maze Run", "Two Towers" };
 new const MG_DESC[MG_COUNT][] = {
 	"T side plants. CT side stops them. Bring your gear.",
 	"Your pistol, armor and nades only. Standard round rules.",
@@ -96,15 +109,25 @@ new const MG_DESC[MG_COUNT][] = {
 	"First to the end of the surf course. Fall and you go back to the stage start.",
 	"First across the bhop course. Lava sends you back to the last checkpoint.",
 	"First to the top. Jumps, a ladder, beams. Fall in the pit and you go back to the last checkpoint.",
-	"First out of the maze wins. The walls are too tall to jump." };
-new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
+	"First out of the maze wins. The walls are too tall to jump.",
+	"AWPs and Deagles on Two Towers. Last side standing." };
+// How-to card for minigames that need a CS movement trick. Shown while everyone loads in, through the
+// countdown and the first seconds of the race. Short on purpose; "" = no card.
+new const MG_TUT[MG_COUNT][] = { "", "", "", "", "", "", "", "", 
+	"HOW TO SURF^n^n- Land on the side of a ramp, not the top.^n- Hold A or D (stick left/right) toward the ramp.^n- Never press W. Turn the mouse to steer.^n- Fall off and you restart this stage.",
+	"HOW TO BHOP^n^n- Hold JUMP. You hop again every time you land.^n- Steer in the air with A / D and the mouse together.^n- Don't hold W while in the air.^n- Lava sends you back to the last checkpoint.",
+	"HOW TO CLIMB^n^n- Ladders: look up and hold W. Jump off with JUMP.^n- High ledges: JUMP, then hold DUCK in the air.^n- Beams are narrow: walk, don't run (hold SHIFT).^n- Fall and you go back to the last checkpoint.",
+	"", "" };
+new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
 // 0 = fixed loadout (gear untouched), 1 = all your gear, 2 = pistol, armor and nades only
-new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 // minigames played on CS Party's own maps (changelevel and back)
-new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "csp_bhop", "csp_climb", "csp_maze" };
+new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "csp_bhop", "csp_climb", "csp_maze", "csp_towers" };
 // zBots can't surf, bhop, climb or solve a maze: on race maps they "finish" at a random time in this window (seconds)
 new const Float:MG_BOT_TIME[MG_COUNT][2] = { {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0},
-	{40.0, 75.0}, {35.0, 65.0}, {40.0, 70.0}, {30.0, 60.0} };
+	{40.0, 75.0}, {35.0, 65.0}, {40.0, 70.0}, {30.0, 60.0}, {0.0, 0.0} };
+// own-map minigames that are a fight (board elimination rules) instead of a race
+bool:mg_fight(m) { return m == MG_TOWERS; }
 
 // board
 new Float:g_nodePos[MAX_NODES][3], g_nodeType[MAX_NODES], g_nodeLetter[MAX_NODES], g_nodeArea[MAX_NODES][24];
@@ -118,12 +141,13 @@ new g_seatOwner[SEATS][32];
 #define NAV_MAX 10
 new g_navMenu[33], g_navPos[33], g_navN[33], g_navOld[33], Float:g_navNext[33];   // cursor menus; g_navMenu = handle + 1
 new g_navName[33][NAV_MAX][96], bool:g_navThawed[33], bool:g_navRedraw[33], g_navHandler[33][32], bool:g_navPicking;
-enum { W_NONE = 0, W_TURN, W_BRANCH, W_HOSTAGE, W_SHOP, W_NEGOT };
+enum { W_NONE = 0, W_TURN, W_BRANCH, W_HOSTAGE, W_SHOP, W_NEGOT, W_TARGET };
 new g_waitKind[SEATS], g_waitLast[SEATS], Float:g_waitAt[SEATS];   // what the board waits for a human to decide, since when
 new bool:g_wdCancel;                       // menu_cancel() from the timer or an abort: handlers must not advance the flow
 new Float:g_navMove[33];                    // forwardmove from the last usercmd: sticks and the touch stick set this, not IN_FORWARD
 new bool:g_lateSpec[33];                    // joined mid-match and was parked in spectator
-new c_turntime;
+new c_turntime, c_hudscale;
+new bool:g_xhHidden[33];
 new g_boardMap[32];   // the map the board lives on (restored from saved state on race maps)   // name key of the human who owns the seat ("" = a bot seat). Survives bots standing in.
 new g_money[SEATS], g_stars[SEATS], g_items[SEATS][INV_MAX], g_itemN[SEATS], g_streak[SEATS], g_mgWins[SEATS], g_reds[SEATS], g_maxMoney[SEATS];
 // award stats
@@ -144,6 +168,11 @@ new g_stepsLeft, g_moveDepth, g_cont, g_mg, g_mgFmt, g_mgWager, g_duelA;
 new bool:g_mgDone, g_mgWinners[SEATS], g_mgWinnerN;
 
 // entities / misc
+new c_autostart, bool:g_lobby, g_lobbyLeft, c_autobhop, g_hudTut;
+new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt;
+new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
+#define HOP_TIME 0.3
+new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopNode, Float:g_hopStart, bool:g_hopActive;
 new g_cam, g_hostageEnt, g_trapEnt[MAX_NODES], g_beamSpr, g_hudSync, g_hudSync2;
 new Float:g_camPos[3], Float:g_camAng[3];
 new g_msgScoreInfo;
@@ -153,7 +182,7 @@ new g_diceEnt[3], g_diceN, bool:g_diceHit[3], g_diceVal[3], g_diceFace[3], bool:
 
 
 // cvars
-new c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany;
+new c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice;
 new g_targetPurpose, g_shopSide;
 
 // ------------------------------------------------------------- plugin --
@@ -168,13 +197,18 @@ public plugin_precache()
 	precache_sound("items/gunpickup1.wav"); precache_sound("weapons/awp1.wav"); precache_sound("buttons/blip1.wav");
 	precache_sound("weapons/c4_beep1.wav");
 	precache_sound("items/gunpickup2.wav");
+	for (new i = 1; i <= 4; i++) { new f[40]; formatex(f, charsmax(f), "player/pl_step%d.wav", i); precache_sound(f); }
+	precache_sound("events/task_complete.wav");
+	for (new k = 0; k < sizeof VO_LINES; k++) for (new i = 0; i < sizeof VO_LINES[]; i++) precache_sound(VO_LINES[k][i]);
 	g_beamSpr = precache_model("sprites/laserbeam.spr");
+	precache_model("models/csp_tile.mdl");
 }
 
 public plugin_init()
 {
 	register_plugin(PLUGIN, VERSION, AUTHOR);
 	RegisterHookChain(RG_CBasePlayer_PreThink, "hc_nav_prethink", false);   // cursor menus (controllers, phones)
+	register_forward(FM_StartFrame, "fw_startframe");                        // camera + pawn hops, every server frame
 	register_forward(FM_CmdStart, "fw_nav_cmdstart");                      // analog forward/back for the cursor
 
 	c_turns   = register_cvar("csp_turns", "15");
@@ -192,8 +226,12 @@ public plugin_init()
 	c_speed   = register_cvar("csp_speed", "1.0");    // delay multiplier; 0.2 for fast bot tests
 	c_debug   = register_cvar("csp_debug", "1");
 	c_buyany  = register_cvar("csp_buy_anywhere", "0");
+	c_voice   = register_cvar("csp_voice", "50");     // % chance a character barks a voice line on spaces, events and minigame results
 	register_cvar("csp_rings", "1");
+	c_hudscale = register_cvar("csp_hud_scale", "2");   // client hud_scale pushed to humans (Xash3D browser clients; 0 = leave alone)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
+	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
+	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
 	c_autojoin = register_cvar("csp_autojoin", "1");   // put new humans on a team without the team/class menus   // 1 = old every-turn buy menu as well as the buy zones
 
 	register_srvcmd("csp_start", "cmd_start");
@@ -223,12 +261,14 @@ public plugin_init()
 
 	g_hudSync = CreateHudSyncObj();
 	g_hudSync2 = CreateHudSyncObj();
+	g_hudTut = CreateHudSyncObj();
 	g_msgScoreInfo = get_user_msgid("ScoreInfo");
 
 	load_board();
 	spawn_board_entities();
 	set_task(1.0, "task_rings", TASK_RINGS, _, _, "b");
 	set_task(0.5, "task_hud", TASK_HUD, _, _, "b");
+	set_task(2.0, "task_seat_watch", TASK_SEATWATCH, _, _, "b");
 }
 
 public plugin_end()
@@ -385,6 +425,24 @@ spawn_board_entities()
 		entity_set_float(e, EV_FL_renderamt, 4.0);
 		g_propEnt[i] = e;
 	}
+	// a solid hex tile on the floor of every space: one skin per space type (models/csp_tile.mdl, NT_* order),
+	// fullbright so map lighting can't wash it out, label turned to read along the path
+	for (new i = 0; i < g_nodeCount; i++)
+	{
+		g_tileEnt[i] = 0;
+		new e = create_entity("info_target");
+		if (!e) continue;
+		entity_set_string(e, EV_SZ_classname, "csp_tile");
+		entity_set_model(e, "models/csp_tile.mdl");
+		entity_set_int(e, EV_INT_solid, SOLID_NOT);
+		entity_set_int(e, EV_INT_movetype, MOVETYPE_NONE);
+		new Float:o[3]; o = g_nodePos[i]; o[2] += 0.5;
+		entity_set_origin(e, o);
+		new m = g_nodeNext[i][0], Float:d[3], Float:ang[3]; xs_vec_sub_simple(g_nodePos[m], g_nodePos[i], d); d[2] = 0.0;
+		if (vector_length(d) > 1.0) { vector_to_angle(d, ang); ang[0] = 0.0; ang[2] = 0.0; entity_set_vector(e, EV_VEC_angles, ang); }
+		entity_set_int(e, EV_INT_skin, g_nodeType[i]);
+		g_tileEnt[i] = e;
+	}
 	for (new k = 0; k < 3; k++)
 	{
 		new e = create_entity("info_target");
@@ -402,10 +460,9 @@ spawn_board_entities()
 // colored hexagon on the floor of every space, redrawn before it fades
 public task_rings()
 {
-	static Float:last;
 	new Float:now = get_gametime();
-	if (g_nodeCount == 0 || !get_cvar_num("csp_rings") || (now - last) < 20.0 && last > 0.0) return;
-	last = now;
+	if (g_nodeCount == 0 || g_boardHidden || !get_cvar_num("csp_rings") || (now - g_ringsAt) < ring_every() && g_ringsAt > 0.0) return;
+	g_ringsAt = now;
 	// one space per 0.1 s (AMXX's real timer resolution; "0.03 apart" bunched ~45 beams into each frame).
 	// A client that renders slowly gets few server packets, and a burst like that overflows its 4 KB datagram.
 	for (new i = 0; i < g_nodeCount; i++) set_task(0.1 * float(i + 1), "task_ring_one", TASK_RINGS + 1 + i);
@@ -415,30 +472,7 @@ public task_ring_one(taskid)
 {
 	new n = taskid - TASK_RINGS - 1;
 	if (n < 0 || n >= g_nodeCount) return;
-	new r, g, b;
-	switch (g_nodeType[n])
-	{
-		case NT_RED:   { r = 226; g = 101; b = 76; }
-		case NT_EVENT: { r = 231; g = 199; b = 75; }
-		case NT_SITE:  { r = 242; g = 163; b = 58; }
-		case NT_START: { r = 230; g = 230; b = 230; }
-		case NT_SHOP:  { r = 127; g = 211; b = 107; }
-		case NT_CAMPER:{ r = 140; g = 20;  b = 14; }
-		case NT_ARMORY:{ r = 79;  g = 208; b = 196; }
-		case NT_VIP:   { r = 244; g = 241; b = 230; }
-		case NT_DUEL:  { r = 176; g = 124; b = 240; }
-		case NT_NEGOT: { r = 255; g = 211; b = 107; }
-		default:       { r = 93;  g = 143; b = 232; }
-	}
-	new Float:rad = (g_nodeType[n] == NT_SITE || g_nodeType[n] == NT_SHOP) ? 30.0 : 22.0;
-	new Float:a[3], Float:c[3];
-	for (new k = 0; k < 6; k++)
-	{
-		new Float:t0 = float(k) * 60.0, Float:t1 = float(k + 1) * 60.0;
-		a[0] = g_nodePos[n][0] + rad * floatcos(t0, degrees); a[1] = g_nodePos[n][1] + rad * floatsin(t0, degrees); a[2] = g_nodePos[n][2] + 1.0;
-		c[0] = g_nodePos[n][0] + rad * floatcos(t1, degrees); c[1] = g_nodePos[n][1] + rad * floatsin(t1, degrees); c[2] = a[2];
-		beam(a, c, r, g, b, 6);
-	}
+	new Float:a[3], Float:c[3];   // the tiles mark the spaces; beams only draw the path between them
 	// dotted link toward the next space(s)
 	for (new k = 0; k < g_nodeNextN[n]; k++)
 	{
@@ -451,10 +485,13 @@ public task_ring_one(taskid)
 			new Float:f0 = (float(j) / 4.0) - (6.0 / len), Float:f1 = (float(j) / 4.0) + (6.0 / len);
 			a[0] = g_nodePos[n][0] + d[0] * f0; a[1] = g_nodePos[n][1] + d[1] * f0; a[2] = g_nodePos[n][2] + d[2] * f0 + 1.0;
 			c[0] = g_nodePos[n][0] + d[0] * f1; c[1] = g_nodePos[n][1] + d[1] * f1; c[2] = g_nodePos[n][2] + d[2] * f1 + 1.0;
-			beam(a, c, 185, 159, 108, 3);
+			beam(a, c, 185, 159, 108, 6);
 		}
 	}
 }
+
+// redraw period: every space gets one 0.1 s slot, plus slack; beams live a little longer than that
+Float:ring_every() { new Float:t = 0.1 * float(g_nodeCount) + 1.5; return t < 6.0 ? 6.0 : t; }
 
 xs_vec_sub_simple(const Float:a[3], const Float:b[3], Float:out[3]) { out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; out[2] = a[2] - b[2]; }
 
@@ -465,18 +502,18 @@ beam(const Float:a[3], const Float:b[3], r, g, bl, width)
 	engfunc(EngFunc_WriteCoord, a[0]); engfunc(EngFunc_WriteCoord, a[1]); engfunc(EngFunc_WriteCoord, a[2]);
 	engfunc(EngFunc_WriteCoord, b[0]); engfunc(EngFunc_WriteCoord, b[1]); engfunc(EngFunc_WriteCoord, b[2]);
 	write_short(g_beamSpr); write_byte(0); write_byte(0);
-	write_byte(250);           // 25 s
+	write_byte(floatround(ring_every() * 10.0) + 20);   // a bit longer than the redraw period
 	write_byte(width); write_byte(0);
 	write_byte(r); write_byte(g); write_byte(bl);
-	write_byte(200); write_byte(0);
+	write_byte(255); write_byte(0);
 	message_end();
 }
 
 // ------------------------------------------------------------- seating --
 public cmd_menu(id) { new s = seat_of(id); if (s >= 0 && s == g_cur && g_state == ST_BOARD && !g_diceOpen) show_turn_menu(s); return PLUGIN_HANDLED; }
 public cmd_help(id) { show_motd(id, "motd.txt", "CS Party"); return PLUGIN_HANDLED; }
-public cmd_start_client(id) { if (g_state == ST_IDLE) match_start(); return PLUGIN_HANDLED; }
-public cmd_start() { match_start(); return PLUGIN_HANDLED; }
+public cmd_start_client(id) { if (g_state == ST_IDLE) { lobby_close(); match_start(); } return PLUGIN_HANDLED; }
+public cmd_start() { lobby_close(); match_start(); return PLUGIN_HANDLED; }
 
 // ---------------------------------------------------------------- board picker --
 // Every map with a board .ini (and the .bsp to go with it) can host a match. Between matches anyone
@@ -560,8 +597,11 @@ public cmd_probe()
 		new id = g_seatPlayer[s];
 		if (!is_user_connected(id)) { server_print("[CSP] probe seat%d %s: not connected", s, g_seatName[s]); continue; }
 		new Float:o[3]; entity_get_vector(id, EV_VEC_origin, o);
-		server_print("[CSP] probe seat%d %s: alive=%d solid=%d onground=%d pos=%.0f %.0f %.0f", s, g_seatName[s], is_user_alive(id),
-			entity_get_int(id, EV_INT_solid), (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0, o[0], o[1], o[2]);
+		new Float:v[3]; entity_get_vector(id, EV_VEC_velocity, v);
+		server_print("[CSP] probe seat%d %s: id=%d team=%d join=%d menu=%d obs=%d dead=%d spawns=%d", s, g_seatName[s], id, get_member(id, m_iTeam), get_member(id, m_iJoiningState), get_member(id, m_iMenu), entity_get_int(id, EV_INT_iuser1), entity_get_int(id, EV_INT_deadflag), get_member(id, m_iNumSpawns));
+		server_print("[CSP] probe seat%d %s: alive=%d solid=%d onground=%d frozen=%d maxspd=%.0f vel=%.0f %.0f clear=%d pos=%.0f %.0f %.0f", s, g_seatName[s], is_user_alive(id),
+			entity_get_int(id, EV_INT_solid), (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0, (entity_get_int(id, EV_INT_flags) & FL_FROZEN) != 0,
+			get_entvar(id, var_maxspeed), v[0], v[1], spot_clear(o), o[0], o[1], o[2]);
 	}
 	return PLUGIN_HANDLED;
 }
@@ -646,11 +686,24 @@ match_start()
 	}
 	if (seat < SEATS) { server_print("[CSP] Need %d players (bots count). Have %d. Try bot_quota 4.", SEATS, seat); return; }
 
+	// Characters: a human's pick from the join screen (setinfo _csp_char 0-7) is honoured first come, first
+	// served in seat order; everyone else, and anyone whose pick was taken, draws from what's left.
 	new skins[SK_COUNT]; for (new i = 0; i < SK_COUNT; i++) skins[i] = i;
 	for (new i = SK_COUNT - 1; i > 0; i--) { new j = random(i + 1), t = skins[i]; skins[i] = skins[j]; skins[j] = t; }
+	new bool:taken[SK_COUNT], want[SEATS];
 	for (new s = 0; s < SEATS; s++)
 	{
-		g_seatSkin[s] = skins[s];
+		want[s] = g_seatBot[s] ? -1 : char_pick(g_seatPlayer[s]);
+		if (want[s] >= 0 && taken[want[s]]) { client_print(g_seatPlayer[s], print_chat, "[CS Party] %s was already picked. You got a random character.", SKIN_NAME[want[s]]); want[s] = -1; }
+		if (want[s] >= 0) taken[want[s]] = true;
+	}
+	for (new s = 0, k = 0; s < SEATS; s++)
+	{
+		if (want[s] < 0) { while (taken[skins[k]]) k++; want[s] = skins[k]; taken[want[s]] = true; }
+	}
+	for (new s = 0; s < SEATS; s++)
+	{
+		g_seatSkin[s] = want[s];
 		g_money[s] = get_pcvar_num(c_start); g_maxMoney[s] = g_money[s]; g_spent[s] = 0; g_moved[s] = 0; g_c4Take[s] = 0;
 		g_stars[s] = 0; g_itemN[s] = 0; g_streak[s] = 0; g_mgWins[s] = 0; g_reds[s] = 0;
 		g_pos[s] = g_startNode; g_lastColor[s] = SIDE_NONE; g_flashed[s] = 0; g_smoke[s] = false; g_extraCrates[s] = 0; g_rigged[s] = 0;
@@ -663,6 +716,7 @@ match_start()
 	save_cvars();
 	apply_match_cvars();
 	announce("Match start. %d turns. Hostages are in %s.", g_maxTurns, g_nodeArea[g_hostage]);
+	client_cmd(0, "echo CSP_THEME_STOP");
 	draw_awards();
 	for (new s = 0; s < SEATS; s++) announce("%s plays %s.", g_seatName[s], SKIN_NAME[g_seatSkin[s]]);
 	enter_board();
@@ -677,12 +731,13 @@ apply_match_cvars()
 	set_cvar_num("bot_join_after_player", 0);
 	set_cvar_num("mp_timelimit", 0); set_cvar_num("mp_maxrounds", 0);         // game.cfg's 20-minute rotation would eat the board mid-party
 	set_cvar_num("mp_winlimit", 0);
+	set_cvar_num("sv_maxupdaterate", 60); set_cvar_num("sv_minupdaterate", 30);   // the director camera is an entity: smooth needs updates
 }
 
 match_abort()
 {
 	if (g_state == ST_IDLE) return;
-	remove_task(TASK_FLOW); remove_task(TASK_CAM); remove_task(TASK_DICE); remove_task(TASK_RACE);
+	remove_task(TASK_FLOW); remove_task(TASK_CAM); remove_task(TASK_DICE); remove_task(TASK_RACE); g_hopActive = false;
 	remove_task(TASK_RACE + 1); remove_task(TASK_RACE + 2);   // a running race and its changelevel
 	for (new k = 0; k < SEATS; k++) { g_waitKind[k] = W_NONE; g_waitLast[k] = W_NONE; }
 	for (new id = 1; id <= MaxClients; id++)
@@ -695,6 +750,7 @@ match_abort()
 	delete_state();
 	for (new k = 0; k < 3; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
 	g_state = ST_IDLE;
+	board_music(false);
 	restore_cvars();
 	clear_traps();
 	entity_set_int(g_hostageEnt, EV_INT_effects, EF_NODRAW);
@@ -711,12 +767,31 @@ public task_abort_home()
 	server_cmd("changelevel %s", home);
 }
 
+// Board music: the browser page loops the board tracks on CSP_MUSIC_BOARD and fades them out on CSP_MUSIC_OFF
+// (minigames, the results, a stopped match). Anyone joining while the board is up gets the cue again; that
+// includes everyone reconnecting across the changelevel back from an own-map minigame.
+new bool:g_boardMusic;
+board_music(bool:on)
+{
+	g_boardMusic = on;
+	if (on) client_cmd(0, "echo CSP_MUSIC_BOARD");
+	else client_cmd(0, "echo CSP_MUSIC_OFF");
+}
+public task_music_cue(taskid)
+{
+	new id = taskid - TASK_RACE - 220;
+	if (g_boardMusic && is_user_connected(id)) client_cmd(id, "echo CSP_MUSIC_BOARD");
+}
+
 new Float:g_seatLeftAt[SEATS];
 // new humans skip the team and class menus: a party server just seats you
 public client_putinserver(id)
 {
+	g_xhHidden[id] = false;
 	if (is_user_bot(id)) return;
 	set_task(0.5, "task_name_fix", id + TASK_RACE + 140);
+	set_task(2.0, "task_hudscale", id);
+	set_task(4.0, "task_music_cue", id + TASK_RACE + 220);
 	if (!get_pcvar_num(c_autojoin)) return;
 	set_task(3.0, "task_autojoin", id + TASK_RACE + 100);
 }
@@ -743,10 +818,55 @@ public task_name_fix(taskid)
 	dbg("%s had their name taken by a bot; renamed back.", key);
 }
 
+// A human who (re)joins mid-match, after a map change, an alt-tab or a dropped connection, must get a seat
+// whether or not the engine ever shows the team panel (browser clients often don't). Without one the spawn
+// hook slays them and they sit in a spectator view that can't see their own pawn.
+bool:seat_returning(id)
+{
+	if (g_state == ST_IDLE || is_user_bot(id) || !is_user_connected(id) || seat_of(id) >= 0) return false;
+	for (new k = 0; k < SEATS; k++) if (seat_owner_back(k) == id)
+	{
+		new cur = g_seatPlayer[k];
+		if (!cur || !is_user_connected(cur)) reclaim_seat(k, id);
+		else seat_join(id, k);
+		return true;
+	}
+	return false;
+}
+
+public task_seat_watch()
+{
+	if (g_state != ST_IDLE) for (new id = 1; id <= MaxClients; id++) seat_settle(id);
+	if (g_state == ST_IDLE || g_state == ST_MINIGAME || g_state == ST_MG_INTRO || g_state == ST_MG_RESULT) return;
+	static Float:lastFix[33];
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		new s = seat_of(id);
+		if (s < 0)
+		{
+			if (seat_returning(id)) { dbg("%n was unseated: gave their seat back.", id); continue; }
+			new TeamName:tm = get_member(id, m_iTeam);
+			if (!g_lateSpec[id] && tm != TEAM_SPECTATOR && !task_exists(TASK_RACE + 180 + id)) set_task(0.3, "task_late_spectate", TASK_RACE + 180 + id);
+			else if (g_lateSpec[id]) reclaim_ready();
+			continue;
+		}
+		new TeamName:tm = get_member(id, m_iTeam);
+		if (tm != TEAM_TERRORIST && tm != TEAM_CT) { dbg("%n has a seat but no team: joining.", id); seat_join(id, s); continue; }
+		if (!is_user_alive(id) && (g_state == ST_BOARD || g_state == ST_RESUME || g_state == ST_REMOTE_WAIT) && get_gametime() - lastFix[id] > 3.0)
+		{
+			lastFix[id] = get_gametime();
+			dbg("%n (seat %d) is dead outside a fight: respawning.", id, s);
+			rg_round_respawn(id);
+		}
+	}
+}
+
 public task_autojoin(taskid)
 {
 	new id = taskid - TASK_RACE - 100;
 	if (!is_user_connected(id)) return;
+	if (seat_returning(id)) return;
 	new TeamName:tm = get_member(id, m_iTeam);
 	if (tm == TEAM_TERRORIST || tm == TEAM_CT) return;
 	if (tm == TEAM_SPECTATOR && !(g_lateSpec[id] && g_state == ST_IDLE)) return;   // real spectators stay put
@@ -763,11 +883,65 @@ public task_autojoin(taskid)
 	log_amx("%n auto-joins %s", id, t <= ct ? "TERRORIST" : "CT");   // rg_join_team doesn't write the usual "joined team" line
 	set_member(id, m_iMenu, 0);
 	show_menu(id, 0, " ", 0);
-	client_print(id, print_center, "You're in. Say /party to start, or wait for the host.");
+	if (g_state == ST_IDLE && get_pcvar_num(c_autostart) > 0) lobby_open();
+	else client_print(id, print_center, "You're in. Say /party to start, or wait for the host.");
+}
+
+// a party server never plays plain CS: the first human opens a frozen lobby that counts down into the match
+lobby_open()
+{
+	if (g_lobby) return;
+	g_lobby = true; g_lobbyLeft = get_pcvar_num(c_autostart);
+	set_cvar_num("bot_stop", 1);
+	set_task(1.0, "task_lobby", TASK_LOBBY, _, _, "b");
+	task_lobby();
+}
+lobby_close()
+{
+	if (!g_lobby) return;
+	g_lobby = false; remove_task(TASK_LOBBY);
+	set_cvar_num("bot_stop", 0);
+	for (new id = 1; id <= MaxClients; id++) if (is_user_alive(id)) unfreeze(id);
+}
+public task_lobby()
+{
+	if (g_state != ST_IDLE) { g_lobby = false; remove_task(TASK_LOBBY); return; }
+	for (new id = 1; id <= MaxClients; id++) if (is_user_alive(id)) freeze(id);
+	if (g_lobbyLeft > 0)
+	{
+		set_hudmessage(255, 211, 107, -1.0, 0.3, 0, 0.0, 1.1, 0.0, 0.0, -1);
+		show_hudmessage(0, "CS PARTY^nThe board starts in %d", g_lobbyLeft);
+		g_lobbyLeft--;
+		return;
+	}
+	lobby_close();
+	match_start();
+	if (g_state == ST_IDLE) lobby_open();   // not enough seats yet: keep everyone frozen and try again
+}
+
+public task_hudscale(id)
+{
+	new v = get_pcvar_num(c_hudscale);
+	if (v > 0 && is_user_connected(id)) client_cmd(id, "hud_scale %d", v);
+}
+
+// Crosshair is only shown to whoever is acting; everyone else watches the board without it
+update_crosshair()
+{
+	static msg; if (!msg) msg = get_user_msgid("HideWeapon");
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		new bool:hide = (g_state == ST_BOARD && seat_of(id) != g_cur);
+		if (hide == g_xhHidden[id] && !hide) continue;
+		g_xhHidden[id] = hide;
+		message_begin(MSG_ONE, msg, _, id); write_byte(hide ? (1 << 6) : 0); message_end();
+	}
 }
 
 public client_disconnected(id)
 {
+	g_xhHidden[id] = false;
 	g_navMenu[id] = 0; g_navThawed[id] = false; g_navMove[id] = 0.0; g_lateSpec[id] = false;
 	for (new s = 0; s < SEATS; s++)
 	{
@@ -821,8 +995,25 @@ public task_late_spectate(taskid)
 	rg_join_team(id, TEAM_SPECTATOR);
 	g_lateSpec[id] = true;
 	set_member(id, m_iMenu, 0); show_menu(id, 0, " ", 0);
-	client_print(id, print_center, "A match is on. You're watching the board. You'll get a seat next match.");
-	client_print_color(id, print_team_default, "^4[Party]^1 Match in progress: you're spectating. Say /party when it ends to play.");
+	client_print(id, print_center, "A match is on. You'll take over a bot's seat in a moment.");
+	reclaim_ready();
+}
+
+// A late joiner takes a seat a bot is playing for itself (never one it keeps warm for a human who dropped).
+bool:take_bot_seat(id)
+{
+	for (new s = 0; s < SEATS; s++)
+	{
+		if (!g_seatBot[s] || g_seatOwner[s][0]) continue;
+		if (g_state == ST_BOARD && s == g_cur) continue;   // not in the middle of that bot's turn
+		new nm[32]; get_user_name(id, nm, charsmax(nm));
+		announce("%s takes over %s's seat.", nm, g_seatName[s]);
+		player_key(id, g_seatOwner[s], charsmax(g_seatOwner[]));
+		g_lateSpec[id] = false;
+		reclaim_seat(s, id, false);
+		return true;
+	}
+	return false;
 }
 public task_seat_join(taskid) { new s = taskid - TASK_RACE - 60; if (s >= 0 && s < SEATS && is_user_connected(g_seatPlayer[s])) seat_join(g_seatPlayer[s], s); }
 
@@ -834,6 +1025,22 @@ seat_join(id, s)
 	set_member(id, m_iMenu, 0);
 	show_menu(id, 0, " ", 0);
 	if (!is_user_alive(id) && (g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE)) rg_round_respawn(id);
+	set_task(0.2, "task_seat_settle", TASK_RACE + 260 + id);
+}
+
+// Returning players are seated from inside the team panel hook, and CS goes back to "picking a team" once
+// that hook returns. The player then stands on their side with maxspeed 1 (can't walk) and round respawns
+// skip them (stuck dead on the board). Anyone with a seat and a side has finished joining: say so.
+public task_seat_settle(taskid) { seat_settle(taskid - TASK_RACE - 260); }
+seat_settle(id)
+{
+	if (!is_user_connected(id) || is_user_bot(id) || seat_of(id) < 0) return;
+	new TeamName:tm = get_member(id, m_iTeam);
+	if (tm != TEAM_TERRORIST && tm != TEAM_CT) return;
+	if (get_member(id, m_iJoiningState) == JOINED && get_member(id, m_iMenu) != Menu_ChooseTeam) return;
+	dbg("%n was still joining (state %d, menu %d): settled.", id, get_member(id, m_iJoiningState), get_member(id, m_iMenu));
+	set_member(id, m_iJoiningState, JOINED); set_member(id, m_iMenu, Menu_OFF);
+	if (is_user_alive(id) && !g_navThawed[id]) rg_reset_maxspeed(id);
 }
 
 // the human who owns this seat by name, if they're back
@@ -874,13 +1081,14 @@ stand_in_name(s, out[], len)
 }
 
 // The owner of seat s is connected again: give them the seat back, whoever is keeping it.
-reclaim_seat(s, id)
+reclaim_seat(s, id, bool:back = true)
 {
 	new old = g_seatPlayer[s];
 	g_seatPlayer[s] = id; g_seatBot[s] = false; g_seatLeftAt[s] = 0.0;
 	copy(g_seatName[s], charsmax(g_seatName[]), g_seatOwner[s]);
 	if (old && old != id && is_user_connected(old) && is_user_bot(old)) set_user_info(old, "name", "Stand-in");
-	announce("%s is back.", g_seatName[s]);
+	if (back) announce("%s is back.", g_seatName[s]);
+	set_task(0.2, "task_seat_settle", TASK_RACE + 260 + id);
 	new TeamName:tm = get_member(id, m_iTeam);
 	new TeamName:want = (g_state == ST_BOARD || g_state == ST_END) ? ((g_seatSkin[s] >= SK_SEAL) ? TEAM_CT : TEAM_TERRORIST) : ((s % 2) ? TEAM_TERRORIST : TEAM_CT);
 	if (tm != TEAM_TERRORIST && tm != TEAM_CT) seat_join(id, s);
@@ -916,6 +1124,8 @@ reclaim_ready()
 		new back = seat_owner_back(s);
 		if (back) reclaim_seat(s, back);
 	}
+	for (new id = 1; id <= MaxClients; id++)
+		if (g_lateSpec[id] && is_user_connected(id) && !is_user_bot(id) && seat_of(id) < 0) take_bot_seat(id);
 }
 
 seat_of(id) { for (new s = 0; s < SEATS; s++) if (g_seatPlayer[s] == id) return s; return -1; }
@@ -975,10 +1185,11 @@ enter_board()
 		rg_set_user_team(id, team, MODEL_UNASSIGNED, true, false);
 	}
 	rg_restart_round();                       // spawn hook puts everyone on their space
-	update_hostage_ent();
+	board_show(true);
+	board_music(true);
 	refresh_traps();
 	remove_task(TASK_CAM);
-	set_task(0.04, "task_cam", TASK_CAM, _, _, "b");
+	set_task(1.0, "task_cam", TASK_CAM, _, _, "b");   // "camera on" flag; fw_startframe does the moving
 }
 
 public hc_spawn_post(id)
@@ -999,7 +1210,7 @@ public hc_spawn_post(id)
 		if (s < 0 || !g_mgIn[s]) { set_task(0.1, "task_slay", id); return; }
 		rg_set_user_model(id, SKIN_MODEL[g_seatSkin[s]]);
 		rg_remove_all_items(id); rg_give_item(id, "weapon_knife");
-		race_place(s);
+		if (!mg_fight(g_mg)) race_place(s);
 		if (g_state == ST_REMOTE_WAIT) freeze(id); else unfreeze(id);
 		sync_money(s); sync_score(s);
 	}
@@ -1032,9 +1243,7 @@ place_pawn(s)
 	if (!is_user_alive(id)) return;
 	static const Float:OFF[SEATS][2] = { {-14.0, -14.0}, {14.0, -14.0}, {-14.0, 14.0}, {14.0, 14.0} };
 	new Float:o[3];
-	o[0] = g_nodePos[g_pos[s]][0] + OFF[s][0];
-	o[1] = g_nodePos[g_pos[s]][1] + OFF[s][1];
-	o[2] = g_nodePos[g_pos[s]][2] + 37.0;
+	safe_spot(o, g_nodePos[g_pos[s]], OFF[s]);
 	// pawns share a space on a 28-unit grid but player hulls are 32 wide; overlapping players are "stuck"
 	// and the movement code won't even let them jump, so pawns don't collide on the board
 	entity_set_int(id, EV_INT_solid, SOLID_NOT);
@@ -1049,7 +1258,7 @@ place_pawn(s)
 
 public hc_can_take_damage(const victim, const attacker)
 {
-	if (g_state == ST_BOARD || g_state == ST_MG_INTRO || g_state == ST_END || g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME)
+	if (g_lobby || g_state == ST_BOARD || g_state == ST_MG_INTRO || g_state == ST_END || g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME)
 		{ SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }
 	if (g_state == ST_MINIGAME && g_mg == MG_HNS && is_user_connected(attacker))
 	{
@@ -1064,7 +1273,7 @@ public hc_can_take_damage(const victim, const attacker)
 // One broadcast camera everybody watches during the board phase, like a TV director
 // following whoever's turn it is. Shots: intro (front-on at the character), follow (behind,
 // looking down the path), dice (low angle up at the crate), land, hostage cutaway, wide.
-enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE };
+enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE, CAM_MAP };
 new g_camMode, Float:g_camUntil, bool:g_camSnap, Float:g_camLook[3], Float:g_camFwd[3];
 
 cam_shot(mode, Float:hold = 0.0)
@@ -1080,7 +1289,26 @@ pawn_origin(s, Float:o[3])
 	else { o = g_nodePos[g_pos[s]]; o[2] += 37.0; }
 }
 
-public task_cam()
+// Camera and pawn hops run every server frame (capped near 60 Hz). AMXX timers only fire about every
+// 0.1 s, so the old 0.04 s camera task and 0.03 s hop task really moved 10 times a second: visibly steppy.
+public fw_startframe()
+{
+	static Float:last;
+	new Float:now = get_gametime(), Float:dt = now - last;
+	if (dt < 0.0 || dt > 1.0) { last = now; return FMRES_IGNORED; }   // map change resets the clock
+	if (dt < 0.016) return FMRES_IGNORED;
+	last = now;
+	if (g_hopActive) hop_step();
+	if (task_exists(TASK_CAM)) cam_step(dt);
+	return FMRES_IGNORED;
+}
+
+public task_cam() {}
+
+// smoothing factor tuned per 0.04 s step, rescaled to the real frame time
+Float:ease(Float:per40ms, Float:dt) { return 1.0 - floatpower(1.0 - per40ms, dt / 0.04); }
+
+cam_step(Float:dt)
 {
 	if (!is_valid_ent(g_cam)) return;
 	if (g_camUntil > 0.0 && get_gametime() > g_camUntil) { g_camMode = CAM_FOLLOW; g_camUntil = 0.0; }
@@ -1091,7 +1319,7 @@ public task_cam()
 	new n = g_pos[s], m = g_nodeNext[n][0], Float:d[3];
 	xs_vec_sub_simple(g_nodePos[m], g_nodePos[n], d); d[2] = 0.0;
 	new Float:l = vector_length(d); if (l < 1.0) { d[0] = 1.0; d[1] = 0.0; l = 1.0; }
-	for (new k = 0; k < 2; k++) g_camFwd[k] += (d[k] / l - g_camFwd[k]) * (g_camSnap ? 1.0 : 0.08);
+	for (new k = 0; k < 2; k++) g_camFwd[k] += (d[k] / l - g_camFwd[k]) * (g_camSnap ? 1.0 : ease(0.08, dt));
 	g_camFwd[2] = 0.0;
 	l = vector_length(g_camFwd); if (l < 0.01) { g_camFwd[0] = 1.0; l = 1.0; }
 	F[0] = g_camFwd[0] / l; F[1] = g_camFwd[1] / l; F[2] = 0.0;
@@ -1119,10 +1347,13 @@ public task_cam()
 		base[0] = 0.0; base[1] = 0.0; base[2] = 0.0;
 		for (new k = 0; k < SEATS; k++) { new Float:o[3]; pawn_origin(k, o); for (new j = 0; j < 3; j++) base[j] += o[j] / float(SEATS); }
 	}
+	new bool:mapView = (g_camMode == CAM_MAP);
+	new Float:from[3], Float:bestFrac = -1.0, Float:best[3];
+	if (mapView) map_view_target(want, look);
+	else
+	{
 	offset(base, F, R, LOOK[g_camMode][0], LOOK[g_camMode][1], LOOK[g_camMode][2], look);
-
-	new Float:from[3]; from = look; from[2] += 20.0;
-	new Float:bestFrac = -1.0, Float:best[3];
+	from = look; from[2] += 20.0;
 	for (new c = 0; c < 4; c++)
 	{
 		new Float:cand[3];
@@ -1137,8 +1368,9 @@ public task_cam()
 	}
 	want = best;
 	if (bestFrac < 1.0) { xs_vec_sub_simple(from, want, d); l = vector_length(d); if (l > 1.0) for (new k = 0; k < 3; k++) want[k] += d[k] / l * 10.0; }
+	}
 
-	new Float:a = g_camSnap ? 1.0 : 0.16, Float:b = g_camSnap ? 1.0 : 0.22;
+	new Float:a = g_camSnap ? 1.0 : ease(0.16, dt), Float:b = g_camSnap ? 1.0 : ease(0.22, dt);
 	for (new k = 0; k < 3; k++) { g_camPos[k] += (want[k] - g_camPos[k]) * a; g_camLook[k] += (look[k] - g_camLook[k]) * b; }
 	g_camSnap = false;
 
@@ -1151,9 +1383,10 @@ public task_cam()
 	entity_set_vector(g_cam, EV_VEC_angles, ang);
 	entity_set_vector(g_cam, EV_VEC_v_angle, ang);
 
-	static tick;
-	if (++tick % 12 == 0)
+	static Float:viewAt;
+	if (get_gametime() - viewAt > 0.5 || get_gametime() < viewAt)
 	{
+		viewAt = get_gametime();
 		// seated players watch the director camera; spectators' clients run their own chase cam,
 		// so point that at whoever's turn it is
 		new target = g_seatPlayer[g_cur];
@@ -1172,8 +1405,91 @@ public task_cam()
 	if (is_valid_ent(g_hostageEnt))
 	{
 		new Float:ha[3]; entity_get_vector(g_hostageEnt, EV_VEC_angles, ha);
-		ha[1] = floatmod(ha[1] + 2.0, 360.0); entity_set_vector(g_hostageEnt, EV_VEC_angles, ha);
+		ha[1] = floatmod(ha[1] + 50.0 * dt, 360.0); entity_set_vector(g_hostageEnt, EV_VEC_angles, ha);
 	}
+}
+
+// Overhead "whole board" view: camera straight above the board's centre, high enough to frame every space
+map_view_target(Float:want[3], Float:look[3])
+{
+	new Float:lo[2], Float:hi[2], Float:top = -9999.0;
+	lo[0] = lo[1] = 99999.0; hi[0] = hi[1] = -99999.0;
+	for (new n = 0; n < g_nodeCount; n++)
+	{
+		for (new k = 0; k < 2; k++) { if (g_nodePos[n][k] < lo[k]) lo[k] = g_nodePos[n][k]; if (g_nodePos[n][k] > hi[k]) hi[k] = g_nodePos[n][k]; }
+		if (g_nodePos[n][2] > top) top = g_nodePos[n][2];
+	}
+	new Float:cx = (lo[0] + hi[0]) / 2.0, Float:cy = (lo[1] + hi[1]) / 2.0;
+	new Float:span = floatmax(hi[0] - lo[0], hi[1] - lo[1]);
+	new Float:h = span * 0.62 + 250.0 + top;
+	if (h > 4000.0) h = 4000.0;
+	want[0] = cx; want[1] = cy; want[2] = h;
+	look[0] = cx + 2.0; look[1] = cy; look[2] = 0.0;
+}
+
+// Redrawn every second while the map view is up: heading arrows on every link, a column over each pawn
+// in its seat colour, and a tall red column plus ring on the hostages
+public task_map_overlay()
+{
+	if (g_camMode != CAM_MAP || g_state != ST_BOARD) { remove_task(TASK_MAPOV); return; }
+	static const COL[SEATS][3] = { {80, 160, 255}, {255, 90, 90}, {90, 230, 120}, {255, 220, 70} };
+	new Float:a[3], Float:c[3], Float:d[3];
+	for (new n = 0; n < g_nodeCount; n++)
+	for (new k = 0; k < g_nodeNextN[n]; k++)
+	{
+		new m = g_nodeNext[n][k];
+		xs_vec_sub_simple(g_nodePos[m], g_nodePos[n], d); d[2] = 0.0;
+		new Float:len = vector_length(d); if (len < 1.0) continue;
+		new Float:ux = d[0] / len, Float:uy = d[1] / len;
+		new Float:tip[3]; tip[0] = g_nodePos[n][0] + ux * len * 0.62; tip[1] = g_nodePos[n][1] + uy * len * 0.62; tip[2] = g_nodePos[n][2] + 4.0;
+		new Float:ah = len > 140.0 ? 70.0 : len * 0.4;
+		a[0] = tip[0] - ux * ah + -uy * ah * 0.5; a[1] = tip[1] - uy * ah + ux * ah * 0.5; a[2] = tip[2];
+		c[0] = tip[0] - ux * ah - -uy * ah * 0.5; c[1] = tip[1] - uy * ah - ux * ah * 0.5; c[2] = tip[2];
+		beam2(a, tip, 255, 255, 255, 14); beam2(c, tip, 255, 255, 255, 14);
+	}
+	for (new q = 0; q < SEATS; q++)
+	{
+		new Float:o[3]; pawn_origin(q, o);
+		a = o; a[2] -= 30.0; c = o; c[2] += 160.0;
+		beam2(a, c, COL[q][0], COL[q][1], COL[q][2], 60);
+	}
+	a = g_nodePos[g_hostage]; c = a; c[2] += 400.0; a[2] += 2.0;
+	beam2(a, c, 255, 30, 30, 90);
+	for (new k = 0; k < 8; k++)
+	{
+		new Float:t0 = float(k) * 45.0, Float:t1 = float(k + 1) * 45.0;
+		a[0] = g_nodePos[g_hostage][0] + 90.0 * floatcos(t0, degrees); a[1] = g_nodePos[g_hostage][1] + 90.0 * floatsin(t0, degrees); a[2] = g_nodePos[g_hostage][2] + 4.0;
+		c[0] = g_nodePos[g_hostage][0] + 90.0 * floatcos(t1, degrees); c[1] = g_nodePos[g_hostage][1] + 90.0 * floatsin(t1, degrees); c[2] = a[2];
+		beam2(a, c, 255, 30, 30, 20);
+	}
+	new leg[160], ll = formatex(leg, charsmax(leg), "MAP: red column = hostages (%s). Arrows show the way.^n", g_nodeArea[g_hostage]);
+	new const CN[SEATS][] = { "Blue", "Red", "Green", "Yellow" };
+	for (new q = 0; q < SEATS; q++) ll += formatex(leg[ll], charsmax(leg) - ll, "%s=%s  ", CN[q], g_seatName[q]);
+	set_hudmessage(255, 255, 255, -1.0, 0.04, 0, 0.0, 1.2, 0.0, 0.0, -1);
+	ShowSyncHudMsg(0, g_hudSync2, "%s", leg);
+}
+
+beam2(const Float:a[3], const Float:b[3], r, g, bl, width)
+{
+	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+	write_byte(TE_BEAMPOINTS);
+	engfunc(EngFunc_WriteCoord, a[0]); engfunc(EngFunc_WriteCoord, a[1]); engfunc(EngFunc_WriteCoord, a[2]);
+	engfunc(EngFunc_WriteCoord, b[0]); engfunc(EngFunc_WriteCoord, b[1]); engfunc(EngFunc_WriteCoord, b[2]);
+	write_short(g_beamSpr); write_byte(0); write_byte(0);
+	write_byte(11);            // 1.1 s, redrawn every second
+	write_byte(width); write_byte(0);
+	write_byte(r); write_byte(g); write_byte(bl);
+	write_byte(230); write_byte(0);
+	message_end();
+}
+
+toggle_map_view()
+{
+	if (g_camMode == CAM_MAP) { cam_shot(CAM_FOLLOW); remove_task(TASK_MAPOV); return; }
+	cam_shot(CAM_MAP);
+	remove_task(TASK_MAPOV);
+	set_task(1.0, "task_map_overlay", TASK_MAPOV, _, _, "b");
+	task_map_overlay();
 }
 
 offset(const Float:P[3], const Float:F[3], const Float:R[3], Float:f, Float:r, Float:u, Float:out[3])
@@ -1206,9 +1522,37 @@ release_cameras()
 }
 
 // ----------------------------------------------------------------- HUD --
+// No crosshair while the board plays: everyone watches the director camera, so it's just a dot in the
+// middle of someone else's turn. Minigames and races get it back. m_iHideHUD is resent by the game on change.
+#define HIDEHUD_CROSSHAIR (1<<6)
+crosshair_sync()
+{
+	new bool:hide = (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MG_INTRO || g_state == ST_MG_RESULT || g_lobby);
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		new f = get_member(id, m_iHideHUD), want = hide ? (f | HIDEHUD_CROSSHAIR) : (f & ~HIDEHUD_CROSSHAIR);
+		if (want != f) set_member(id, m_iHideHUD, want);
+	}
+}
+
+// true when this player's table text differs from what they last got, or it's due for a refresh
+bool:hud_changed(id, const text[])
+{
+	static hash[33], Float:at[33];
+	new h = strlen(text);
+	for (new i = 0; text[i]; i++) h = h * 31 + text[i];
+	new Float:now = get_gametime();
+	if (h == hash[id] && now - at[id] < 2.5) return false;
+	hash[id] = h; at[id] = now;
+	return true;
+}
+
 public task_hud()
 {
+	crosshair_sync();
 	if (g_state == ST_IDLE) return;
+	update_crosshair();
 	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MINIGAME || g_state == ST_MG_INTRO) refill_seats();
 	reclaim_ready();
 	turn_watchdog();
@@ -1243,9 +1587,10 @@ public task_hud()
 		if (!is_user_connected(id) || is_user_bot(id)) continue;
 		new bool:touch = is_touch(id);
 		// top right on PCs (menus own the left side); top centre on phones (buttons own the right side)
-		// held 1.2 s, refreshed every 0.5 s: slow clients (phones, software GL) otherwise see it blink out
-		if (touch) set_hudmessage(242, 163, 58, 0.37, 0.15, 0, 0.0, 1.2, 0.0, 0.0, -1);
-		else set_hudmessage(242, 163, 58, 0.70, 0.12, 0, 0.0, 1.2, 0.0, 0.0, -1);
+		// held 4 s and only re-sent when the text changes (or every 2.5 s): re-sending the same table twice a
+		// second made it blink on slow clients (phones, software GL) and the browser client
+		if (touch) set_hudmessage(242, 163, 58, 0.37, 0.15, 0, 0.0, 4.0, 0.0, 0.0, -1);
+		else set_hudmessage(242, 163, 58, 0.70, 0.12, 0, 0.0, 4.0, 0.0, 0.0, -1);
 		new mine = seat_of(id), mineTxt[160] = "";
 		if (mine >= 0)
 		{
@@ -1254,8 +1599,10 @@ public task_hud()
 			formatex(mineTxt, charsmax(mineTxt), "^nYour gear: %s^nYour items: %s", gs[0] ? gs : "none", il ? it : "none");
 		}
 		// (no "touch ? small : buf": Pawn's ?: between arrays of different sizes isn't safe)
-		if (touch) ShowSyncHudMsg(id, g_hudSync, "%s%s", small, mineTxt);
-		else ShowSyncHudMsg(id, g_hudSync, "%s%s", buf, mineTxt);
+		new out[640];
+		if (touch) formatex(out, charsmax(out), "%s%s", small, mineTxt);
+		else formatex(out, charsmax(out), "%s%s", buf, mineTxt);
+		if (hud_changed(id, out)) ShowSyncHudMsg(id, g_hudSync, "%s", out);
 	}
 }
 
@@ -1290,11 +1637,19 @@ turn_watchdog()
 			step_to(s, g_dist[b][g_hostage] < g_dist[a][g_hostage] ? b : a);
 		}
 		case W_HOSTAGE: { rescue(s); set_task(spd(2.6), "flow_step", TASK_FLOW); }
+		case W_TARGET: switch (g_targetPurpose)
+		{
+			case 1: { new o = -1; for (new k = 0; k < SEATS; k++) if (k != s && (o < 0 || g_money[k] > g_money[o])) o = k; begin_duel(s, o); }
+			case 0, 4: set_task(spd(0.2), "flow_roll", TASK_FLOW);   // item picks come from the turn menu: roll
+			default: set_task(spd(0.3), "flow_step", TASK_FLOW);
+		}
 		default: set_task(spd(0.3), "flow_step", TASK_FLOW);   // shop, negotiator: walk on by
 	}
 }
 
 // browser clients on phones say so in their userinfo (web/public/boot.js)
+// character picked on the join screen (or "setinfo _csp_char N" in a console), -1 for random
+char_pick(id) { new v[4]; get_user_info(id, "_csp_char", v, charsmax(v)); if (!v[0] || !isdigit(v[0])) return -1; new n = str_to_num(v); return (n >= 0 && n < SK_COUNT) ? n : -1; }
 bool:is_touch(id) { new v[4]; get_user_info(id, "_csp_touch", v, charsmax(v)); return v[0] == '1'; }
 
 // race maps: who's racing, who's still loading, finish times
@@ -1314,8 +1669,20 @@ hud_race()
 		else copy(st, charsmax(st), "ready");
 		len += formatex(buf[len], charsmax(buf) - len, "  %-14.14s %s^n", g_seatName[s], st);
 	}
-	set_hudmessage(242, 163, 58, 0.70, 0.12, 0, 0.0, 1.2, 0.0, 0.0, -1);
-	ShowSyncHudMsg(0, g_hudSync, "%s", buf);
+	set_hudmessage(242, 163, 58, 0.70, 0.12, 0, 0.0, 4.0, 0.0, 0.0, -1);
+	if (hud_changed(0, buf)) ShowSyncHudMsg(0, g_hudSync, "%s", buf);
+	if (MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 12.0)))
+	{
+		// same refresh rule as the table: long hold, resend every 2.5 s (a resend per tick made it flicker)
+		static Float:tutAt;
+		new Float:now = get_gametime();
+		if (now - tutAt >= 2.5 || now < tutAt)
+		{
+			tutAt = now;
+			set_hudmessage(255, 255, 255, 0.04, 0.30, 0, 0.0, 4.0, 0.0, 0.0, -1);
+			ShowSyncHudMsg(0, g_hudTut, "%s", MG_TUT[g_mg]);
+		}
+	}
 }
 
 banner(const fmt[], any:...)
@@ -1396,10 +1763,24 @@ move_hostage()
 }
 bool:node_occupied(n) { for (new s = 0; s < SEATS; s++) if (g_pos[s] == n) return true; return false; }
 
+// Minigames are fought on the board map: hide every board piece so the arena reads as a plain map.
+board_show(bool:show)
+{
+	g_boardHidden = !show;
+	for (new i = 0; i < g_nodeCount; i++)
+	{
+		if (g_propEnt[i] && is_valid_ent(g_propEnt[i])) entity_set_int(g_propEnt[i], EV_INT_effects, show ? 0 : EF_NODRAW);
+		if (g_tileEnt[i] && is_valid_ent(g_tileEnt[i])) entity_set_int(g_tileEnt[i], EV_INT_effects, show ? 0 : EF_NODRAW);
+		if (g_trapEnt[i] && is_valid_ent(g_trapEnt[i])) entity_set_int(g_trapEnt[i], EV_INT_effects, show ? 0 : EF_NODRAW);
+	}
+	update_hostage_ent();
+	if (show) g_ringsAt = 0.0;   // redraw the rings now instead of waiting out the period
+}
+
 update_hostage_ent()
 {
 	if (!is_valid_ent(g_hostageEnt)) return;
-	if (g_state == ST_IDLE) { entity_set_int(g_hostageEnt, EV_INT_effects, EF_NODRAW); return; }
+	if (g_state == ST_IDLE || g_boardHidden) { entity_set_int(g_hostageEnt, EV_INT_effects, EF_NODRAW); return; }
 	new Float:o[3]; o = g_nodePos[g_hostage]; o[2] += 36.0;
 	entity_set_origin(g_hostageEnt, o);
 	entity_set_int(g_hostageEnt, EV_INT_effects, 0);
@@ -1418,6 +1799,7 @@ refresh_traps()
 			entity_set_int(e, EV_INT_solid, SOLID_NOT);
 			new Float:o[3]; o = g_nodePos[i]; o[2] += 2.0;
 			entity_set_origin(e, o);
+			if (g_boardHidden) entity_set_int(e, EV_INT_effects, EF_NODRAW);
 			g_trapEnt[i] = e;
 		}
 		else if (g_traps[i] < 0 && g_trapEnt[i])
@@ -1640,8 +2022,6 @@ public flow_step()
 }
 
 // pawns hop from space to space instead of teleporting
-#define HOP_FRAMES 9
-new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopFrame, g_hopNode;
 
 pawn_spot(s, node, Float:o[3])
 {
@@ -1649,25 +2029,33 @@ pawn_spot(s, node, Float:o[3])
 	o[0] = g_nodePos[node][0] + OFF[s][0]; o[1] = g_nodePos[node][1] + OFF[s][1]; o[2] = g_nodePos[node][2] + 37.0;
 }
 
+step_sfx(s)
+{
+	new f[40]; formatex(f, charsmax(f), "player/pl_step%d.wav", random_num(1, 4));
+	emit_sound(g_seatPlayer[s] ? g_seatPlayer[s] : 0, CHAN_BODY, f, 0.8, ATTN_NORM, 0, PITCH_NORM + random_num(-8, 8));
+}
+
 step_to(s, node)
 {
 	pawn_spot(s, g_pos[s], g_hopFrom);
 	pawn_spot(s, node, g_hopTo);
-	g_hopNode = node; g_hopFrame = 0;
+	g_hopNode = node;
 	new id = g_seatPlayer[s];
 	if (is_user_alive(id))
 	{
 		new Float:d[3], Float:ang[3]; xs_vec_sub_simple(g_hopTo, g_hopFrom, d); vector_to_angle(d, ang); ang[0] = 0.0;
 		entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang); entity_set_int(id, EV_INT_fixangle, 1);
 	}
-	set_task(0.03, "task_hop", TASK_FLOW);
+	g_hopStart = get_gametime(); g_hopActive = true;   // fw_startframe moves the pawn
+	step_sfx(s);
 }
 
-public task_hop()
+hop_step()
 {
+	if (g_state != ST_BOARD) { g_hopActive = false; return; }
 	new s = g_cur, id = g_seatPlayer[s];
-	g_hopFrame++;
-	new Float:t = float(g_hopFrame) / float(HOP_FRAMES);
+	new Float:t = (get_gametime() - g_hopStart) / HOP_TIME;
+	if (t > 1.0) t = 1.0;
 	if (is_user_alive(id))
 	{
 		new Float:o[3];
@@ -1676,7 +2064,8 @@ public task_hop()
 		entity_set_origin(id, o);
 		entity_set_vector(id, EV_VEC_velocity, Float:{0.0, 0.0, 0.0});
 	}
-	if (g_hopFrame < HOP_FRAMES) { set_task(0.03, "task_hop", TASK_FLOW); return; }
+	if (t < 1.0) return;
+	g_hopActive = false;
 	step_arrive(s, g_hopNode);
 }
 
@@ -1684,7 +2073,7 @@ step_arrive(s, node)
 {
 	g_pos[s] = node; g_stepsLeft--; g_moved[s]++;
 	place_pawn(s);
-	client_cmd(0, "spk ^"common/wpn_select.wav^"");
+	step_sfx(s);
 	new Float:pause = spd(0.12);
 	if (node == g_hostage)
 	{
@@ -1734,18 +2123,18 @@ land(s)
 	if (owner >= 0 && owner != s)
 	{
 		g_traps[n] = -1; refresh_traps();
-		if (g_gKit[s]) { g_gKit[s] = false; new g = gain(s, 500); announce("%s defuses %s's C4. +$%d", g_seatName[s], g_seatName[owner], g); client_cmd(0, "spk ^"radio/bombdef.wav^""); }
+		if (g_gKit[s]) { g_gKit[s] = false; new g = gain(s, 500); announce("%s defuses %s's C4. +$%d", g_seatName[s], g_seatName[owner], g); client_cmd(0, "spk ^"radio/bombdef.wav^""); voice(s, VO_GOOD); }
 		else if (g_smoke[s]) announce("%s walks through %s's C4 in smoke. It fizzles.", g_seatName[s], g_seatName[owner]);
-		else { new t = lose(s, get_pcvar_num(c_trap)); gain(owner, t); g_c4Take[owner] += t; announce("C4! %s pays %s $%d.", g_seatName[s], g_seatName[owner], t); explosion_fx(n); }
+		else { new t = lose(s, get_pcvar_num(c_trap)); gain(owner, t); g_c4Take[owner] += t; announce("C4! %s pays %s $%d.", g_seatName[s], g_seatName[owner], t); explosion_fx(n); voice(s, VO_BAD); }
 	}
 	switch (g_nodeType[n])
 	{
-		case NT_BLUE, NT_START, NT_SHOP, NT_NEGOT: { g_lastColor[s] = SIDE_CT; new g = gain(s, get_pcvar_num(c_blue) * mult); subline("CT space: +$%d", g); client_cmd(0, "spk ^"items/9mmclip1.wav^""); }
+		case NT_BLUE, NT_START, NT_SHOP, NT_NEGOT: { g_lastColor[s] = SIDE_CT; new g = gain(s, get_pcvar_num(c_blue) * mult); subline("CT space: +$%d", g); client_cmd(0, "spk ^"items/9mmclip1.wav^""); voice(s, VO_BLUE); }
 		case NT_RED:
 		{
 			g_lastColor[s] = SIDE_T; g_reds[s]++;
 			new t = lose(s, get_pcvar_num(c_red) * mult); subline("T space: -$%d", t);
-			client_cmd(0, "spk ^"player/bhit_kevlar-1.wav^"");
+			client_cmd(0, "spk ^"player/bhit_kevlar-1.wav^""); voice(s, VO_RED);
 		}
 		case NT_SITE:
 		{
@@ -1773,6 +2162,36 @@ land(s)
 	set_task(spd(2.2), "flow_end_seat", TASK_FLOW);
 }
 
+// ---------------------------------------------------------- voice lines --
+// Mario Party style barks: csp_voice % chance the seat's character says something, played
+// from their pawn so it sounds like them. Stock radio clips, so nothing new to download.
+
+voice(s, kind, Float:delay = 0.7)
+{
+	if (s < 0 || s >= SEATS || random(100) >= get_pcvar_num(c_voice)) return;
+	new pick = random(sizeof VO_LINES[]);
+	if (kind == VO_WON && pick >= 10) pick = (g_seatSkin[s] >= SK_SEAL) ? 10 : 11;   // "Counter-Terrorists win" only from CTs
+	new data[2]; data[0] = s; data[1] = kind * 16 + pick;
+	set_task(spd(delay), "task_voice", TASK_VOICE + s, data, sizeof data);
+}
+
+public task_voice(data[])
+{
+	new s = data[0], kind = data[1] / 16, pick = data[1] % 16;
+	new e = g_seatPlayer[s];
+	if (e && is_user_connected(e) && is_user_alive(e)) emit_sound(e, CHAN_VOICE, VO_LINES[kind][pick], 1.0, ATTN_NONE, 0, PITCH_NORM + random_num(-6, 6));
+	else client_cmd(0, "spk ^"%s^"", VO_LINES[kind][pick]);
+}
+
+// one winner and one loser speak up after a minigame, not the whole lobby
+mg_voices()
+{
+	new los[SEATS], n = 0;
+	for (new s = 0; s < SEATS; s++) { new bool:w = false; for (new k = 0; k < g_mgWinnerN; k++) if (g_mgWinners[k] == s) w = true; if (!w) los[n++] = s; }
+	if (g_mgWinnerN) voice(g_mgWinners[random(g_mgWinnerN)], VO_WON, 0.8);
+	if (n) voice(los[random(n)], VO_LOST, 2.2);
+}
+
 explosion_fx(n)
 {
 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
@@ -1788,6 +2207,7 @@ bool:do_event(s)
 	static const EV[] = { 0, 1, 2, 3, 4, 5, 6, 8, 8 };
 	new e = EV[random(sizeof EV)];
 	if (e == 4 && g_moveDepth > 0) e = 2;
+	if (e == 1 || e == 3) voice(s, VO_BAD); else if (e != 5 && e != 6) voice(s, VO_GOOD);
 	switch (e)
 	{
 		case 0:
@@ -2134,6 +2554,7 @@ show_turn_menu(s)
 	new m = menu_create(title, "mh_turn"), line[64], info[4];
 	menu_additem(m, "\rJump at the crate \d(roll)", "99");
 	menu_additem(m, "\wBuy gear \d(for the minigames)", "97");
+	menu_additem(m, g_camMode == CAM_MAP ? "\yMap overlay: ON \d(back to the action)" : "\wMap overlay \d(pieces, flow, hostages)", "96");
 	for (new k = 0; k < g_itemN[s]; k++)
 	{
 		new it = g_items[s][k];
@@ -2159,7 +2580,8 @@ public mh_turn(id, m, item)
 	if (s != g_cur || g_state != ST_BOARD) return PLUGIN_HANDLED;
 	switch (v)
 	{
-		case 99: { set_task(spd(0.2), "flow_roll", TASK_FLOW); return PLUGIN_HANDLED; }
+		case 96: { toggle_map_view(); show_turn_menu(s); return PLUGIN_HANDLED; }
+		case 99: { if (g_camMode == CAM_MAP) toggle_map_view(); set_task(spd(0.2), "flow_roll", TASK_FLOW); return PLUGIN_HANDLED; }
 		case 98: { g_shopSide = SIDE_NONE; show_shop_menu(s, true); return PLUGIN_HANDLED; }
 		case 97: { show_buy_menu(s); return PLUGIN_HANDLED; }
 		case IT_FAKE:   if (can_use(s, IT_FAKE))   { show_target_menu(s, 0); return PLUGIN_HANDLED; }
@@ -2315,6 +2737,7 @@ show_target_menu(s, purpose)
 	}
 	if (purpose != 1) menu_additem(m, "\dNever mind", "9");
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
+	wait_for(s, W_TARGET);   // a duel pick nobody answers would hold the party forever
 	nav_show(id, m, "mh_target");
 }
 
@@ -2566,6 +2989,7 @@ fmt_name(fmt, out[], len)
 begin_minigame()
 {
 	g_state = ST_MG_INTRO;
+	board_music(false);
 	cam_shot(CAM_WIDE);
 	new fn[16]; fmt_name(g_mgFmt, fn, charsmax(fn));
 	banner("%s  |  %s", MG_NAME[g_mg], fn);
@@ -2586,7 +3010,13 @@ begin_minigame()
 public flow_minigame_go()
 {
 	if (MG_MAP[g_mg][0]) { go_remote(); return; }
-	// rules
+	mg_rules();
+	mg_fight_start();
+}
+
+// round rules and loadout for the current minigame; also run on own-map fights after the map change
+mg_rules()
+{
 	new bool:ffa = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL);
 	set_cvar_string("mp_round_infinite", "0");
 	set_cvar_string("mp_freeforall", ffa ? "1" : "0");
@@ -2594,7 +3024,7 @@ public flow_minigame_go()
 	set_cvar_string("mp_buytime", "0");
 	set_cvar_string("sv_gravity", g_mg == MG_SCOUTZ ? "300" : "800");
 	set_cvar_string("mp_give_player_c4", (g_mg == MG_PLANT || g_mg == MG_PISTOL) ? "1" : "0");
-	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "2.25" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : "1.5"));
+	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "2.25" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS ? "2.0" : "1.5")));
 	new prim[16], sec[16], gren[16];
 	switch (g_mg)
 	{
@@ -2602,13 +3032,19 @@ public flow_minigame_go()
 		case MG_DEAGLE: { copy(sec, charsmax(sec), "deagle"); }
 		case MG_SCOUTZ: { copy(prim, charsmax(prim), "scout"); }
 		case MG_NADES:  { copy(gren, charsmax(gren), "hegrenade"); }
+		case MG_TOWERS: { copy(prim, charsmax(prim), "awp"); copy(sec, charsmax(sec), "deagle"); }
 	}
 	set_cvar_string("mp_t_default_weapons_primary", prim); set_cvar_string("mp_ct_default_weapons_primary", prim);
 	set_cvar_string("mp_ct_default_weapons_secondary", sec);
 	set_cvar_string("mp_t_default_weapons_secondary", equal(sec, "usp") ? "glock18" : sec);
 	set_cvar_string("mp_t_default_grenades", gren); set_cvar_string("mp_ct_default_grenades", gren);
+	copy(g_mgPrim, charsmax(g_mgPrim), prim); copy(g_mgSec, charsmax(g_mgSec), sec); copy(g_mgGren, charsmax(g_mgGren), gren);
+}
 
-	// sides
+// seat everyone by side and start the round
+mg_fight_start()
+{
+	new bool:ffa = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL);
 	for (new s = 0; s < SEATS; s++)
 	{
 		new id = g_seatPlayer[s];
@@ -2617,18 +3053,65 @@ public flow_minigame_go()
 		if (!ffa) team = g_mgSide[s] == SIDE_CT ? TEAM_CT : TEAM_TERRORIST;
 		else team = (s % 2) ? TEAM_TERRORIST : TEAM_CT;   // FFA: split so map spawns don't run out
 		rg_set_user_team(id, team, MODEL_UNASSIGNED, true, false);
+		seat_settle(id);
 	}
 	g_mgDone = false; g_mgWinnerN = 0;
 	g_state = ST_MINIGAME;
 	remove_task(TASK_CAM);
 	release_cameras();
+	if (g_nodeCount) board_show(false);
+	// on a freshly loaded own map the game hasn't "commenced": the first kill would fire Game_Commencing and end the round as a draw
+	set_member_game(m_bGameStarted, true);
 	rg_restart_round();
 	dbg("Minigame %s started (fmt %d).", MG_NAME[g_mg], g_mgFmt);
+	set_task(2.0, "task_log_loadouts", TASK_FLOW + 7);
+}
+
+// Standing-hull spot that is inside the map and not embedded in brushes: tries the wanted origin, then smaller
+// lateral offsets, then a lift, then the node centre. Falls back to the node centre if nothing fits.
+bool:spot_clear(const Float:o[3])
+{
+	new tr = create_tr2(), bool:ok;
+	engfunc(EngFunc_TraceHull, o, o, IGNORE_MONSTERS, HULL_HUMAN, 0, tr);
+	ok = !get_tr2(tr, TR_StartSolid) && !get_tr2(tr, TR_AllSolid) && get_tr2(tr, TR_InOpen);
+	if (ok)
+	{
+		new Float:dn[3]; dn = o; dn[2] -= 120.0;
+		engfunc(EngFunc_TraceLine, o, dn, IGNORE_MONSTERS, 0, tr);
+		new Float:fr; get_tr2(tr, TR_flFraction, fr);
+		ok = fr < 1.0;
+	}
+	free_tr2(tr);
+	return ok;
+}
+
+safe_spot(Float:o[3], const Float:node[3], const Float:side[2])
+{
+	new Float:c[3];
+	for (new k = 0; k < 4; k++)
+	{
+		new Float:f = k == 0 ? 1.0 : (k == 1 ? 0.5 : (k == 2 ? -1.0 : 0.0));
+		c[0] = node[0] + side[0] * f; c[1] = node[1] + side[1] * f; c[2] = node[2] + 37.0;
+		for (new l = 0; l < 3; l++)
+		{
+			if (spot_clear(c)) { o = c; return;  }
+			c[2] += 18.0;
+		}
+	}
+	o[0] = node[0]; o[1] = node[1]; o[2] = node[2] + 37.0;
+	dbg("No clear spawn near (%.0f %.0f %.0f); using node centre.", node[0], node[1], node[2]);
 }
 
 apply_loadout(s)
 {
 	new id = g_seatPlayer[s];
+	// Hand out the minigame's weapons ourselves. The round's default weapons only go to players who died
+	// last round; pawns standing on the board survive it with an empty inventory and would get nothing.
+	rg_remove_all_items(id);
+	rg_give_item(id, "weapon_knife");
+	if (g_mgSec[0]) give_full(id, (equal(g_mgSec, "usp") && get_member(id, m_iTeam) == TEAM_TERRORIST) ? "glock18" : g_mgSec);
+	if (g_mgPrim[0]) give_full(id, g_mgPrim);
+	if (g_mgGren[0]) give_full(id, g_mgGren);
 	switch (g_mg)
 	{
 		case MG_KNIFE: { rg_remove_all_items(id); rg_give_item(id, "weapon_knife"); set_entvar(id, var_health, 35.0); }
@@ -2653,7 +3136,7 @@ apply_loadout(s)
 		return;
 	}
 	// elimination modes fight on a stretch of the board: sides at opposite ends, FFA spread along it
-	if (!mg_objective() && g_mg != MG_HNS)
+	if (!mg_objective() && g_mg != MG_HNS && g_nodeCount)
 	{
 		static arena = -1, Float:at;
 		if (get_gametime() - at > 2.0) { arena = random(g_nodeCount - 8 > 0 ? g_nodeCount - 8 : 1); at = get_gametime(); }
@@ -2668,17 +3151,28 @@ apply_loadout(s)
 			hops = (g_mgSide[s] == SIDE_CT ? 0 : (g_mg == MG_KNIFE ? 3 : 4));
 		}
 		for (new j = 0; j < hops; j++) n = g_nodeNext[n][0];
-		new Float:o[3]; o = g_nodePos[n]; o[2] += 37.0;
+		new Float:o[3], Float:sd[2];
 		if (g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL)
 		{
 			// teammates stand side by side, 40 units apart, across the path
 			new nth = 0; for (new k = 0; k < s; k++) if (g_mgIn[k] && g_mgSide[k] == g_mgSide[s]) nth++;
 			new m = g_nodeNext[n][0], Float:d[3]; xs_vec_sub_simple(g_nodePos[m], g_nodePos[n], d);
 			new Float:l = vector_length(d);
-			if (l > 1.0) { new Float:side = (float(nth) - 1.0) * 40.0; o[0] += -d[1] / l * side; o[1] += d[0] / l * side; }
+			if (l > 1.0) { new Float:side = (float(nth) - 1.0) * 40.0; sd[0] = -d[1] / l * side; sd[1] = d[0] / l * side; }
 		}
+		safe_spot(o, g_nodePos[n], sd);
 		entity_set_origin(id, o);
 	}
+}
+
+// a weapon plus a full reserve of its ammo
+give_full(id, const short[])
+{
+	new name[32]; formatex(name, charsmax(name), "weapon_%s", short);
+	rg_give_item(id, name, GT_REPLACE);
+	new WeaponIdType:wid = WeaponIdType:rg_get_weapon_info(name, WI_ID);
+	if (wid != WEAPON_NONE && wid != WEAPON_HEGRENADE && wid != WEAPON_KNIFE)
+		rg_set_user_bpammo(id, wid, rg_get_weapon_info(wid, WI_MAX_ROUNDS));
 }
 
 give_gear(s, bool:primary)
@@ -2730,6 +3224,23 @@ gear_after_round()
 }
 
 bool:mg_objective() { return g_mg == MG_PLANT || g_mg == MG_PISTOL; }
+
+// what everyone actually spawned with, for "I had no gun" reports
+public task_log_loadouts()
+{
+	if (g_state != ST_MINIGAME) return;
+	for (new s = 0; s < SEATS; s++)
+	{
+		new id = g_seatPlayer[s];
+		if (!g_mgIn[s] || !is_user_connected(id)) continue;
+		new w[32], n, line[160], len;
+		get_user_weapons(id, w, n);
+		len = formatex(line, charsmax(line), "%s (%s):", g_seatName[s], is_user_alive(id) ? "alive" : "dead");
+		for (new k = 0; k < n; k++) { new nm[32]; get_weaponname(w[k], nm, charsmax(nm)); len += formatex(line[len], charsmax(line) - len, " %s", nm[7]); }
+		if (!n) len += formatex(line[len], charsmax(line) - len, " nothing");
+		dbg("Loadout %s", line);
+	}
+}
 
 public task_hns_release(taskid)
 {
@@ -2812,6 +3323,14 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	}
 	g_state = ST_MG_RESULT;
 	gear_after_round();
+	if (MG_MAP[g_mg][0])
+	{
+		new names[96], len;
+		for (new k = 0; k < g_mgWinnerN; k++) len += formatex(names[len], charsmax(names) - len, "%s%s", k ? ", " : "", g_seatName[g_mgWinners[k]]);
+		banner("%s wins %s!", g_mgWinnerN ? names : "Nobody", MG_NAME[g_mg]);
+		set_task(5.0, "task_race_over", TASK_RACE + 2);
+		return HC_CONTINUE;
+	}
 	set_task(0.1, "flow_minigame_result", TASK_FLOW);
 	return HC_CONTINUE;
 }
@@ -2825,6 +3344,8 @@ public flow_minigame_result()
 		new w = g_mgWinnerN ? g_mgWinners[0] : g_duelA;
 		new g = g_mgWager > 0 ? gain(w, g_mgWager * 2) : gain(w, 500);
 		banner("%s wins the duel. +$%d", g_seatName[w], g);
+		client_cmd(0, "spk ^"events/task_complete.wav^"");
+		voice(w, VO_WON, 0.8); for (new k = 0; k < SEATS; k++) if (g_mgIn[k] && k != w) voice(k, VO_LOST, 2.2);
 	}
 	else
 	{
@@ -2841,7 +3362,9 @@ public flow_minigame_result()
 			sync_score(s);
 		}
 		if (g_mgWinnerN) banner("%s win%s! +$%d", names, g_mgWinnerN > 1 ? "" : "s", get_pcvar_num(c_mgwin));
+		if (g_mgWinnerN) client_cmd(0, "spk ^"events/task_complete.wav^"");
 		else banner("Draw. Loss bonus for everyone.");
+		mg_voices();
 	}
 	announce("Result: %s", g_mgWinnerN ? names : "draw");
 	set_task(spd(4.5), "flow_after_minigame", TASK_FLOW);
@@ -2862,6 +3385,7 @@ public flow_after_minigame()
 public flow_finish()
 {
 	g_state = ST_END;
+	board_music(false);   // the theme takes over at the winner banner
 	for (new k = 0; k < g_awardN; k++) award(g_awardCat[k], get_pcvar_num(c_awards) == 3);
 	new order[SEATS]; for (new s = 0; s < SEATS; s++) order[s] = s;
 	for (new i = 0; i < SEATS; i++) for (new j = i + 1; j < SEATS; j++)
@@ -2871,6 +3395,7 @@ public flow_finish()
 	}
 	g_cur = order[0];
 	banner("%s wins CS Party!", g_seatName[order[0]]);
+	client_cmd(0, "echo CSP_THEME_PLAY");   // the browser page plays the theme over the results
 	for (new i = 0; i < SEATS; i++) { new s = order[i]; announce("%d. %s  %d stars  $%d  (%d minigame wins)", i + 1, g_seatName[s], g_stars[s], g_money[s], g_mgWins[s]); sync_score(s); }
 	set_task(spd(15.0), "flow_reset", TASK_FLOW);
 }
@@ -3084,7 +3609,7 @@ go_remote()
 	save_state(1);
 	banner("%s", MG_NAME[g_mg]);
 	subline("Loading %s...", MG_MAP[g_mg]);
-	announce("%s is on its own map. Back on the board after the race.", MG_NAME[g_mg]);
+	announce("%s is on its own map. Back on the board after the %s.", MG_NAME[g_mg], mg_fight(g_mg) ? "fight" : "race");
 	set_task(3.0, "task_changelevel_remote", TASK_FLOW);
 }
 public task_changelevel_remote() { server_cmd("changelevel %s", MG_MAP[g_mg]); }
@@ -3120,6 +3645,12 @@ race_place(s)
 	o[0] = g_zStart[0][0] + 60.0;
 	o[1] = (g_zStart[0][1] + g_zStart[1][1]) / 2.0 - 105.0 + float(slot) * 70.0;
 	o[2] = g_zStart[0][2] + 40.0;
+	if (g_mg == MG_MAZE)
+	{
+		// the lobby is a huge room whose only exit is a gap in its far corner: line up in front of it, facing it
+		o[0] = g_zStart[1][0] - 70.0 - float(slot / 2) * 60.0;
+		o[1] = g_zStart[0][1] + 50.0 + float(slot % 2) * 60.0;
+	}
 	// racers stay solid: SOLID_NOT players never touch triggers, and the course teleports are triggers.
 	// start slots are 60 units apart, wider than a 32-unit hull.
 	// bots finish on a clock and never use the course, so they can't block anyone
@@ -3137,6 +3668,7 @@ start_remote_wait()
 	apply_match_cvars();
 	set_cvar_num("mp_round_infinite", 1); set_cvar_num("mp_freeforall", 1); set_cvar_num("bot_stop", 1);
 	set_cvar_num("sv_airaccelerate", 100);                      // surf and bhop need real air control
+	set_cvar_num("sv_autobunnyhopping", (g_mg == MG_BHOP && get_pcvar_num(c_autobhop)) ? 1 : 0);
 	set_cvar_num("mp_buytime", 0);
 	g_waitStart = get_gametime();
 	dbg("Remote minigame %s: waiting for players.", MG_NAME[g_mg]);
@@ -3150,6 +3682,13 @@ public task_remote_wait()
 	if (!all && waited < 50.0) return;   // humans can take a while to load the map
 	if (waited < 4.0) return;            // let bots finish joining
 	remove_task(TASK_RACE);
+	if (mg_fight(g_mg))
+	{
+		set_cvar_num("sv_airaccelerate", 10); set_cvar_num("sv_autobunnyhopping", 0);
+		mg_rules();
+		mg_fight_start();
+		return;
+	}
 	for (new s = 0; s < SEATS; s++)
 	{
 		g_finished[s] = false; g_finishTime[s] = 0.0;
@@ -3181,6 +3720,20 @@ public task_countdown()
 	set_task(0.1, "task_race", TASK_RACE + 1, _, _, "b");
 }
 
+// A human on a race map must be able to run: not frozen, not crawling at menu speed, not dead on the start line.
+race_unstick(s, id, Float:t)
+{
+	static Float:lastFix[33];
+	if (!is_user_alive(id))
+	{
+		if (t > 1.5 && get_gametime() - lastFix[id] > 2.0) { lastFix[id] = get_gametime(); dbg("%s is dead in the race: respawning.", g_seatName[s]); rg_round_respawn(id); }
+		return;
+	}
+	if (g_navThawed[id] && !nav_open(id)) nav_end(id);
+	if ((entity_get_int(id, EV_INT_flags) & FL_FROZEN) && !g_navMenu[id]) { unfreeze(id); dbg("%s was frozen in the race: released.", g_seatName[s]); }
+	if (get_entvar(id, var_maxspeed) < 100.0 && !g_navMenu[id]) { rg_reset_maxspeed(id); dbg("%s was slowed in the race: restored.", g_seatName[s]); }
+}
+
 public task_race()
 {
 	new Float:t = get_gametime() - g_raceStart;
@@ -3194,6 +3747,7 @@ public task_race()
 		if (!g_mgIn[s] || g_finished[s]) continue;
 		new id = g_seatPlayer[s];
 		new bool:done = false;
+		if (is_user_connected(id) && !is_user_bot(id)) race_unstick(s, id, t);
 		if (is_user_alive(id))
 		{
 			new Float:o[3]; entity_get_vector(id, EV_VEC_origin, o);
@@ -3232,7 +3786,7 @@ public task_race()
 public task_race_over()
 {
 	remove_task(TASK_RACE + 1);
-	set_cvar_num("sv_airaccelerate", 10);
+	set_cvar_num("sv_airaccelerate", 10); set_cvar_num("sv_autobunnyhopping", 0);
 	save_state(2);
 	announce("Back to the board.");
 	server_cmd("changelevel %s", g_boardMap);
@@ -3243,7 +3797,7 @@ start_resume()
 {
 	g_state = ST_RESUME;
 	apply_match_cvars();
-	set_cvar_num("sv_airaccelerate", 10);
+	set_cvar_num("sv_airaccelerate", 10); set_cvar_num("sv_autobunnyhopping", 0);
 	g_waitStart = get_gametime();
 	set_task(1.0, "task_resume_wait", TASK_RACE, _, _, "b");
 }
