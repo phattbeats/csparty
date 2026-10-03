@@ -2185,7 +2185,7 @@ public msg_textmsg(msgid, dest, id)
 	if (g_state == ST_IDLE || get_msg_args() < 2) return PLUGIN_CONTINUE;
 	new t[32]; get_msg_arg_string(2, t, charsmax(t));
 	if (equal(t, "#Terrorists_Win") || equal(t, "#CTs_Win") || equal(t, "#Round_Draw") || equal(t, "#Game_Commencing")
-		|| equal(t, "#Command_Not_Available")) return PLUGIN_HANDLED;
+		|| equal(t, "#Command_Not_Available") || equal(t, "#Cstrike_Tutor_", 15)) return PLUGIN_HANDLED;   // tutor texts (time-out on csp_towers) arrive untranslated
 	return PLUGIN_CONTINUE;
 }
 
@@ -3818,11 +3818,15 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		g_mgWinnerN = 0;
 		if (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL)
 		{
-			// time ran out: healthiest survivor wins
-			new best = -1, bh = 0;
-			for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) { new h = floatround(Float:get_entvar(g_seatPlayer[s], var_health)); if (h > bh) { bh = h; best = s; } }
-			if (best < 0) for (new s = 0; s < SEATS; s++) if (g_mgIn[s]) { best = s; break; }
-			g_mgWinners[g_mgWinnerN++] = best;
+			// time ran out: healthiest survivor wins; a tie at the top (a stand-off at full health) or nobody
+			// standing is a draw, not a win for whoever sits in the lower seat
+			new best = -1, bh = 0, bool:tie = false;
+			for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s]))
+			{
+				new h = floatround(Float:get_entvar(g_seatPlayer[s], var_health));
+				if (h > bh) { bh = h; best = s; tie = false; } else if (h == bh) tie = true;
+			}
+			if (best >= 0 && !tie) g_mgWinners[g_mgWinnerN++] = best;
 		}
 		else if (!mg_objective() && (event == ROUND_TARGET_SAVED || event == ROUND_END_DRAW || event == ROUND_HOSTAGE_NOT_RESCUED || status == WINSTATUS_DRAW))
 		{
@@ -3863,9 +3867,15 @@ public flow_minigame_result()
 {
 	new names[96], len;
 	for (new k = 0; k < g_mgWinnerN; k++) len += formatex(names[len], charsmax(names) - len, "%s%s", k ? ", " : "", g_seatName[g_mgWinners[k]]);
-	if (g_mgFmt == FMT_DUEL)
+	if (g_mgFmt == FMT_DUEL && !g_mgWinnerN)
 	{
-		new w = g_mgWinnerN ? g_mgWinners[0] : g_duelA;
+		// a stand-off to the time limit: both get their stake back
+		for (new k = 0; k < SEATS; k++) if (g_mgIn[k]) { if (g_mgWager > 0) gain(k, g_mgWager); sync_score(k); }
+		banner("Draw. Stakes returned.");
+	}
+	else if (g_mgFmt == FMT_DUEL)
+	{
+		new w = g_mgWinners[0];
 		new g = g_mgWager > 0 ? gain(w, g_mgWager * 2) : gain(w, 500);
 		banner("%s wins the duel. +$%d", g_seatName[w], g);
 		client_cmd(0, "play ^"events/task_complete.wav^"");
