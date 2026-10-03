@@ -1,0 +1,61 @@
+diff --git a/src/sdhlt/sdHLCSG/textures.cpp b/src/sdhlt/sdHLCSG/textures.cpp
+index acd7607..e86b8da 100644
+--- a/src/sdhlt/sdHLCSG/textures.cpp
++++ b/src/sdhlt/sdHLCSG/textures.cpp
+@@ -329,7 +329,7 @@ bool            TEX_InitFromWad()
+                 const std::string& texName = std::get<0>(texture);
+                 char* szWadFileName = std::get<1>(texture);
+                 int texLumps = std::get<2>(texture);
+-                Log("[%s] %s (%d)\n", szWadFileName, texName, texLumps);
++                Log("[%s] %s (%d)\n", szWadFileName, texName.c_str(), texLumps);
+             }
+             Log("---------------------------------\n\n");
+ 		}
+@@ -347,7 +347,7 @@ bool            TEX_InitFromWad()
+                     const std::string& texName = std::get<0>(texture);
+                     char* szWadFileName = std::get<1>(texture);
+                     int texBytes = std::get<2>(texture);
+-                    Log("[%s] %s (%d bytes)\n", szWadFileName, texName, texBytes);
++                    Log("[%s] %s (%d bytes)\n", szWadFileName, texName.c_str(), texBytes);
+                 }
+             }
+             Log("----------------------------------------------------\n");
+diff --git a/src/sdhlt/sdHLRAD/compress.cpp b/src/sdhlt/sdHLRAD/compress.cpp
+index 41d50d5..118cf20 100644
+--- a/src/sdhlt/sdHLRAD/compress.cpp
++++ b/src/sdhlt/sdHLRAD/compress.cpp
+@@ -1,3 +1,4 @@
++#pragma clang optimize off
+ #include "cmdlib.h"
+ #include "compress.h"
+ #include "log.h"
+diff --git a/src/sdhlt/sdHLRAD/stringlib.cpp b/src/sdhlt/sdHLRAD/stringlib.cpp
+index 44d54aa..d8f2028 100644
+--- a/src/sdhlt/sdHLRAD/stringlib.cpp
++++ b/src/sdhlt/sdHLRAD/stringlib.cpp
+@@ -95,9 +95,9 @@ size_t Q_strncat( char *dst, const char *src, size_t size )
+ 	if( !dst || !src || !size )
+ 		return 0;
+ 
+-	register char *d = dst;
+-	register const char	*s = src;
+-	register size_t n = size;
++	char *d = dst;
++	const char	*s = src;
++	size_t n = size;
+ 	size_t dlen;
+ 
+ 	// find the end of dst and adjust bytes left but don't go past end
+@@ -126,9 +126,9 @@ size_t Q_strncpy( char *dst, const char *src, size_t size )
+ 	if( !dst || !src || !size )
+ 		return 0;
+ 
+-	register char *d = dst;
+-	register const char	*s = src;
+-	register size_t n = size;
++	char *d = dst;
++	const char	*s = src;
++	size_t n = size;
+ 
+ 	// copy as many bytes as will fit
+ 	if( n != 0 && --n != 0 )
