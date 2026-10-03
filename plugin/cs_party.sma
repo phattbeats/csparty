@@ -168,7 +168,7 @@ new bool:g_mgDone, g_mgWinners[SEATS], g_mgWinnerN;
 
 // entities / misc
 new c_autostart, bool:g_lobby, g_lobbyLeft, c_autobhop, g_hudTut;
-new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt;
+new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt, Float:g_introEnd;
 new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
 #define HOP_TIME 0.3
 new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopNode, Float:g_hopStart, bool:g_hopActive;
@@ -232,7 +232,7 @@ public plugin_init()
 	c_buyany  = register_cvar("csp_buy_anywhere", "0");
 	c_voice   = register_cvar("csp_voice", "50");     // % chance a character barks a voice line on spaces, events and minigame results
 	register_cvar("csp_rings", "1");
-	c_hudscale = register_cvar("csp_hud_scale", "2");   // client hud_scale pushed to humans (Xash3D browser clients; 0 = leave alone)
+	c_hudscale = register_cvar("csp_hud_scale", "0");   // client hud_scale pushed to humans (0 = leave alone; 2 turned text into white boxes in the browser)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
 	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
@@ -467,7 +467,8 @@ spawn_board_entities()
 public task_rings()
 {
 	new Float:now = get_gametime();
-	if (g_nodeCount == 0 || g_boardHidden || !get_cvar_num("csp_rings") || (now - g_ringsAt) < ring_every() && g_ringsAt > 0.0) return;
+	// (this task ticks once a second: half a second of slack keeps the sweeps ring_every() apart, not a tick later)
+	if (g_nodeCount == 0 || g_boardHidden || !get_cvar_num("csp_rings") || (now - g_ringsAt) < ring_every() - 0.5 && g_ringsAt > 0.0) return;
 	g_ringsAt = now;
 	// one space per 0.1 s (AMXX's real timer resolution; "0.03 apart" bunched ~45 beams into each frame).
 	// A client that renders slowly gets few server packets, and a burst like that overflows its 4 KB datagram.
@@ -477,7 +478,11 @@ public task_rings()
 public task_ring_one(taskid)
 {
 	new n = taskid - TASK_RINGS - 1;
-	if (n < 0 || n >= g_nodeCount) return;
+	if (n < 0 || n >= g_nodeCount || g_boardHidden) return;
+	// Beams can't be taken back once sent, so they must not outlive the board. During a minigame intro a dash
+	// only lives until the fight starts; on the board, one redraw period and a second.
+	new Float:life = ring_every() + 1.0;
+	if (g_state == ST_MG_INTRO) { life = floatmin(life, g_introEnd - get_gametime()); if (life < 0.2) return; }
 	new Float:a[3], Float:c[3];   // the tiles mark the spaces; beams only draw the path between them
 	// dotted link toward the next space(s)
 	for (new k = 0; k < g_nodeNextN[n]; k++)
@@ -491,24 +496,25 @@ public task_ring_one(taskid)
 			new Float:f0 = (float(j) / 4.0) - (6.0 / len), Float:f1 = (float(j) / 4.0) + (6.0 / len);
 			a[0] = g_nodePos[n][0] + d[0] * f0; a[1] = g_nodePos[n][1] + d[1] * f0; a[2] = g_nodePos[n][2] + d[2] * f0 + 1.0;
 			c[0] = g_nodePos[n][0] + d[0] * f1; c[1] = g_nodePos[n][1] + d[1] * f1; c[2] = g_nodePos[n][2] + d[2] * f1 + 1.0;
-			beam(a, c, 185, 159, 108, 6);
+			beam(a, c, 185, 159, 108, 6, life);
 		}
 	}
 }
 
-// redraw period: every space gets one 0.1 s slot, plus slack; beams live a little longer than that
-Float:ring_every() { new Float:t = 0.1 * float(g_nodeCount) + 1.5; return t < 6.0 ? 6.0 : t; }
+// redraw period: every space gets one 0.1 s slot, plus slack, in whole seconds (task_rings ticks once a second).
+// Kept short so the last dashes are gone soon after the board is hidden for a minigame (they used to live 8 s).
+Float:ring_every() { new Float:t = float(floatround(0.1 * float(g_nodeCount) + 0.5, floatround_ceil)); return t < 3.0 ? 3.0 : t; }
 
 xs_vec_sub_simple(const Float:a[3], const Float:b[3], Float:out[3]) { out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; out[2] = a[2] - b[2]; }
 
-beam(const Float:a[3], const Float:b[3], r, g, bl, width)
+beam(const Float:a[3], const Float:b[3], r, g, bl, width, Float:life)
 {
 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
 	write_byte(TE_BEAMPOINTS);
 	engfunc(EngFunc_WriteCoord, a[0]); engfunc(EngFunc_WriteCoord, a[1]); engfunc(EngFunc_WriteCoord, a[2]);
 	engfunc(EngFunc_WriteCoord, b[0]); engfunc(EngFunc_WriteCoord, b[1]); engfunc(EngFunc_WriteCoord, b[2]);
 	write_short(g_beamSpr); write_byte(0); write_byte(0);
-	write_byte(floatround(ring_every() * 10.0) + 20);   // a bit longer than the redraw period
+	write_byte(clamp(floatround(life * 10.0), 1, 255));   // tenths of a second
 	write_byte(width); write_byte(0);
 	write_byte(r); write_byte(g); write_byte(bl);
 	write_byte(255); write_byte(0);
@@ -763,9 +769,19 @@ match_abort()
 	clear_traps();
 	entity_set_int(g_hostageEnt, EV_INT_effects, EF_NODRAW);
 	for (new s = 0; s < SEATS; s++) if (is_user_connected(g_seatPlayer[s])) { attach_view(g_seatPlayer[s], g_seatPlayer[s]); unfreeze(g_seatPlayer[s]); }
+	set_cvar_num("sv_airaccelerate", 10); set_cvar_num("sv_autobunnyhopping", 0);   // stopped mid-race: no surf air control on the board
 	announce("Match stopped.");
 	// stopped on a race map: there's no board here, so the next /party would fail. Go back to the board.
-	if (g_nodeCount == 0) set_task(3.0, "task_abort_home", TASK_FLOW);
+	if (g_nodeCount == 0) { set_task(3.0, "task_abort_home", TASK_FLOW); return; }
+	// Back to the frozen lobby, not plain CS: only autojoin opened it, and the seated humans are on teams already,
+	// so after a match they stood around unfrozen with the bots hunting them until someone said /party.
+	if (get_pcvar_num(c_autostart) > 0)
+		for (new id = 1; id <= MaxClients; id++)
+		{
+			if (!is_user_connected(id) || is_user_bot(id)) continue;
+			new TeamName:tm = get_member(id, m_iTeam);
+			if (tm == TEAM_TERRORIST || tm == TEAM_CT) { lobby_open(); break; }
+		}
 }
 public task_abort_home()
 {
@@ -836,7 +852,13 @@ bool:seat_returning(id)
 	{
 		new cur = g_seatPlayer[k];
 		if (!cur || !is_user_connected(cur)) reclaim_seat(k, id);
-		else seat_join(id, k);
+		else
+		{
+			// a stand-in has it: be on a team so reclaim_ready can swap them in. Once is enough; task_seat_watch
+			// lands here every 2 s, and a fresh jointeam each time could kill and respawn them.
+			new TeamName:tm = get_member(id, m_iTeam);
+			if (tm != TEAM_TERRORIST && tm != TEAM_CT) seat_join(id, k);
+		}
 		return true;
 	}
 	return false;
@@ -999,8 +1021,7 @@ public task_fight_standin(taskid)
 	}
 	new nm[32]; stand_in_name(s, nm, charsmax(nm));
 	set_user_info(id, "name", nm);
-	new TeamName:team = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL) ? ((s % 2) ? TEAM_TERRORIST : TEAM_CT) : (g_mgSide[s] == SIDE_CT ? TEAM_CT : TEAM_TERRORIST);
-	rg_set_user_team(id, team, MODEL_UNASSIGNED, true, false);
+	rg_set_user_team(id, fight_team(s), MODEL_UNASSIGNED, true, false);
 	g_standin[s] = false; remove_task(taskid);
 	rg_round_respawn(id);   // the spawn hook hands out the minigame's model and loadout
 	// a side that emptied for a moment makes CS wait for players again; the next kill would then "commence" the game as a draw
@@ -1017,6 +1038,34 @@ public task_fight_standin(taskid)
 
 // a human seat is held for 60 seconds before a bot can take it over
 bool:seat_held(s) { return !g_seatBot[s] && g_seatLeftAt[s] > 0.0 && get_gametime() - g_seatLeftAt[s] < 60.0; }
+
+// Who makes this seat's board decisions. g_seatBot says whose seat it is (a held human seat stays false while a
+// stand-in plays it); a stand-in bot, or nobody at all, can't answer a menu, so the bot logic decides. Without
+// this every decision of a stand-in sat out the whole turn timer.
+bool:seat_is_bot(s)
+{
+	new id = g_seatPlayer[s];
+	return g_seatBot[s] || !id || !is_user_connected(id) || bool:is_user_bot(id);
+}
+
+// The CS team a seat fights on. Sides for 2v2 / 1v3. FFA and duels alternate by fighter, not by seat number:
+// seats 0 and 2 in a duel both landed on CT, the two sitting out were slain on T, and CS ended the "duel" on the
+// spot as a CT win. (FFA split only so the map's spawns don't run out.)
+TeamName:fight_team(s)
+{
+	if (g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL) return g_mgSide[s] == SIDE_CT ? TEAM_CT : TEAM_TERRORIST;
+	if (!g_mgIn[s]) return (s % 2) ? TEAM_TERRORIST : TEAM_CT;
+	new nth = 0; for (new k = 0; k < s; k++) if (g_mgIn[k]) nth++;
+	return (nth % 2) ? TEAM_TERRORIST : TEAM_CT;
+}
+
+// The team a seat belongs on right now: by character on the board, by side in a fight, by seat on a race map
+TeamName:seat_team(s)
+{
+	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MG_RESULT) return (g_seatSkin[s] >= SK_SEAL) ? TEAM_CT : TEAM_TERRORIST;   // results: the board is next
+	if (g_state == ST_MINIGAME || g_state == ST_MG_INTRO) return fight_team(s);
+	return (s % 2) ? TEAM_TERRORIST : TEAM_CT;
+}
 
 // a seated player coming back from a map change never sees the team/class panels: they're seated already
 public hc_show_vgui_menu(const id, VGUIMenu:menuType, const bitsSlots, szOldMenu[])
@@ -1083,7 +1132,7 @@ public task_seat_join(taskid) { new s = taskid - TASK_RACE - 60; if (s >= 0 && s
 // put a returning player straight onto a team with their character, no menus
 seat_join(id, s)
 {
-	rg_join_team(id, (s % 2) ? TEAM_TERRORIST : TEAM_CT);
+	rg_join_team(id, seat_team(s));   // the side they play on now (a minigame side, not just the seat number)
 	rg_internal_cmd(id, "joinclass", "5");
 	set_member(id, m_iMenu, 0);
 	show_menu(id, 0, " ", 0);
@@ -1153,7 +1202,7 @@ reclaim_seat(s, id, bool:back = true)
 	if (back) announce("%s is back.", g_seatName[s]);
 	set_task(0.2, "task_seat_settle", TASK_RACE + 260 + id);
 	new TeamName:tm = get_member(id, m_iTeam);
-	new TeamName:want = (g_state == ST_BOARD || g_state == ST_END) ? ((g_seatSkin[s] >= SK_SEAL) ? TEAM_CT : TEAM_TERRORIST) : ((s % 2) ? TEAM_TERRORIST : TEAM_CT);
+	new TeamName:want = seat_team(s);
 	if (tm != TEAM_TERRORIST && tm != TEAM_CT) seat_join(id, s);
 	if (TeamName:get_member(id, m_iTeam) != want) rg_set_user_team(id, want, MODEL_UNASSIGNED, true, false);
 	if (g_state == ST_BOARD)
@@ -1223,13 +1272,20 @@ refill_seats()
 }
 
 // ------------------------------------------------------------- cvars --
-new g_saved[12][16];
+new g_saved[12][16], bool:g_cvarsSaved;
 new const SAVE_CVARS[12][] = { "mp_round_infinite", "mp_freeforall", "bot_stop", "mp_buytime", "mp_roundtime",
 	"mp_t_default_weapons_secondary", "mp_ct_default_weapons_secondary", "mp_t_default_weapons_primary",
 	"mp_ct_default_weapons_primary", "mp_t_default_grenades", "sv_gravity", "mp_give_player_c4" };
 
-save_cvars() { for (new i = 0; i < sizeof SAVE_CVARS; i++) get_cvar_string(SAVE_CVARS[i], g_saved[i], charsmax(g_saved[])); }
-restore_cvars() { for (new i = 0; i < sizeof SAVE_CVARS; i++) set_cvar_string(SAVE_CVARS[i], g_saved[i]); set_cvar_string("mp_ct_default_grenades", ""); }
+save_cvars() { for (new i = 0; i < sizeof SAVE_CVARS; i++) get_cvar_string(SAVE_CVARS[i], g_saved[i], charsmax(g_saved[])); g_cvarsSaved = true; }
+// Only with real saved values: after a map change the plugin is fresh, and restoring blanks set sv_gravity 0
+// (zero-gravity races from the second remote minigame on, and after the match). load_state brings them back.
+restore_cvars()
+{
+	if (!g_cvarsSaved) return;
+	for (new i = 0; i < sizeof SAVE_CVARS; i++) set_cvar_string(SAVE_CVARS[i], g_saved[i]);
+	set_cvar_string("mp_ct_default_grenades", "");
+}
 
 // ---------------------------------------------------------- board phase --
 enter_board()
@@ -1323,7 +1379,7 @@ place_pawn(s)
 
 public hc_can_take_damage(const victim, const attacker)
 {
-	if (g_lobby || g_state == ST_BOARD || g_state == ST_MG_INTRO || g_state == ST_END || g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME)
+	if (g_lobby || g_state == ST_BOARD || g_state == ST_MG_INTRO || g_state == ST_MG_RESULT || g_state == ST_END || g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME)
 		{ SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }
 	if (g_state == ST_MINIGAME && g_mg == MG_HNS && is_user_connected(attacker))
 	{
@@ -1840,7 +1896,7 @@ turn_watchdog()
 	if (g_state != ST_BOARD) return;
 	new s = g_cur, kind = g_waitKind[s];
 	if (!kind) return;
-	new id = g_seatPlayer[s], bool:gone = !is_user_connected(id);
+	new id = g_seatPlayer[s], bool:gone = !is_user_connected(id) || bool:is_user_bot(id);   // a stand-in bot never answers
 	new Float:limit = gone ? 8.0 : get_pcvar_float(c_turntime);
 	if (limit <= 0.0 || get_gametime() - g_waitAt[s] < limit) return;
 	g_waitKind[s] = W_NONE; g_waitLast[s] = W_NONE;
@@ -1991,6 +2047,7 @@ bool:node_occupied(n) { for (new s = 0; s < SEATS; s++) if (g_pos[s] == n) retur
 board_show(bool:show)
 {
 	g_boardHidden = !show;
+	if (!show) for (new i = 0; i < g_nodeCount; i++) remove_task(TASK_RINGS + 1 + i);   // a sweep still going would keep drawing the path
 	for (new i = 0; i < g_nodeCount; i++)
 	{
 		if (g_propEnt[i] && is_valid_ent(g_propEnt[i])) entity_set_int(g_propEnt[i], EV_INT_effects, show ? 0 : EF_NODRAW);
@@ -2059,7 +2116,7 @@ public flow_turn_ready()
 {
 	new s = g_cur;
 	cam_shot(CAM_FOLLOW);
-	if (g_seatBot[s]) set_task(spd(0.9), "flow_bot_buy", TASK_FLOW);
+	if (seat_is_bot(s)) set_task(spd(0.9), "flow_bot_buy", TASK_FLOW);
 	else set_task(spd(0.5), "flow_human_buy", TASK_FLOW);   // turn menu: use items / jump
 }
 
@@ -2109,7 +2166,7 @@ public flow_roll()
 		entity_set_int(id, EV_INT_flags, entity_get_int(id, EV_INT_flags) & ~FL_FROZEN);   // free to jump; task_dice pins them to the space
 	}
 	emit_sound(g_diceEnt[0], CHAN_ITEM, "items/gunpickup2.wav", 0.8, ATTN_NORM, 0, PITCH_NORM);
-	if (!g_seatBot[s]) { client_print(id, print_center, "JUMP into the crate!"); subline("%s: jump into the crate!", g_seatName[s]); }
+	if (!seat_is_bot(s)) { client_print(id, print_center, "JUMP into the crate!"); subline("%s: jump into the crate!", g_seatName[s]); }
 	remove_task(TASK_DICE);
 	set_task(0.05, "task_dice", TASK_DICE, _, _, "b");
 }
@@ -2142,7 +2199,7 @@ public task_dice()
 		new bool:onGround = (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0;
 		if (onGround) g_diceArmed = true;
 		// bots jump on their own schedule
-		if (g_seatBot[s])
+		if (seat_is_bot(s))
 		{
 			// bots under bot_stop don't run player physics, so play the jump arc for them: v0 268 u/s, gravity 800
 			new Float:t = get_gametime() - g_diceBotJump;
@@ -2168,7 +2225,7 @@ public task_dice()
 		}
 	}
 	// nobody jumped (AFK or dead pawn): hit it for them
-	if (get_gametime() - g_diceStart > (g_seatBot[s] ? spd(8.0) : 12.0) || !alive)
+	if (get_gametime() - g_diceStart > (seat_is_bot(s) ? spd(8.0) : 12.0) || !alive)
 		for (new k = 0; k < g_diceN; k++) if (!g_diceHit[k]) { dice_hit(k); break; }
 }
 
@@ -2234,7 +2291,7 @@ public flow_step()
 	new cur = g_pos[s];
 	if (g_nodeNextN[cur] > 1)
 	{
-		if (g_seatBot[s])
+		if (seat_is_bot(s))
 		{
 			new a = g_nodeNext[cur][0], b = g_nodeNext[cur][1];
 			step_to(s, g_dist[b][g_hostage] < g_dist[a][g_hostage] ? b : a);
@@ -2304,7 +2361,7 @@ step_arrive(s, node)
 		new cost = get_pcvar_num(c_hostage);
 		if (g_money[s] >= cost)
 		{
-			if (g_seatBot[s]) { rescue(s); pause = spd(2.6); }
+			if (seat_is_bot(s)) { rescue(s); pause = spd(2.6); }
 			else { wait_for(s, W_HOSTAGE); show_hostage_menu(s); return; }
 		}
 		else subline("%s reaches the hostages but can't pay $%d.", g_seatName[s], cost);
@@ -2314,13 +2371,13 @@ step_arrive(s, node)
 	{
 		g_shopSide = g_nodeShopSide[node];
 		banner("%s Black Market", g_shopSide == SIDE_T ? "T" : "CT");
-		if (g_seatBot[s]) { ai_shop(s, g_shopSide); pause += spd(1.4); }
+		if (seat_is_bot(s)) { ai_shop(s, g_shopSide); pause += spd(1.4); }
 		else { cam_shot(CAM_LAND); wait_for(s, W_SHOP); show_shop_menu(s); return; }
 	}
 	else if (g_nodeType[node] == NT_NEGOT)
 	{
 		banner("The Negotiator");
-		if (g_seatBot[s]) { ai_negotiate(s); pause += spd(1.6); }
+		if (seat_is_bot(s)) { ai_negotiate(s); pause += spd(1.6); }
 		else { wait_for(s, W_NEGOT); show_negotiator_menu(s); return; }
 	}
 	set_task(pause, "flow_step", TASK_FLOW);
@@ -2376,7 +2433,7 @@ land(s)
 		{
 			g_lastColor[s] = SIDE_NONE;
 			banner("Duel space!");
-			if (g_seatBot[s]) { new o = -1; for (new k = 0; k < SEATS; k++) if (k != s && (o < 0 || g_money[k] > g_money[o])) o = k; begin_duel(s, o); }
+			if (seat_is_bot(s)) { new o = -1; for (new k = 0; k < SEATS; k++) if (k != s && (o < 0 || g_money[k] > g_money[o])) o = k; begin_duel(s, o); }
 			else show_target_menu(s, 1);
 			return;
 		}
@@ -2682,6 +2739,9 @@ nav_end(id)
 
 nav_show(id, m, const handler[])
 {
+	// a seat whose human just dropped: no one to show it to (get_user_button(0) is a native error). The turn
+	// timer, already armed by the caller, lets the bot logic decide.
+	if (id < 1 || id > MaxClients || !is_user_connected(id) || is_user_bot(id)) { menu_destroy(m); return; }
 	copy(g_navHandler[id], charsmax(g_navHandler[]), handler);
 	new n = menu_items(m); if (n > NAV_MAX) n = NAV_MAX;
 	g_navMenu[id] = m + 1; g_navN[id] = n; g_navPos[id] = 0;
@@ -3008,6 +3068,7 @@ public mh_branch(id, m, item)
 	if (item < 0 && g_wdCancel) { menu_destroy(m); return PLUGIN_HANDLED; }   // the turn timer or an abort closed it
 	if (item >= 0) { new sw = seat_of(id); if (sw >= 0) g_waitKind[sw] = W_NONE; }   // answered: the timer stands down until the next menu
 	new s = seat_of(id), info[4], acc, name[2], cb, n;
+	if (s < 0) { menu_destroy(m); return PLUGIN_HANDLED; }   // closed on disconnect: the seat was already freed
 	if (item < 0) n = g_nodeNext[g_pos[s]][0];
 	else { menu_item_getinfo(m, item, acc, info, charsmax(info), name, charsmax(name), cb); n = str_to_num(info); }
 	menu_destroy(m);
@@ -3229,6 +3290,7 @@ begin_minigame()
 	subline("%s", sides);
 	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3) dbg("Sides: %s", sides);
 	announce("Minigame: %s (%s). %s", MG_NAME[g_mg], fn, MG_DESC[g_mg]);
+	g_introEnd = get_gametime() + spd(4.0);   // ring dashes drawn now end with the intro
 	set_task(spd(4.0), "flow_minigame_go", TASK_FLOW);
 }
 
@@ -3269,15 +3331,11 @@ mg_rules()
 // seat everyone by side and start the round
 mg_fight_start()
 {
-	new bool:ffa = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL);
 	for (new s = 0; s < SEATS; s++)
 	{
 		new id = g_seatPlayer[s];
 		if (!is_user_connected(id)) continue;
-		new TeamName:team = TEAM_CT;
-		if (!ffa) team = g_mgSide[s] == SIDE_CT ? TEAM_CT : TEAM_TERRORIST;
-		else team = (s % 2) ? TEAM_TERRORIST : TEAM_CT;   // FFA: split so map spawns don't run out
-		rg_set_user_team(id, team, MODEL_UNASSIGNED, true, false);
+		rg_set_user_team(id, fight_team(s), MODEL_UNASSIGNED, true, false);
 		seat_settle(id);
 	}
 	g_mgDone = false; g_mgWinnerN = 0;
@@ -3512,6 +3570,15 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	// the last of a side just dropped out: their stand-in is a moment away, so the fight isn't over
 	if (!g_mgDone) for (new s = 0; s < SEATS; s++) if (g_standin[s]) { SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }
 	if (!g_mgDone && event == ROUND_GAME_COMMENCE) { set_member_game(m_bGameStarted, true); SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }   // not a result
+	// FFA and duels sit on two CS teams only so the spawns go round. CS still ends the round when one of those
+	// teams is all dead (ReGameDLL's elimination check ignores mp_freeforall), which handed the win to the
+	// healthiest of the fighters still standing. While two are up it isn't over; hc_killed_post calls the end.
+	if (!g_mgDone && (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL) && (event == ROUND_CTS_WIN || event == ROUND_TERRORISTS_WIN))
+	{
+		new alive = 0;
+		for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) alive++;
+		if (alive >= 2) { SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }
+	}
 	if (!g_mgDone && g_mg == MG_HNS)
 	{
 		g_mgWinnerN = 0;
@@ -3550,6 +3617,10 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		g_mgDone = true;
 	}
 	g_state = ST_MG_RESULT;
+	// CS would restart the round on its own 3-5 s from now, in the middle of the results: everyone respawned at
+	// the map spawns, armed, bots loose, before the board took over. The board's own restart (enter_board) or the
+	// changelevel comes first and clears this.
+	SetHookChainArg(3, ATYPE_FLOAT, 60.0);
 	gear_after_round();
 	if (MG_MAP[g_mg][0])
 	{
@@ -3685,7 +3756,7 @@ public flow_reset() { match_abort(); }
 // result back. Everything about the match is written to data/cs_party_state.json, which
 // survives the map change. phase 1 = race pending on the minigame map, 2 = result pending on the board.
 
-new Float:g_zStart[2][3], Float:g_zFinish[2][3], bool:g_zonesOk;
+new Float:g_zStart[2][3], Float:g_zFinish[2][3], bool:g_zonesOk, bool:g_raceOver;
 
 state_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, len, "%s/cs_party_state.json", d); }
 delete_state() { new p[128]; state_path(p, charsmax(p)); if (file_exists(p)) delete_file(p); }
@@ -3737,8 +3808,15 @@ save_state(phase)
 		json_array_append_value(seats, q); json_free(q);
 	}
 	json_object_set_value(o, "seats", seats); json_free(seats);
-	new JSON:tr = json_init_array(); for (new i = 0; i < g_nodeCount; i++) json_array_append_number(tr, g_traps[i]);
+	// every slot, not g_nodeCount: that's 0 on a minigame map, and the phase 2 save would drop every C4 on the board
+	new JSON:tr = json_init_array(); for (new i = 0; i < MAX_NODES; i++) json_array_append_number(tr, g_traps[i]);
 	json_object_set_value(o, "traps", tr); json_free(tr);
+	// the server's own cvars from before the match, so the end of a match on any map puts them back
+	if (g_cvarsSaved)
+	{
+		new JSON:cv = json_init_array(); for (new i = 0; i < sizeof SAVE_CVARS; i++) json_array_append_string(cv, g_saved[i]);
+		json_object_set_value(o, "cvars", cv); json_free(cv);
+	}
 	new JSON:w = json_init_array(); for (new k = 0; k < g_mgWinnerN; k++) json_array_append_number(w, g_mgWinners[k]);
 	json_object_set_value(o, "winners", w); json_free(w);
 	new p[128]; state_path(p, charsmax(p));
@@ -3784,6 +3862,17 @@ load_state()
 	new JSON:tr = json_object_get_value(o, "traps");
 	for (new i = 0; i < MAX_NODES; i++) g_traps[i] = (i < json_array_get_count(tr)) ? json_array_get_number(tr, i) : -1;
 	json_free(tr);
+	g_cvarsSaved = false;
+	if (json_object_has_value(o, "cvars"))
+	{
+		new JSON:cv = json_object_get_value(o, "cvars");
+		if (json_array_get_count(cv) == sizeof SAVE_CVARS)
+		{
+			for (new i = 0; i < sizeof SAVE_CVARS; i++) json_array_get_string(cv, i, g_saved[i], charsmax(g_saved[]));
+			g_cvarsSaved = true;
+		}
+		json_free(cv);
+	}
 	new JSON:w = json_object_get_value(o, "winners");
 	g_mgWinnerN = min(SEATS, json_array_get_count(w));
 	for (new k = 0; k < g_mgWinnerN; k++) g_mgWinners[k] = json_array_get_number(w, k);
@@ -3913,6 +4002,7 @@ start_remote_wait()
 	g_state = ST_REMOTE_WAIT;
 	apply_match_cvars();
 	set_cvar_num("mp_round_infinite", 1); set_cvar_num("mp_freeforall", 1); set_cvar_num("bot_stop", 1);
+	set_cvar_num("sv_gravity", 800);                            // whatever the last map left behind, races run at normal gravity
 	set_cvar_num("sv_airaccelerate", 100);                      // surf and bhop need real air control
 	set_cvar_num("sv_autobunnyhopping", (g_mg == MG_BHOP && get_pcvar_num(c_autobhop)) ? 1 : 0);
 	set_cvar_num("mp_buytime", 0);
@@ -4018,8 +4108,9 @@ public task_race()
 	// HUD: race clock
 	set_hudmessage(242, 163, 58, -1.0, 0.08, 0, 0.0, 0.2, 0.0, 0.0, -1);
 	ShowSyncHudMsg(0, g_hudSync2, "%s  %.1f", MG_NAME[g_mg], t);
-	if (t > 120.0 && g_mgWinnerN == 0)
+	if (t > 120.0 && g_mgWinnerN == 0 && !g_raceOver)
 	{
+		g_raceOver = true;   // with nobody left to win it, this ran (and queued a changelevel) every tick
 		// nobody made it: furthest along the course (+x) wins
 		new best = -1, Float:bx = -99999.0;
 		for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) { new Float:o[3]; entity_get_vector(g_seatPlayer[s], EV_VEC_origin, o); if (o[0] > bx) { bx = o[0]; best = s; } }
@@ -4044,6 +4135,7 @@ start_resume()
 	g_state = ST_RESUME;
 	apply_match_cvars();
 	set_cvar_num("sv_airaccelerate", 10); set_cvar_num("sv_autobunnyhopping", 0);
+	set_cvar_num("sv_gravity", 800); set_cvar_num("bot_stop", 1);   // bots stay put while everyone reconnects
 	g_waitStart = get_gametime();
 	set_task(1.0, "task_resume_wait", TASK_RACE, _, _, "b");
 }
