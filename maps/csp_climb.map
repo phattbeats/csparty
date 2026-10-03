@@ -433,5 +433,40 @@
 "pitch" "-60"
 "angles" "0 45 0"
 "_light" "255 236 210 240"
-"_diffuse_light" "160 170 200 60"
+"_diffuse_light" "160 170 200 150"
+}
+{
+"classname" "light"
+"origin" "-2800 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "-2000 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "-1200 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "-400 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "400 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "1200 0 -380"
+"_light" "200 210 255 250"
+}
+{
+"classname" "light"
+"origin" "2000 0 -380"
+"_light" "200 210 255 250"
 }

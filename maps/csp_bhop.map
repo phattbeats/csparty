@@ -1,7 +1,7 @@
 {
 "classname" "worldspawn"
 "mapversion" "220"
-"wad" "/opt/hlds/cstrike/cstrike.wad;/opt/src/sdhlt/tools/sdhlt.wad"
+"wad" "/paperclip/workspace/vision-quest/ISSUE/hlds/cstrike/cstrike.wad;/paperclip/workspace/vision-quest/ISSUE/sdhlt-src/tools/sdhlt.wad"
 "skyname" "desert"
 "message" "CS Party minigame (original map, generated)"
 {
@@ -337,5 +337,5 @@
 "pitch" "-60"
 "angles" "0 45 0"
 "_light" "255 236 210 240"
-"_diffuse_light" "160 170 200 60"
+"_diffuse_light" "160 170 200 150"
 }

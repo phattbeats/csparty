@@ -18,7 +18,7 @@
   html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow:hidden;
     overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
   input { -webkit-user-select:text; user-select:text; }
-  #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; display:block; background:#000; outline:none; }
+  #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; height:100dvh; display:block; background:#000; outline:none; }
   .screen { position:fixed; inset:0; display:grid; place-items:center; padding:16px; z-index:2; }
   #gate { background:var(--bg); }
   #overlay { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
@@ -46,7 +46,11 @@
   #fs { position:fixed; right:14px; bottom:64px; z-index:4; padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text);
     border:1px solid var(--line); opacity:0; transition:opacity .25s; }
   #fs.show, .touch #fs { opacity:1; }
-  .touch #fs { top:max(10px, env(safe-area-inset-top)); bottom:auto; right:auto; left:50%; transform:translateX(-50%); }
+  .touch #fs { top:max(10px, env(safe-area-inset-top)); bottom:auto; right:auto; left:50%; transform:translateX(6px); }
+  /* phones have no Esc key: this opens the menu, next to Fullscreen at the top */
+  #pz-open { display:none; position:fixed; z-index:4; top:max(10px, env(safe-area-inset-top)); left:50%; transform:translateX(calc(-100% - 6px));
+    padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text); border:1px solid var(--line); }
+  .touch.ingame #pz-open { display:block; }
   #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
   #pause .card { gap:12px; }
   #pause button.alt { background:transparent; color:var(--text); border:1px solid var(--line); }
@@ -68,7 +72,7 @@
   #gate{--bg:#101410;--surface:#292e22;--inset:#191e17;--amber:#f4a331;--cream:#efe5ca;--muted:#c0c4ac;--border-light:#737863;--border-dark:#0c100a;--char-color:#e6603f}
   #gate *{box-sizing:border-box}
   #gate [hidden]{display:none!important}
-  #gate{margin:0;padding:34px 22px 28px;color:var(--cream);background:radial-gradient(ellipse at 48% 8%,#3d4430 0,#1a2017 45%,var(--bg) 85%);font:16px/1.45 Tahoma,Arial,sans-serif;min-height:100vh}
+  #gate{margin:0;padding:34px 22px 28px;color:var(--cream);background:radial-gradient(ellipse at 48% 8%,#3d4430 0,#1a2017 45%,var(--bg) 85%);font:16px/1.45 Tahoma,Arial,sans-serif;min-height:100vh;min-height:100dvh}
   #gate button,#gate input{font:inherit}
   #gate button,#gate label{touch-action:manipulation}
   #gate button{cursor:pointer}
@@ -266,7 +270,7 @@
       </section>
     </div>
   </form>
-  <footer class="footer"><p><span class="download-symbol" aria-hidden="true">&#8595;</span> First visit downloads about 47 MB. After that, it's cached in your browser.</p><details><summary>Controls &amp; how to play</summary><p>On your turn, <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or move up/down and <b>Jump</b> to pick, <b>Use</b> to go back. Keyboard: Space / W / S / E. Controller: stick or D-pad, A, B. Touch: on-screen stick. Type <b>/help</b> in chat for the rules. Click the game to capture the mouse; <b>Esc</b> opens the menu.</p></details></footer>
+  <footer class="footer"><p><span class="download-symbol" aria-hidden="true">&#8595;</span> First visit downloads about 47 MB. After that, it's cached in your browser.</p><details><summary>Controls &amp; how to play</summary><p>On your turn, <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or move up/down and <b>Jump</b> to pick, <b>Use</b> to go back. Keyboard: Space / W / S / E. Controller: stick or D-pad, A, B. Touch: on-screen stick. Type <b>/help</b> in chat for the rules. Click the game to capture the mouse; <b>Esc</b> opens the menu (<b>Start</b> on a controller, the <b>Menu</b> button on a phone).</p></details></footer>
 </main>
 </div>
 
@@ -297,9 +301,10 @@
 
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
+<button id="pz-open" type="button" aria-label="Open the menu">Menu</button>
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.14"></script>
+<script src="boot.js?v=0.4.15"></script>
 </body>
 </html>

@@ -47,7 +47,7 @@
 
   // ------------------------------------------------------------------ game data (cached in the browser)
   const CACHE = "csp-gamedata-v1";
-  const GAMEDATA_V = "0.5.1";   // bump with every new gamedata.zip
+  const GAMEDATA_V = "0.5.13";   // bump with every new gamedata.zip
   async function gameData() {
     // v= changes the URL whenever the game data changes, so no cache in between can hand out an old copy
     const url = "gamedata.zip" + (keyQuery ? keyQuery + "&" : "?") + "v=" + GAMEDATA_V;
@@ -141,6 +141,8 @@
     retried: 0, reason: "", sockets: new Set(), gaveUp: false, firstJoinDeadline: 0,
   };
   let engine = null;
+  // "chat" or "console" while the engine has the keyboard for typing (see the Esc menu below)
+  let typing = "";
   const consoleCmd = (c) => {
     if (!engine || !engine._Cbuf_AddText) return;
     const p = engine.stringToNewUTF8(c + "\n"); engine._Cbuf_AddText(p); engine._free(p);
@@ -152,12 +154,12 @@
     overlay("Lost the party", why || "The connection to the game server stopped.", { rejoin: true });
   };
   const onState = (st) => {
-    const prev = watch.state; watch.state = st; watch.since = performance.now();
+    const prev = watch.state; watch.state = st; watch.since = performance.now(); typing = "";
     console.log(`[watch] state ${prev} -> ${st}`);
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
-      if (!watch.joined) { watch.joined = true; hideOverlay(); $("canvas").focus(); applySettings(); }
+      if (!watch.joined) { watch.joined = true; hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); }
       toast("");
       return;
     }
@@ -169,6 +171,11 @@
     toast("Loading the next map…");
   };
   // Any message in, on any of the engine's sockets, counts as the server being there.
+  const REFUSED = {
+    4001: "The party key was refused. Use the full invite link.",
+    4003: "The party is full right now. Try again in a minute.",
+    4029: "Too many players are already connected from your network. Close another CS Party tab and rejoin.",
+  };
   const NativeWS = window.WebSocket;
   class WatchedWS extends NativeWS {
     constructor(...a) {
@@ -178,7 +185,9 @@
       this.addEventListener("close", (e) => {
         watch.sockets.delete(this);
         console.log(`[watch] relay socket closed (${e.code} ${e.reason || ""})`);
-        if (e.code === 1006 && !watch.joined && performance.now() - watch.since < 3000) {
+        // the relay turns a refused connection into a close code, so the reason can be told apart
+        if (REFUSED[e.code]) lost(REFUSED[e.code]);
+        else if (e.code === 1006 && !watch.joined && performance.now() - watch.since < 3000) {
           lost(keyQuery ? "The party key was refused, or the relay is full." : "The relay refused the connection. The link may need a party key.");
         } else if (watch.sockets.size === 0 && watch.state !== 0) lost(e.code === 1001 ? "The party server is restarting. Rejoin in a few seconds." : "The connection to the party server dropped.");
       });
@@ -221,9 +230,23 @@
   let savedSettings = {};
   try { savedSettings = JSON.parse(localStorage.getItem("csp_settings") || "{}"); Object.assign(SETTINGS, savedSettings); } catch {}
   function applySettings() { for (const k of Object.keys(savedSettings)) consoleCmd(`${k} ${SETTINGS[k]}`); }   // only what the player changed
+  // The sliders show what the engine really has (its config, or a console change). host_writeconfig saves
+  // config.cfg into the in-memory filesystem without a word on screen (asking for a cvar prints it top-left),
+  // and the next frame or so the values are read back from there.
+  const sliders = {};
+  const readSettings = => {
+    consoleCmd("host_writeconfig");
+    setTimeout(() => {
+      let cfg = ""; try { cfg = engine.FS.readFile(ROOT + "/cstrike/config.cfg", { encoding: "utf8" }); } catch { return; }
+      for (const k of Object.keys(sliders)) {
+        const v = +(new RegExp(`^${k} "([-\\d.]+)"`, "m").exec(cfg)?.[1] ?? NaN);
+        if (Number.isFinite(v)) { SETTINGS[k] = v; sliders[k](); }
+      }
+    }, 400);
+  };
   const slider = (id, key, fmt) => {
     const el = $(id), out = $(id + "-v");
-    el.value = SETTINGS[key]; out.textContent = fmt(SETTINGS[key]);
+    (sliders[key] = => { el.value = SETTINGS[key]; out.textContent = fmt(SETTINGS[key]); })();
     el.addEventListener("input", => {
       SETTINGS[key] = +el.value; savedSettings[key] = +el.value; out.textContent = fmt(+el.value);
       consoleCmd(`${key} ${el.value}`);
@@ -330,13 +353,14 @@
   const openPause = => {
     if (!pause.hidden || !inGame()) return;
     pause.hidden = false; $("pz-resume").focus();
-    pauseAt = performance.now(); padPrev = null; leaveArm(false);
+    pauseAt = performance.now(); padPrev = null; leaveArm(false); readSettings();
     if (document.pointerLockElement) document.exitPointerLock();
     padLoop();
   };
   const closePause = (fromClick) => {
     if (pause.hidden) return;
     pause.hidden = true; $("canvas").focus();
+    gamePrev = true;   // a Start/Back press that closed the menu mustn't reopen it from padGame
     // a click may take the mouse straight back; a key press isn't allowed to
     const r = fromClick ? $("canvas").requestPointerLock?.() : null;
     if (!fromClick) toast("Click the game to take the mouse back.", 3000);
@@ -344,19 +368,33 @@
   };
   $("pz-resume").addEventListener("click", => closePause(true));
   $("pz-fs").addEventListener("click", => $("fs").click());
+  // phones have no Esc: an on-screen button opens the menu (shown on touch screens only)
+  $("pz-open").addEventListener("click", => openPause());
   // Mouse capture lost without the engine asking (Esc while captured, alt-tab): that's a pause.
   // The engine lets go itself on map changes and for its console; those go through exitPointerLock.
-  let selfUnlock = 0;
+  // It also lets go whenever the keyboard leaves the game (chat, console, a menu with a mouse cursor).
+  // In game, outside a map change and with our menu shut, that release means the player is typing,
+  // and Esc then belongs to the engine (it closes chat and the console), not to our menu.
+  let selfUnlock = 0, lastKey = "";
   const nativeExit = Document.prototype.exitPointerLock;
-  Document.prototype.exitPointerLock = function { selfUnlock = performance.now(); return nativeExit.call(this); };
+  Document.prototype.exitPointerLock = function {
+    selfUnlock = performance.now();
+    if (inGame() && pause.hidden && selfUnlock - watch.since > 1500) typing = lastKey === "Backquote" ? "console" : "chat";
+    return nativeExit.call(this);
+  };
   document.addEventListener("pointerlockchange", => {
-    if (document.pointerLockElement) { if (!pause.hidden) document.exitPointerLock(); return; }   // never captured behind the menu
+    if (document.pointerLockElement) { typing = ""; if (!pause.hidden) document.exitPointerLock(); return; }   // never captured behind the menu
     if (performance.now() - selfUnlock < 1000) return;
     openPause();
   });
   // capture phase on window: runs before the engine's own key handler, so it can keep keys from it
   addEventListener("keydown", (e) => {
     if (!inGame()) return;
+    lastKey = e.code;
+    if (typing && pause.hidden) {   // the engine closes chat on Enter/Esc and its console on Esc/`
+      if (e.key === "Escape" || (typing === "chat" ? e.key === "Enter" : e.code === "Backquote")) typing = "";
+      return;
+    }
     if (e.key === "Escape") {
       e.stopImmediatePropagation(); e.preventDefault();
       if (!e.repeat) pause.hidden ? openPause() : closePause(false);
@@ -375,25 +413,37 @@
     const f = focusables(), i = f.indexOf(document.activeElement);
     f[Math.max(0, Math.min(f.length - 1, i + d))].focus();   // no wrap: Up from the top must not land on Leave
   };
-  // controller: D-pad/stick to move, left/right for sliders, A to pick, B or Start to go back
+  // controller: D-pad/stick to move, left/right for sliders, A to pick, B, Back or Start to go back
   let padPrev = {}, pauseAt = 0;
   // While the menu is open the engine sees every controller at rest (SDL polls navigator.getGamepads), so
   // D-pad and A work the menu without also moving, jumping or picking in the game.
   const realPads = navigator.getGamepads?.bind(navigator);
+  // In game, Back and Start are ours too (they open this menu): the engine binds Back to "pause", which
+  // would freeze the server for everyone.
+  const UP = { pressed: false, touched: false, value: 0 };
   if (realPads) navigator.getGamepads = => {
     const pads = realPads();
-    if (pause.hidden) return pads;
-    const t = performance.now();
-    return [...pads].map((p) => p && { id: p.id, index: p.index, mapping: p.mapping, connected: p.connected, timestamp: t,
-      axes: p.axes.map(() => 0), buttons: [...p.buttons].map(() => ({ pressed: false, touched: false, value: 0 })) });
+    if (!engine) return pads;   // join screen
+    const t = performance.now(), rest = !pause.hidden;
+    return [...pads].map((p) => p && { id: p.id, index: p.index, mapping: p.mapping, connected: p.connected, timestamp: rest ? t : p.timestamp,
+      axes: rest ? p.axes.map(() => 0) : p.axes, buttons: [...p.buttons].map((b, i) => (rest || i === 8 || i === 9 ? UP : b)) });
   };
+  // controller in game: Start or Back opens the menu
+  let gamePrev = true;
+  function padGame() {
+    const pad = [...(realPads?.() || [])].find(Boolean);
+    const down = !!pad && (!!pad.buttons[8]?.pressed || !!pad.buttons[9]?.pressed);
+    if (down && !gamePrev && pause.hidden) openPause();
+    gamePrev = down;   // tracked while the menu is open too, so the press that closes it can't reopen it
+    requestAnimationFrame(padGame);
+  }
   function padLoop() {
     if (pause.hidden) { padPrev = {}; return; }
     const pad = [...(realPads?.() || [])].find(Boolean);
     if (pad) {
       const ax = pad.axes || [], btn = (i) => !!pad.buttons[i]?.pressed;
       const now = { up: btn(12) || ax[1] < -0.6, down: btn(13) || ax[1] > 0.6, left: btn(14) || ax[0] < -0.6, right: btn(15) || ax[0] > 0.6,
-        a: btn(0), b: btn(1) || btn(9) };
+        a: btn(0), b: btn(1) || btn(8) || btn(9) };
       // the press that opened the menu (or one still held from the game) doesn't count
       if (!padPrev || performance.now() - pauseAt < 300) padPrev = now;
       const hit = (k) => now[k] && !padPrev[k];

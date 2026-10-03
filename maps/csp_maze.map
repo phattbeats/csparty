@@ -1091,5 +1091,5 @@
 "pitch" "-70"
 "angles" "0 30 0"
 "_light" "255 236 210 230"
-"_diffuse_light" "160 170 200 70"
+"_diffuse_light" "160 170 200 160"
 }

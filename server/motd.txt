@@ -1,28 +1,29 @@
 CS PARTY  -  Mario Party rules, Counter-Strike everything.
-Most stars at the end wins. Say /party to start, /board to pick the map.
 
-CONTROLS
- Menus: number keys, or move up/down + JUMP to pick, USE to go back.
- Keyboard: W/S Space E   Controller: stick/D-pad, A, B   Phone: left thumb, Jump
- Your turn: JUMP picks "Jump at the crate", JUMP again rolls.
+Most stars at the end wins. /party starts, /board picks the map.
 
-YOUR TURN
- Jump at the crate: roll.
- Buy gear: the real buy menu. Gear goes into the minigames.
-   Survive and keep it. Die and lose it.
- Use items: Knife Out, Fake Call, C4, Rotate...
 
-THE BOARD
- Blue: pays you, CT side.  Red: costs you, T side.  ?: event
- Black Market: items at T and CT spawn. Armory: free item
- Camper: an AWPer takes a cut. Smoke saves you
- Duel: 1v1 for cash. VIP Escort: slot reel. Negotiator: buy cash or a star
 
-STARS
-Reach the hostages and pay $5000. Stars are your TAB score.
-Board money is your CS money.
+YOUR TURN: JUMP picks "Jump at the crate", JUMP again rolls.
 
-MINIGAMES
-After everyone moves. Some are on their own map (surf, bhop, climb, maze).
+Menus: number keys, or up/down + JUMP to pick, USE to go back.
+
+Buy gear for the minigames. Survive and keep it, die and lose it.
+
+
+
+BOARD: blue pays you, red costs you, ? is an event.
+
+Black Market and Armory: items. Duel: 1v1 for cash.
+
+
+
+STARS: reach the hostages and pay $5000. TAB shows the stars.
+
+MINIGAMES: after everyone moves.
+
+Esc (Start on a controller, Menu on a phone): settings.
+
+
 
 Say /help to see this again.

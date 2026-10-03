@@ -13,6 +13,11 @@ usage: gen_minigame_maps.py <sdhlt_tools_dir> <cstrike_dir> <outdir> [map ...]  
 """
 import math, os, random, subprocess, sys
 
+# Fill light for the race maps: playtesters found faces turned away from the sun (and climb's platform
+# undersides) nearly black. A brighter sky dome plus a small hlrad ambient floor lifts them to ~80/255
+# while sunlit faces stay ~2.5x brighter, so the sun direction still reads.
+FILL_RAD = ["-ambient", "0.08", "0.08", "0.09"]
+
 def sub(a, b): return (a[0]-b[0], a[1]-b[1], a[2]-b[2])
 def cross(a, b): return (a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0])
 def dot(a, b): return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]
@@ -57,7 +62,7 @@ def ramp(x0, x1, inner_y, outer_y, z_bot0, z_top0, drop, tex):
     return Brush(v, f, tex)
 
 class Map:
-    def __init__(self, name): self.name, self.world, self.ents = name, [], []
+    def __init__(self, name): self.name, self.world, self.ents, self.rad = name, [], [], []   # rad: extra sdHLRAD args
     def solid(self, b): self.world.append(b)
     def ent(self, cls, brushes=None, **kv): self.ents.append((cls, kv, brushes or []))
     def text(self, wads):
@@ -151,7 +156,8 @@ def build_bhop():
     # side walls so the corridor reads as a course
     m.solid(box((-2950, -500, -600), (finish_x + 400, -480, 300), WALL))
     m.solid(box((-2950, 480, -600), (finish_x + 400, 500, 300), WALL))
-    m.ent("light_environment", origin="0 0 700", pitch="-60", angles="0 45 0", _light="255 236 210 240", _diffuse_light="160 170 200 60")
+    m.ent("light_environment", origin="0 0 700", pitch="-60", angles="0 45 0", _light="255 236 210 240", _diffuse_light="160 170 200 150")
+    m.rad = FILL_RAD
     zones = {"start": ((-2950, -200, 0), (-2600, 200, 200)), "finish": ((finish_x, -220, 0), (finish_x + 360, 220, 200)),
              "checkpoints": [((c[1], -160, 0), (c[2], 160, 200)) for c in cps]}
     return m, zones
@@ -208,7 +214,10 @@ def build_climb():
     m.solid(box((-3150, -680, -700), (finish_x + 400, 680, -680), "CSTRIKE_FT2MUD"))
     m.solid(box((-3150, -700, -700), (finish_x + 400, -680, 1400), WALL))
     m.solid(box((-3150, 680, -700), (finish_x + 400, 700, 1400), WALL))
-    m.ent("light_environment", origin="0 0 1300", pitch="-60", angles="0 45 0", _light="255 236 210 240", _diffuse_light="160 170 200 60")
+    m.ent("light_environment", origin="0 0 1300", pitch="-60", angles="0 45 0", _light="255 236 210 240", _diffuse_light="160 170 200 150")
+    # cool fill from the pit so the undersides of the platforms aren't black
+    for px in range(-2800, finish_x + 1, 800): m.ent("light", origin=f"{px} 0 -380", _light="200 210 255 250")
+    m.rad = FILL_RAD
     zones = {"start": ((-3150, -200, 0), (-2800, 200, 200)), "finish": ((finish_x, -220, fz), (finish_x + 320, 220, fz + 200)),
              "checkpoints": [((c[1], -192, c[3]), (c[2], 192, c[3] + 200)) for c in cps]}
     return m, zones
@@ -255,7 +264,8 @@ def build_maze(n=12, cell=160, seed=3867):
     m.solid(box((W + room, 0, 0), (W + room + 16, W, H), WALL))
     m.solid(box((W + 64, W - cell - 192, -2), (W + room - 64, W - 64, 0), CAUT))   # finish pad marking
     spawns(m, -lobby // 2, cell // 2, 40)
-    m.ent("light_environment", origin="0 0 300", pitch="-70", angles="0 30 0", _light="255 236 210 230", _diffuse_light="160 170 200 70")
+    m.ent("light_environment", origin="0 0 300", pitch="-70", angles="0 30 0", _light="255 236 210 230", _diffuse_light="160 170 200 160")
+    m.rad = FILL_RAD
     zones = {"start": ((-lobby, 0, 0), (0, W, 200)), "finish": ((W + 64, W - cell - 192, 0), (W + room - 64, W - 64, 200)),
              "checkpoints": []}
     return m, zones
@@ -277,11 +287,11 @@ def write_nav_stub(bsp, start, path):
     b += struct.pack("<4IBBIH", 0, 0, 0, 0, 0, 0, 0, 0)
     open(path, "wb").write(b)
 
-def compile_map(tools, cstrike, outdir, name):
+def compile_map(tools, cstrike, outdir, name, rad=()):
     mp = os.path.abspath(os.path.join(outdir, name + ".map"))
     cs_wad = os.path.join(cstrike, "cstrike.wad"); tool_wad = os.path.join(tools, "sdhlt.wad")
     # embed only the tool textures (sky, trigger); cstrike.wad art stays on the player's machine
-    steps = [["sdHLCSG", "-wadinclude", "sdhlt.wad"], ["sdHLBSP"], ["sdHLVIS", "-fast"], ["sdHLRAD", "-fast", "-bounce", "2"]]
+    steps = [["sdHLCSG", "-wadinclude", "sdhlt.wad"], ["sdHLBSP"], ["sdHLVIS", "-fast"], ["sdHLRAD", "-fast", "-bounce", "2", *rad]]
     for s in steps:
         r = subprocess.run([os.path.join(tools, s[0])] + s[1:] + [mp], cwd=outdir, capture_output=True, text=True)
         log = r.stdout + r.stderr
@@ -298,6 +308,6 @@ if __name__ == "__main__":
         m, zones = builders[name]()
         open(os.path.join(outdir, m.name + ".map"), "w").write(m.text(wads))
         write_zones(os.path.join(outdir, m.name + ".ini"), zones)
-        ok = compile_map(tools, cstrike, outdir, m.name)
+        ok = compile_map(tools, cstrike, outdir, m.name, m.rad)
         if ok: write_nav_stub(os.path.join(outdir, m.name + ".bsp"), zones["start"], os.path.join(outdir, m.name + ".nav"))
         print(m.name, "compiled" if ok else "FAILED")

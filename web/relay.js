@@ -98,16 +98,19 @@ const server = http.createServer((req, res) => {
 const perIp = new Map();
 const wss = new WebSocketServer({ server, path: "/relay", maxPayload: 64 * 1024,
   handleProtocols: (p) => (p.has("binary") ? "binary" : false),
+  // A refused handshake reaches the page only as close code 1006, whatever the reason. So the socket is
+  // accepted and closed at once with a code the page can explain (4001 key, 4003 full, 4029 per-IP cap).
   verifyClient: ({ req }, cb) => {
     const ip = clientIp(req);
-    if (!keyOk(req.url)) { stats.rejected++; return cb(false, 401, "party key required"); }
-    if (stats.peers >= MAX_PEERS) { stats.rejected++; return cb(false, 503, "relay full"); }
-    if ((perIp.get(ip) || 0) >= MAX_PER_IP) { stats.rejected++; return cb(false, 429, "too many connections"); }
+    req.refuse = !keyOk(req.url) ? [4001, "party key required"] : stats.peers >= MAX_PEERS ? [4003, "relay full"]
+      : (perIp.get(ip) || 0) >= MAX_PER_IP ? [4029, "too many connections"] : null;
+    if (req.refuse) stats.rejected++;
     cb(true);
   } });
 
 let seq = 0;
 wss.on("connection", (ws, req) => {
+  if (req.refuse) { log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
   const id = ++seq, who = clientIp(req);
   perIp.set(who, (perIp.get(who) || 0) + 1);
   stats.peers++; stats.totalPeers++;

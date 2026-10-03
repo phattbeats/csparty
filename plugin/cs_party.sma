@@ -57,8 +57,10 @@ enum { CONT_NEXT_SEAT = 0, CONT_NEXT_TURN };
 enum { IT_KNIFE = 0, IT_BHOP, IT_RIGGED, IT_FAKE, IT_SMOKE, IT_C4, IT_ROTATE, IT_INTEL, IT_COUNT };
 new const ITEM_NAME[IT_COUNT][]  = { "Knife Out", "Bhop Script", "Rigged Crate", "Fake Call", "Smoke", "C4", "Rotate", "Hostage Intel" };
 new const ITEM_PRICE[IT_COUNT]   = { 500, 1200, 900, 300, 400, 800, 1000, 4000 };
-new const ITEM_HINT[IT_COUNT][]  = { "hit two crates", "hit three crates", "pick your number", "a rival rolls -3", "C4, campers, steals skip you",
-                                     "trap your space", "swap places with a rival", "go straight to the hostages" };
+// Menu hints, kept short: the browser client cuts menu lines at about a third of the screen (~24 characters
+// at the default 1.5x text), so a hint only shows when the whole line fits (menu_hint).
+new const ITEM_TIP[IT_COUNT][]   = { "2 crates", "3 crates", "pick a roll", "rival -3", "dodge traps", "trap a space", "swap places", "to hostages" };
+#define MENU_FIT 24
 new const SHOP_T[]  = { IT_KNIFE, IT_BHOP, IT_FAKE, IT_C4, IT_ROTATE, IT_RIGGED };
 new const SHOP_CT[] = { IT_KNIFE, IT_RIGGED, IT_SMOKE, IT_FAKE, IT_ROTATE, IT_INTEL };
 new const ARMORY_DROP[] = { IT_KNIFE, IT_KNIFE, IT_KNIFE, IT_FAKE, IT_FAKE, IT_SMOKE, IT_SMOKE, IT_C4, IT_C4, IT_RIGGED, IT_BHOP, IT_ROTATE };
@@ -218,12 +220,12 @@ public plugin_init()
 	c_turns   = register_cvar("csp_turns", "15");
 	c_start   = register_cvar("csp_startmoney", "800");
 	c_hostage = register_cvar("csp_hostage_cost", "5000");
-	c_blue    = register_cvar("csp_blue", "750");
+	c_blue    = register_cvar("csp_blue", "500");
 	c_red     = register_cvar("csp_red", "750");
-	c_mgwin   = register_cvar("csp_mg_win", "2500");
-	c_lbase   = register_cvar("csp_loss_base", "250");
-	c_lstep   = register_cvar("csp_loss_step", "250");
-	c_lcap    = register_cvar("csp_loss_cap", "1250");
+	c_mgwin   = register_cvar("csp_mg_win", "1500");
+	c_lbase   = register_cvar("csp_loss_base", "200");
+	c_lstep   = register_cvar("csp_loss_step", "200");
+	c_lcap    = register_cvar("csp_loss_cap", "800");
 	c_trap    = register_cvar("csp_trap", "1500");
 	c_ot      = register_cvar("csp_overtime", "3");
 	c_awards  = register_cvar("csp_awards", "1");     // 0 off, 1 two announced bonus stars (default), 2 classic hidden three, 3 two announced cash prizes
@@ -1204,6 +1206,26 @@ name_key(const name[], out[], len)
 }
 player_key(id, out[], len) { new nm[32]; get_user_name(id, nm, charsmax(nm)); name_key(nm, out, len); }
 
+// A spare bot (no seat) that came back from a map change wearing a seated bot's name shows up as "(1)Doug".
+// Give it a name of its own: "Doug II", or "Doug III" if that's taken too.
+spare_names()
+{
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || !is_user_bot(id) || seat_of(id) >= 0) continue;
+		new nm[32], key[32]; get_user_name(id, nm, charsmax(nm)); name_key(nm, key, charsmax(key));
+		if (nm[0] != '(' || equal(nm, key) || !key[0]) continue;
+		new alt[32]; formatex(alt, charsmax(alt), "%.24s II", key);
+		if (name_taken(alt)) formatex(alt, charsmax(alt), "%.24s III", key);
+		if (!name_taken(alt)) set_user_info(id, "name", alt);
+	}
+}
+bool:name_taken(const nm[])
+{
+	for (new p = 1; p <= MaxClients; p++) { if (!is_user_connected(p)) continue; new pn[32]; get_user_name(p, pn, charsmax(pn)); if (equal(pn, nm)) return true; }
+	return false;
+}
+
 // a bot keeping someone's seat warm wears their name with a tag, so the owner can always come back as themselves
 stand_in_name(s, out[], len)
 {
@@ -1867,6 +1889,7 @@ public task_hud()
 	if (g_state == ST_IDLE) return;
 	update_crosshair();
 	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MINIGAME || g_state == ST_MG_INTRO) refill_seats();
+	spare_names();
 	reclaim_ready();
 	turn_watchdog();
 	if (g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME) { hud_race(); return; }
@@ -1972,8 +1995,9 @@ hud_race()
 {
 	new buf[384], len;
 	new Float:t = (g_state == ST_REMOTE_RACE) ? get_gametime() - g_raceStart : 0.0;
+	new sub[48]; formatex(sub, charsmax(sub), "First wins $%d", get_pcvar_num(c_mgwin));
 	len = formatex(buf, charsmax(buf), "CS PARTY  %s^n%s^n^n", MG_NAME[g_mg],
-		g_state == ST_REMOTE_WAIT ? "Waiting for everyone to load..." : (g_state == ST_RESUME ? "Back to the board..." : "First to the finish wins $"));
+		g_state == ST_REMOTE_WAIT ? "Waiting for everyone..." : (g_state == ST_RESUME ? "Back to the board..." : sub));
 	for (new s = 0; s < SEATS; s++)
 	{
 		new id = g_seatPlayer[s], st[24];
@@ -2143,7 +2167,8 @@ public flow_turn_cut()
 	cam_shot(CAM_INTRO);
 	fade(0, 0.4);
 	banner("%s's turn", g_seatName[s]);
-	subline("%s  |  $%d  |  hostages %d spaces away", SKIN_NAME[g_seatSkin[s]], g_money[s], g_dist[g_pos[s]][g_hostage]);
+	// short: centred, a longer line runs into the score table on the right
+	subline("$%d  |  hostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	set_task(spd(1.8), "flow_turn_ready", TASK_FLOW);
 }
 
@@ -2868,16 +2893,17 @@ show_turn_menu(s)
 	new id = g_seatPlayer[s];
 	if (!is_user_connected(id)) { g_seatBot[s] = true; flow_bot_buy(); return; }
 	wait_for(s, W_TURN);
-	new gs[64]; gear_summary(s, gs, charsmax(gs));
-	new title[160]; formatex(title, charsmax(title), "\yYour turn  \w$%d  \dhostages %d away^n\dGear: %s", g_money[s], g_dist[g_pos[s]][g_hostage], gs[0] ? gs : "none");
+	// short lines: the browser client cuts menus at about a third of the screen (gear is on the right-hand table)
+	new title[96]; formatex(title, charsmax(title), "\yYour turn  \w$%d^n\dHostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	new m = menu_create(title, "mh_turn"), line[64], info[4];
 	menu_additem(m, "\rJump at the crate \d(roll)", "99");
-	menu_additem(m, "\wBuy gear \d(for the minigames)", "97");
-	menu_additem(m, g_camMode == CAM_MAP ? "\yMap overlay: ON \d(back to the action)" : "\wMap overlay \d(pieces, flow, hostages)", "96");
+	menu_additem(m, "\wBuy gear \d(minigames)", "97");
+	menu_additem(m, g_camMode == CAM_MAP ? "\yMap overlay \d(close)" : "\wMap overlay", "96");
 	for (new k = 0; k < g_itemN[s]; k++)
 	{
 		new it = g_items[s][k];
-		formatex(line, charsmax(line), "%sUse %s \d%s", can_use(s, it) ? "\w" : "\d", ITEM_NAME[it], ITEM_HINT[it]);
+		formatex(line, charsmax(line), "%sUse %s", can_use(s, it) ? "\w" : "\d", ITEM_NAME[it]);
+		menu_hint(line, charsmax(line), 4 + strlen(ITEM_NAME[it]), ITEM_TIP[it]);
 		num_to_str(it, info, charsmax(info)); menu_additem(m, line, info);
 	}
 	if (get_pcvar_num(c_buyany)) menu_additem(m, "\yBlack Market", "98");
@@ -2985,7 +3011,7 @@ public mh_buy_cat(id, m, item)
 
 show_rigged_menu(s)
 {
-	new id = g_seatPlayer[s], m = menu_create("\yRigged Crate: pick your number", "mh_rigged"), info[4], line[24];
+	new id = g_seatPlayer[s], m = menu_create("\yRigged Crate^n\dPick your number", "mh_rigged"), info[4], line[24];
 	for (new v = 1; v <= 6; v++) { formatex(line, charsmax(line), "%d %s", v, g_dist[g_pos[s]][g_hostage] == v ? "\y(hostages!)" : ""); num_to_str(v, info, charsmax(info)); menu_additem(m, line, info); }
 	menu_additem(m, "\dNever mind", "0");
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
@@ -3007,18 +3033,25 @@ public mh_rigged(id, m, item)
 	return PLUGIN_HANDLED;
 }
 
+// adds " hint" (grey) to a menu line when the visible line (len characters so far) still fits
+menu_hint(line[], maxlen, len, const hint[])
+{
+	if (len + 1 + strlen(hint) <= MENU_FIT) format(line, maxlen, "%s \d%s", line, hint);
+}
+
 // Black Market at a buy-zone space. fromTurn = opened from the turn menu (buy-anywhere mode)
 new bool:g_shopFromTurn;
 show_shop_menu(s, bool:fromTurn = false)
 {
 	g_shopFromTurn = fromTurn;
 	new id = g_seatPlayer[s];
-	new title[128]; formatex(title, charsmax(title), "\y%s  \w$%d  \ditems %d/%d", g_shopSide == SIDE_T ? "T Black Market" : (g_shopSide == SIDE_CT ? "CT Black Market" : "Black Market"), g_money[s], g_itemN[s], INV_MAX);
+	new title[128]; formatex(title, charsmax(title), "\y%s  \w$%d^n\dItems %d/%d", g_shopSide == SIDE_T ? "T Black Market" : (g_shopSide == SIDE_CT ? "CT Black Market" : "Black Market"), g_money[s], g_itemN[s], INV_MAX);
 	new m = menu_create(title, "mh_shop"), line[96], info[4];
 	for (new it = 0; it < IT_COUNT; it++)
 	{
 		if (!in_stock(g_shopSide, it)) continue;
-		formatex(line, charsmax(line), "%s%s \y$%d \d%s", can_buy_item(s, it) ? "\w" : "\d", ITEM_NAME[it], ITEM_PRICE[it], ITEM_HINT[it]);
+		new len = formatex(line, charsmax(line), "%s%s \y$%d", can_buy_item(s, it) ? "\w" : "\d", ITEM_NAME[it], ITEM_PRICE[it]) - 4;
+		menu_hint(line, charsmax(line), len, ITEM_TIP[it]);
 		num_to_str(it, info, charsmax(info)); menu_additem(m, line, info);
 	}
 	menu_additem(m, "\rDone", "99");
@@ -3047,7 +3080,7 @@ public mh_shop(id, m, item)
 show_target_menu(s, purpose)
 {
 	g_targetPurpose = purpose;
-	static const TITLES[5][] = { "\yFake call on who?", "\yDuel who?  \dup to $1000 each", "\yTake cash from who?", "\yTake a star from who?", "\ySwap places with who?" };
+	static const TITLES[5][] = { "\yFake call on who?", "\yDuel who?^n\dUp to $1000 each", "\yTake cash from who?", "\yTake a star from who?", "\ySwap places with who?" };
 	new id = g_seatPlayer[s], m = menu_create(TITLES[purpose], "mh_target"), line[64], info[4];
 	for (new o = 0; o < SEATS; o++)
 	{
@@ -3090,7 +3123,7 @@ show_branch_menu(s)
 	for (new k = 0; k < g_nodeNextN[cur]; k++)
 	{
 		new n = g_nodeNext[cur][k];
-		formatex(line, charsmax(line), "%s \d(%d to hostages)", g_nodeArea[n][0] ? g_nodeArea[n] : "This way", g_dist[n][g_hostage]);
+		formatex(line, charsmax(line), "%s \d(%d away)", g_nodeArea[n][0] ? g_nodeArea[n] : "This way", g_dist[n][g_hostage]);
 		num_to_str(n, info, charsmax(info)); menu_additem(m, line, info);
 	}
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
@@ -3114,7 +3147,7 @@ public mh_branch(id, m, item)
 show_hostage_menu(s)
 {
 	new id = g_seatPlayer[s], title[96];
-	formatex(title, charsmax(title), "\yHostages!  \wPay $%d to rescue? \d(you have $%d)", get_pcvar_num(c_hostage), g_money[s]);
+	formatex(title, charsmax(title), "\yHostages!^n\wPay $%d to rescue?^n\dYou have $%d", get_pcvar_num(c_hostage), g_money[s]);
 	new m = menu_create(title, "mh_hostage");
 	menu_additem(m, "Rescue", "1"); menu_additem(m, "Keep the money", "0");
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
@@ -3235,11 +3268,11 @@ public task_vip_reel()
 show_negotiator_menu(s)
 {
 	new id = g_seatPlayer[s], title[96];
-	formatex(title, charsmax(title), "\yThe Negotiator  \w$%d", g_money[s]);
+	formatex(title, charsmax(title), "\yThe Negotiator  \w$%d^n\dPay to take from a rival", g_money[s]);
 	new m = menu_create(title, "mh_negot");
-	menu_additem(m, g_money[s] >= 1500 ? "Take cash from a rival \y$1500" : "\dTake cash from a rival $1500", "1");
+	menu_additem(m, g_money[s] >= 1500 ? "Take cash \y$1500" : "\dTake cash $1500", "1");
 	new bool:anyStar = false; for (new o = 0; o < SEATS; o++) if (o != s && g_stars[o]) anyStar = true;
-	menu_additem(m, (g_money[s] >= 5000 && anyStar) ? "Take a star from a rival \y$5000" : "\dTake a star from a rival $5000", "2");
+	menu_additem(m, (g_money[s] >= 5000 && anyStar) ? "Take a star \y$5000" : "\dTake a star $5000", "2");
 	menu_additem(m, "Walk on by", "0");
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
 	nav_show(id, m, "mh_negot");
@@ -3345,7 +3378,7 @@ mg_rules()
 	set_cvar_string("bot_stop", "0");
 	set_cvar_string("mp_buytime", "0");
 	set_cvar_string("sv_gravity", g_mg == MG_SCOUTZ ? "300" : "800");
-	set_cvar_string("mp_give_player_c4", (g_mg == MG_PLANT || g_mg == MG_PISTOL) ? "1" : "0");
+	set_cvar_string("mp_give_player_c4", mg_objective() ? "1" : "0");
 	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "2.25" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS ? "2.0" : "1.5")));
 	new prim[16], sec[16], gren[16];
 	switch (g_mg)
@@ -3541,7 +3574,8 @@ gear_after_round()
 	}
 }
 
-bool:mg_objective() { return g_mg == MG_PLANT || g_mg == MG_PISTOL; }
+// bomb rounds; only between sides (a forced csp_force_mg can put Pistol Round in a duel or FFA: no C4 there)
+bool:mg_objective() { return (g_mg == MG_PLANT || g_mg == MG_PISTOL) && g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL; }
 
 // what everyone actually spawned with, for "I had no gun" reports
 public task_log_loadouts()
@@ -3803,6 +3837,7 @@ public plugin_cfg()
 {
 	get_mapname(g_boardMap, charsmax(g_boardMap));
 	set_task(2.0, "task_no_rotation");   // after game.cfg, which ReGameDLL runs late and sets mp_timelimit 20
+	set_cvar_num("pausable", 0);   // any client's "pause" (a controller's Back button is bound to it) would freeze the party
 	new p[128]; state_path(p, charsmax(p));
 	if (!file_exists(p)) return;
 	new phase = load_state();
@@ -3822,6 +3857,7 @@ save_state(phase)
 	new JSON:o = json_init_object();
 	jnum(o, "phase", phase);
 	json_object_set_string(o, "board", g_boardMap);
+	json_object_set_string(o, "hostageArea", g_nodeArea[g_hostage]);   // for the table on minigame maps, which have no board nodes
 	jnum(o, "turn", g_turn); jnum(o, "maxTurns", g_maxTurns); jnum(o, "cur", g_cur); jnum(o, "hostage", g_hostage);
 	jnum(o, "cont", g_cont); jnum(o, "mg", g_mg); jnum(o, "mgFmt", g_mgFmt); jnum(o, "wager", g_mgWager); jnum(o, "duelA", g_duelA);
 	jnum(o, "awardN", g_awardN); for (new k = 0; k < 3; k++) { new key[8]; formatex(key, charsmax(key), "aw%d", k); jnum(o, key, g_awardCat[k]); }
@@ -3867,7 +3903,9 @@ load_state()
 	new phase = json_object_get_number(o, "phase");
 	json_object_get_string(o, "board", g_boardMap, charsmax(g_boardMap));
 	g_turn = json_object_get_number(o, "turn"); g_maxTurns = json_object_get_number(o, "maxTurns"); g_cur = json_object_get_number(o, "cur");
-	g_hostage = json_object_get_number(o, "hostage"); g_cont = json_object_get_number(o, "cont"); g_mg = json_object_get_number(o, "mg");
+	g_hostage = json_object_get_number(o, "hostage");
+	if (json_object_has_value(o, "hostageArea") && !g_nodeArea[g_hostage][0]) json_object_get_string(o, "hostageArea", g_nodeArea[g_hostage], charsmax(g_nodeArea[]));
+	g_cont = json_object_get_number(o, "cont"); g_mg = json_object_get_number(o, "mg");
 	g_mgFmt = json_object_get_number(o, "mgFmt"); g_mgWager = json_object_get_number(o, "wager"); g_duelA = json_object_get_number(o, "duelA");
 	g_awardN = json_object_get_number(o, "awardN");
 	for (new k = 0; k < 3; k++) { new key[8]; formatex(key, charsmax(key), "aw%d", k); g_awardCat[k] = json_object_get_number(o, key); }
