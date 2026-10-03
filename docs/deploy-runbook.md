@@ -291,3 +291,23 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Source: `ISSUE/src/plugin/cs_party.sma` (backup `.pre-ISSUE-join`). Image `cs-party-server:0.5.9-vq` = FROM 0.5.8-vq + COPY cs_party.amxx. Deployed with the peers=0 and live-tag gate in the same command.
 - Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-058old cs-party-server && docker start cs-party-server` (0.5.8-vq, healthcheck intact).
 
+
+
+## server 0.5.11-vq + relay 0.4.13 (2026-10-03 15:21 UTC): Two Towers "crash" and drops ending fights (ISSUE)
+- **Alex's crash was the page unloading.** At 12:36:01 the client sent 'drop' and the relay saw `browser closed (1001)` in the same second. Only boot.js's `pagehide` handler sends 'drop', and 1001 means the page went away. A renderer crash closes with 1006 and sends no 'drop', and an engine Host_Error shows an alert and leaves the socket open. The most likely trigger is Ctrl+W: Ctrl is duck, W is forward, and Chrome closes the tab without asking the page.
+- relay 0.4.13 (`patch-relay13/`, FROM 0.4.12, `boot.js?v=0.4.13`):
+  - A `beforeunload` prompt while in a match, so Ctrl+W, Ctrl+R and mouse-back ask "Leave site?" first. The Leave and Rejoin buttons skip it.
+  - `navigator.keyboard.lock()` in fullscreen, so Chrome/Edge hand Ctrl+W to the game.
+- **Repro, isolated** (server :27030 + relay :8096 from the live images, GPU Playwright, `tools/dev/towers_e2e.js`): csp_towers 1 v 3 with the AWP, about 60 s of scope in and out, turning, firing and duck-walking. No page errors and no engine errors; a bot's AWP ended it. A reload with the guard showed the beforeunload dialog, and dismissing it kept the game in state 4. Playwright's `page.close` never shows the dialog, even on a bare page.
+- **Fights ended when a human dropped.** On this sv_lan server, ReHLDS turns the Steam "deny" for a leaving human into dropping every bot ("Client dropped by server", `sv_steam3.cpp` OnGSClientDenyHelper). Both sides emptied, the round ended as a draw, and the plugin said "Nobody wins Two Towers!" and changed map. Our ReHLDS exposes API 3.10, too old for a `RH_SV_DropClient` hook (a plugin that registers it fails in plugin_init).
+- server 0.5.11-vq (`patch0511/`, FROM 0.5.10-vq + amxx):
+  - Anyone who drops out of a fight while alive gets a stand-in: a spare bot (bot_quota refills within a second) at the same spot, with the same health. The round end waits until the stand-in is in, and a "Game Commencing" draw is never a result.
+  - `task_slay` no longer kills a bot that was seated as a stand-in after it spawned.
+  - `refill_seats` keeps a bot seat's name ("Xavier takes over Rick's seat" no longer renames Rick).
+  - `bot_join_after_player 0` is re-applied after game.cfg (which sets it to 1).
+  - `rebind_seats` gives a seat to a bot already wearing that name first. That fixes "(1)Dan".
+  - `Sides:` debug line; `csp_test_remote <mg> 1v3`.
+- Teams in Alex's game were right: 3 CT vs Dean on T is a legal 1 v 3. The "suicide with world" lines are the plugin slaying spare bots.
+- Verified on the isolated copy: phaTT dropped mid-fight and all 4 bots went with him. All 4 seats were back in the fight within 2 s, phaTT's stand-in killed a CT, the CTs won 90 s later, and the server returned to the board and paid the result.
+- Deployed with the gate in one command: rcon status had 0 humans, peers was 0, and the live tags were 0.5.10-vq / 0.4.12. `csparty-up.sh` now carries the current tags, MAXPLAYERS=10 and the log limits (backup `csparty-up.sh.pre-ISSUE`). E2E logs are in `appdata/cs-party/logs/ISSUE-e2e/`.
+- Rollback: `docker rm -f cs-party-server cs-party-relay && docker rename cs-party-server-0510old cs-party-server && docker rename cs-party-relay-0412old cs-party-relay && docker start cs-party-server cs-party-relay`.

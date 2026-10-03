@@ -119,12 +119,12 @@
     $("toast").textContent = t; $("toast").hidden = !t;
     clearTimeout(toastTimer); if (t && ms) toastTimer = setTimeout(() => { $("toast").hidden = true; }, ms);
   };
-  $("ov-rejoin").addEventListener("click", => location.reload());
   $("fs").addEventListener("click", async => {
     if (document.fullscreenElement) { document.exitFullscreen(); return; }
     try {
       await document.documentElement.requestFullscreen?.({ navigationUI: "hide" });
       await screen.orientation?.lock?.("landscape").catch(() => {});   // Android; iPhone Safari has neither: home-screen app instead
+      await navigator.keyboard?.lock?.().catch(() => {});   // Chrome/Edge: in fullscreen, Ctrl+W and friends go to the game
     } catch {}
     $("canvas").focus();
   });
@@ -338,7 +338,6 @@
   };
   $("pz-resume").addEventListener("click", => closePause(true));
   $("pz-fs").addEventListener("click", => $("fs").click());
-  $("pz-leave").addEventListener("click", => location.reload());   // pagehide disconnects properly
   // Mouse capture lost without the engine asking (Esc while captured, alt-tab): that's a pause.
   // The engine lets go itself on map changes and for its console; those go through exitPointerLock.
   let selfUnlock = 0;
@@ -396,6 +395,16 @@
   // Closing the tab: say goodbye properly, so the server frees the slot now instead of holding a ghost
   // until it times out (and the seat-hold clock starts from the real moment you left).
   addEventListener("pagehide", => { try { if (engine && watch.state >= 1) engine._CL_Disconnect(); } catch {} });
+  // Ctrl is duck and W is forward, and Ctrl+W closes the tab (so do a mouse's back button and Ctrl+R).
+  // Mid-match the browser asks first. Leave and Rejoin are on purpose and skip the question.
+  let leaving = false;
+  addEventListener("beforeunload", (e) => {
+    if (leaving || !engine || watch.state < 1 || watch.gaveUp) return;
+    e.preventDefault(); e.returnValue = "";
+  });
+  const leave = => { leaving = true; location.reload(); };
+  $("ov-rejoin").addEventListener("click", leave);
+  $("pz-leave").addEventListener("click", leave);   // pagehide disconnects properly
 
 
   // ------------------------------------------------------------------ character select

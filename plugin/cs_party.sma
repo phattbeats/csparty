@@ -617,15 +617,17 @@ public cmd_force_mg() { new a[8]; read_argv(1, a, charsmax(a)); g_forceMg = str_
 
 public cmd_nocam() { remove_task(TASK_CAM); release_cameras(); server_print("[CSP] camera released"); return PLUGIN_HANDLED; }
 
-// dev: skip the board and go straight to a minigame map. csp_test_remote <mg index>
+// dev: skip the board and go straight to a minigame map. csp_test_remote <mg index> [1v3]
+// 1v3 puts seat 0 alone on T against the other three.
 public cmd_test_remote()
 {
 	new a[8]; read_argv(1, a, charsmax(a)); new mg = str_to_num(a);
 	if (mg < 0 || mg >= MG_COUNT || !MG_MAP[mg][0]) { server_print("[CSP] not a map minigame"); return PLUGIN_HANDLED; }
 	if (g_state == ST_IDLE) { match_start(); remove_task(TASK_FLOW); }
 	if (g_state == ST_IDLE) return PLUGIN_HANDLED;
-	g_mg = mg; g_mgFmt = FMT_FFA; g_cont = CONT_NEXT_TURN;
-	for (new s = 0; s < SEATS; s++) { g_mgIn[s] = true; g_mgSide[s] = SIDE_CT; }
+	new f[8]; read_argv(2, f, charsmax(f)); new bool:solo = bool:equal(f, "1v3");
+	g_mg = mg; g_mgFmt = solo ? FMT_1V3 : FMT_FFA; g_cont = CONT_NEXT_TURN;
+	for (new s = 0; s < SEATS; s++) { g_mgIn[s] = true; g_mgSide[s] = (solo && s == 0) ? SIDE_T : SIDE_CT; }
 	go_remote();
 	return PLUGIN_HANDLED;
 }
@@ -945,6 +947,12 @@ update_crosshair()
 	}
 }
 
+// Anyone who drops out of a fight while alive leaves their side a player short: a spare bot takes their place,
+// where they stood, with their health. When a human leaves this LAN server, Steam answers with a "deny" that
+// ReHLDS (API 3.10, too old to hook SV_DropClient) turns into dropping every bot too ("Client dropped by server").
+// Mid-fight that emptied both sides: nobody won and the map changed back. bot_quota refills within a second.
+new bool:g_standin[SEATS], g_standinTries[SEATS], Float:g_dropAt[SEATS][3], Float:g_dropAng[SEATS][3], Float:g_dropHp[SEATS];
+
 public client_disconnected(id)
 {
 	g_xhHidden[id] = false;
@@ -955,7 +963,56 @@ public client_disconnected(id)
 		g_seatPlayer[s] = 0;
 		g_seatLeftAt[s] = get_gametime();
 		if (!g_seatBot[s]) dbg("%s dropped; holding seat %d for them.", g_seatName[s], s);
+		if (g_state == ST_MINIGAME && !g_mgDone && g_mgIn[s] && is_user_alive(id))
+		{
+			entity_get_vector(id, EV_VEC_origin, g_dropAt[s]); entity_get_vector(id, EV_VEC_v_angle, g_dropAng[s]);
+			g_dropHp[s] = Float:get_entvar(id, var_health);
+			g_standin[s] = true; g_standinTries[s] = 0;
+			set_task(0.5, "task_fight_standin", TASK_RACE + 320 + s, _, _, "b");
+		}
 	}
+}
+
+public task_fight_standin(taskid)
+{
+	new s = taskid - TASK_RACE - 320;
+	new id = g_seatPlayer[s];
+	if (id && is_user_connected(id) && !is_user_bot(id)) id = -1;   // its human is back: they sit this fight out
+	if (g_state != ST_MINIGAME || g_mgDone || id < 0 || ++g_standinTries[s] > 20)
+	{
+		g_standin[s] = false; remove_task(taskid);
+		if (g_state == ST_MINIGAME && !g_mgDone) rg_check_win_conditions();   // a round end held for the stand-in can happen now
+		return;
+	}
+	// refill_seats may have seated a fresh bot already; it doesn't put it in the fight
+	if (!id || !is_user_connected(id))
+	{
+		id = 0;
+		for (new k = 1; k <= MaxClients && !id; k++)
+		{
+			if (!is_user_connected(k) || !is_user_bot(k) || seat_of(k) >= 0) continue;
+			new TeamName:tm = get_member(k, m_iTeam);
+			if (tm == TEAM_TERRORIST || tm == TEAM_CT) id = k;
+		}
+		if (!id) return;
+		g_seatPlayer[s] = id;
+	}
+	new nm[32]; stand_in_name(s, nm, charsmax(nm));
+	set_user_info(id, "name", nm);
+	new TeamName:team = (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL) ? ((s % 2) ? TEAM_TERRORIST : TEAM_CT) : (g_mgSide[s] == SIDE_CT ? TEAM_CT : TEAM_TERRORIST);
+	rg_set_user_team(id, team, MODEL_UNASSIGNED, true, false);
+	g_standin[s] = false; remove_task(taskid);
+	rg_round_respawn(id);   // the spawn hook hands out the minigame's model and loadout
+	// a side that emptied for a moment makes CS wait for players again; the next kill would then "commence" the game as a draw
+	set_member_game(m_bNeededPlayers, false); set_member_game(m_bGameStarted, true);
+	if (is_user_alive(id))
+	{
+		entity_set_origin(id, g_dropAt[s]);
+		entity_set_vector(id, EV_VEC_angles, g_dropAng[s]); entity_set_vector(id, EV_VEC_v_angle, g_dropAng[s]); entity_set_int(id, EV_INT_fixangle, 1);
+		set_entvar(id, var_health, g_dropHp[s]);
+	}
+	if (!g_seatBot[s]) announce("%s fights on for %s.", nm, g_seatName[s]);
+	else dbg("%s is back in the fight (seat %d).", nm, s);
 }
 
 // a human seat is held for 60 seconds before a bot can take it over
@@ -1152,10 +1209,11 @@ refill_seats()
 			new TeamName:tm = get_member(id, m_iTeam);
 			if (tm != TEAM_TERRORIST && tm != TEAM_CT) continue;
 			g_seatPlayer[s] = id; g_seatBot[s] = bool:is_user_bot(id);
+			// a bot keeps the seat's name, like after a map change (bots get dropped and re-added mid-map too)
 			new nm[32];
-			if (is_user_bot(id) && g_seatOwner[s][0]) { stand_in_name(s, nm, charsmax(nm)); set_user_info(id, "name", nm); }
+			if (is_user_bot(id)) { stand_in_name(s, nm, charsmax(nm)); set_user_info(id, "name", nm); }
 			else get_user_name(id, nm, charsmax(nm));
-			announce("%s takes over %s's seat.", nm, g_seatName[s]);
+			if (!equal(nm, g_seatName[s])) announce("%s takes over %s's seat.", nm, g_seatName[s]);
 			copy(g_seatName[s], charsmax(g_seatName[]), nm);
 			if (!is_user_bot(id)) player_key(id, g_seatOwner[s], charsmax(g_seatOwner[]));   // a human taking over owns it now
 			if (g_state == ST_BOARD && is_user_alive(id)) { rg_remove_all_items(id); rg_set_user_model(id, SKIN_MODEL[g_seatSkin[s]]); place_pawn(s); freeze(id); sync_money(s); sync_score(s); }
@@ -1230,7 +1288,8 @@ public hc_spawn_post(id)
 	}
 }
 
-public task_slay(id) { if (is_user_alive(id)) user_silentkill(id); }
+// (a bot that spawned unseated may have been seated since, as a stand-in in a fight: it stays)
+public task_slay(id) { new s = seat_of(id); if (is_user_alive(id) && (s < 0 || !g_mgIn[s])) user_silentkill(id); }
 
 freeze(id)
 {
@@ -3168,6 +3227,7 @@ begin_minigame()
 	}
 	else copy(sides, charsmax(sides), MG_DESC[g_mg]);
 	subline("%s", sides);
+	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3) dbg("Sides: %s", sides);
 	announce("Minigame: %s (%s). %s", MG_NAME[g_mg], fn, MG_DESC[g_mg]);
 	set_task(spd(4.0), "flow_minigame_go", TASK_FLOW);
 }
@@ -3449,6 +3509,9 @@ public hc_killed_post(const victim, const killer)
 public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 {
 	if (g_state != ST_MINIGAME) return HC_CONTINUE;
+	// the last of a side just dropped out: their stand-in is a moment away, so the fight isn't over
+	if (!g_mgDone) for (new s = 0; s < SEATS; s++) if (g_standin[s]) { SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }
+	if (!g_mgDone && event == ROUND_GAME_COMMENCE) { set_member_game(m_bGameStarted, true); SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }   // not a result
 	if (!g_mgDone && g_mg == MG_HNS)
 	{
 		g_mgWinnerN = 0;
@@ -3627,7 +3690,8 @@ new Float:g_zStart[2][3], Float:g_zFinish[2][3], bool:g_zonesOk;
 state_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, len, "%s/cs_party_state.json", d); }
 delete_state() { new p[128]; state_path(p, charsmax(p)); if (file_exists(p)) delete_file(p); }
 
-public task_no_rotation() { set_cvar_num("mp_timelimit", 0); set_cvar_num("mp_maxrounds", 0); set_cvar_num("mp_winlimit", 0); }
+// game.cfg also sets bot_join_after_player 1, and with it the bot quota drops to zero whenever no human is on a team
+public task_no_rotation() { set_cvar_num("mp_timelimit", 0); set_cvar_num("mp_maxrounds", 0); set_cvar_num("mp_winlimit", 0); set_cvar_num("bot_join_after_player", 0); }
 
 public plugin_cfg()
 {
@@ -3728,6 +3792,18 @@ load_state()
 	return phase;
 }
 
+// another empty seat's bot would wear this name
+bool:name_wanted(const name[], except)
+{
+	for (new k = 0; k < SEATS; k++)
+	{
+		if (k == except || (g_seatPlayer[k] && is_user_connected(g_seatPlayer[k]))) continue;
+		new nm[32]; stand_in_name(k, nm, charsmax(nm));
+		if (equal(nm, name)) return true;
+	}
+	return false;
+}
+
 // after a map change: humans by name (and put back on a team), bots fill the remaining seats
 bool:rebind_seats()
 {
@@ -3749,16 +3825,21 @@ bool:rebind_seats()
 		}
 		if (!g_seatPlayer[s])
 		{
-			for (new id = 1; id <= MaxClients; id++)
+			// the bot plays as the seat's character; rename it so the scoreboard doesn't reshuffle every map change.
+			// A human's seat gets "Name (bot)", never the bare name: that would make the owner "(1)Name" on return.
+			// A fresh bot may already wear that name (zBot profiles include Dan, Rick...): it gets the seat first. Renaming
+			// it away doesn't free the name in time for another bot, which would come out as "(1)Dan".
+			new nm[32]; stand_in_name(s, nm, charsmax(nm));
+			for (new pass = 0; pass < 3 && !g_seatPlayer[s]; pass++) for (new id = 1; id <= MaxClients; id++)
 			{
 				if (!is_user_connected(id) || !is_user_bot(id) || seat_of(id) >= 0) continue;
 				new TeamName:tm = get_member(id, m_iTeam);
 				if (tm != TEAM_TERRORIST && tm != TEAM_CT) continue;
+				new cur[32]; get_user_name(id, cur, charsmax(cur));
+				if (pass == 0 && !equal(cur, nm)) continue;
+				if (pass == 1 && name_wanted(cur, s)) continue;   // leave it for the empty seat of that name
 				g_seatPlayer[s] = id;
-				// the bot plays as the seat's character; rename it so the scoreboard doesn't reshuffle every map change.
-				// A human's seat gets "Name (bot)", never the bare name: that would make the owner "(1)Name" on return.
-				new nm[32]; stand_in_name(s, nm, charsmax(nm));
-				set_user_info(id, "name", nm);
+				if (pass) set_user_info(id, "name", nm);
 				break;
 			}
 		}
