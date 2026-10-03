@@ -37,6 +37,7 @@ gl_check_errors 0
 # weapon slots over the turn menu). CS Party's screen: menus on the left, HUD in the top-centre column
 # (the plugin moves it there for touch players), so buttons stay low on the right and in the top strip.
 # Coordinates are fractions of the screen; textures from cs16-client's extras.pk3.
+# Jump and duck end above y 0.84: the engine's money readout is in the bottom-right corner.
 TOUCHCFG = b"""// CS Party touch layout
 touch_config_file "touch.cfg"
 touch_forwardzone "0.12"
@@ -52,8 +53,8 @@ touch_highlight_a "1.0"
 touch_removeall
 touch_addbutton "move" "" "_move" 0.00 0.30 0.45 1.00 255 255 255 150 0
 touch_addbutton "look" "" "_look" 0.45 0.30 1.00 1.00 255 255 255 150 0
-touch_addbutton "jump" "touch/gfx/jump" "+jump" 0.89 0.40 0.99 0.62 255 255 255 170 0 1
-touch_addbutton "duck" "touch/gfx/duck" "+duck" 0.89 0.70 0.99 0.92 255 255 255 150 0 1
+touch_addbutton "jump" "touch/gfx/jump" "+jump" 0.89 0.37 0.99 0.59 255 255 255 170 0 1
+touch_addbutton "duck" "touch/gfx/duck" "+duck" 0.89 0.61 0.99 0.83 255 255 255 150 0 1
 touch_addbutton "attack" "touch/gfx/attack" "+attack" 0.78 0.52 0.88 0.74 255 255 255 170 0 1
 touch_addbutton "attack2" "touch/gfx/attack2" "+attack2" 0.78 0.28 0.88 0.50 255 255 255 140 0 1
 touch_addbutton "use" "touch/gfx/use" "+use" 0.78 0.77 0.88 0.99 255 255 255 150 0 1

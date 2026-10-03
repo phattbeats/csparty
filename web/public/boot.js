@@ -19,17 +19,25 @@
   // Graphics: phones get the low profile (?gfx=low / ?gfx=high to override). r_scene_scale renders the
   // 3D scene at a fraction of the screen and upscales; the HUD stays sharp.
   const GFX = params.get("gfx") || (TOUCH ? "low" : "high");
-  const GFX_ARGS = GFX === "low"
+  // Lighting: a model (player, pawn, viewmodel) takes only the light of the floor under it, and Xash3D has no
+  // ambient minimum (r_lighting_ambient does nothing), so in dust2's tunnels and dark rooms players were black
+  // shapes. lightgamma 1.8 (the engine's lowest; default 2.5) about doubles dark light for models and world
+  // alike and adds ~7% in the sun. Measured against brightness 2-3, gamma, direct, gl_overbright: less lift for
+  // the same wash-out, or none. ?lightgamma=2.5 restores the stock look.
+  const GFX_ARGS = ["+lightgamma", params.get("lightgamma") || "1.8", ...(GFX === "low"
     ? ["+r_scene_scale", "0.6", "+gl_texture_lodbias", "1", "+r_detailtextures", "0", "+gl_msaa", "0", "+r_shadows", "0", "+r_decals", "32", "+fps_max", "60"]
-    : [];
+    : [])];
   // Touch: Xash3D's own on-screen controls (move stick, look, jump, use, fire, duck, numbers)
   // _csp_touch tells the server to move the CS Party HUD out from under the right-hand buttons
   // HUD size. Engine hud_scale (?hud=900) made glyphs render as white boxes and blacked out textures in
   // the WebGL build (confirmed by A/B on 2026-10-02), so it's opt-in only. The engine's text-only scale
   // (hud_fontscale) renders clean, so text is 1.5x by default (Alex, 2026-10-03); ?font=1 restores it.
   const FONT_SCALE = params.get("font") || "1.5";
+  // con_notifytime 0: no console lines at the top left. The server's music cues (echo CSP_MUSIC_*), cvar
+  // chatter, AMXX's "Type 'amx_help'..." and the like printed there; Module.print below still gets every line,
+  // and chat has its own HUD at the bottom left. ?notify=N brings them back for debugging.
   const HUD_ARGS = [...(params.get("hud") ? ["+hud_scale", params.get("hud")] : []),
-    "+hud_fontscale", FONT_SCALE];
+    "+hud_fontscale", FONT_SCALE, "+con_notifytime", params.get("notify") || "0"];
   const TOUCH_ARGS = TOUCH || params.has("touch") ? ["+touch_enable", "1", "+setinfo", "_csp_touch", "1"] : [];
 
   // engine pieces that live next to the page; written into the engine's filesystem before start
@@ -47,7 +55,7 @@
 
   // ------------------------------------------------------------------ game data (cached in the browser)
   const CACHE = "csp-gamedata-v1";
-  const GAMEDATA_V = "0.5.13";   // bump with every new gamedata.zip
+  const GAMEDATA_V = "0.5.14";   // bump with every new gamedata.zip
   async function gameData() {
     // v= changes the URL whenever the game data changes, so no cache in between can hand out an old copy
     const url = "gamedata.zip" + (keyQuery ? keyQuery + "&" : "?") + "v=" + GAMEDATA_V;
@@ -420,7 +428,8 @@
   const focusables = => [...pause.querySelectorAll("button, input")];
   const moveFocus = (d) => {
     const f = focusables(), i = f.indexOf(document.activeElement);
-    f[Math.max(0, Math.min(f.length - 1, i + d))].focus();   // no wrap: Up from the top must not land on Leave
+    const el = f[Math.max(0, Math.min(f.length - 1, i + d))];   // no wrap: Up from the top must not land on Leave
+    el.focus(); el.scrollIntoView({ block: "nearest" });   // the menu scrolls on short screens: keep the focus in view
   };
   // controller: D-pad/stick to move, left/right for sliders, A to pick, B, Back or Start to go back
   let padPrev = {}, pauseAt = 0;
