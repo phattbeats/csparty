@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121411">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>CS Party</title>
+<style>
+  :root { --bg:#121411; --panel:#1a1d18; --line:#383d30; --text:#ddd7c4; --muted:#8d8876; --hud:#f2a33a; --err:#e2654c; color-scheme: dark; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow:hidden;
+    overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+  input { -webkit-user-select:text; user-select:text; }
+  #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; display:block; background:#000; outline:none; }
+  .screen { position:fixed; inset:0; display:grid; place-items:center; padding:16px; z-index:2; }
+  #gate { background:var(--bg); }
+  #overlay { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
+  .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
+  h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
+  h2 { font-size:22px; }
+  p { margin:0; color:var(--muted); }
+  label { display:grid; gap:6px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); padding:9px 10px; }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--hud); outline-offset:2px; }
+  button { font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; padding:11px; border:0; background:var(--hud); color:#1a1408; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .bar { height:8px; background:var(--bg); border:1px solid var(--line); }
+  .bar i { display:block; height:100%; width:0; background:var(--hud); transition:width .2s; }
+  #status { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; color:var(--muted); min-height:1.4em; }
+  #status.err { color:var(--err); }
+  .note { font-size:13px; color:var(--hud); border:1px solid var(--line); padding:8px 10px; }
+  .keys { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px; }
+  .keys b { color:var(--text); font-weight:600; }
+  #ov-text { font-family:ui-monospace, Menlo, monospace; font-size:13px; }
+  .spin { width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--hud); border-radius:50%; animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #toast { position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:4; background:rgba(26, 29, 24, .9); border:1px solid var(--line);
+    color:var(--text); font:600 13px system-ui, sans-serif; letter-spacing:.04em; padding:7px 14px; pointer-events:none; }
+  #fs { position:fixed; right:14px; bottom:64px; z-index:4; padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text);
+    border:1px solid var(--line); opacity:0; transition:opacity .25s; }
+  #fs.show, .touch #fs { opacity:1; }
+  .touch #fs { top:max(10px, env(safe-area-inset-top)); bottom:auto; right:auto; left:50%; transform:translateX(-50%); }
+  #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
+  #pause .card { gap:12px; }
+  #pause button.alt { background:transparent; color:var(--text); border:1px solid var(--line); }
+  #pause button.alt:hover, #pause button.alt:focus-visible { border-color:var(--hud); color:var(--hud); }
+  #pause label { grid-template-columns:1fr auto; align-items:center; }
+  #pause label input { grid-column:1 / -1; padding:0; accent-color:var(--hud); }
+  #pause output { color:var(--text); font-family:ui-monospace, Menlo, monospace; }
+  #rotate { display:none; z-index:5; background:var(--bg); text-align:center; }
+  #rotate .phone { width:46px; height:78px; border:3px solid var(--hud); border-radius:9px; margin:0 auto 18px; animation:turn 1.6s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform:rotate(0); } 60%, 100% { transform:rotate(-90deg); } }
+  @media (orientation: portrait) and (pointer: coarse) { .ingame #rotate { display:grid; } }   /* the name form is fine upright */
+  @media (prefers-reduced-motion: reduce) { .spin, #rotate .phone { animation:none; } .bar i, #fs { transition:none; } }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="gate" class="screen">
+  <form class="card" id="form">
+    <h1>CS Party</h1>
+    <p>Mario Party rules, Counter-Strike everything. You're joining the real server from your browser.</p>
+    <div class="note" id="touch" hidden><b>On a phone:</b> play in landscape. Left thumb moves (and steers the menus), <b>Jump</b> picks and jumps. Graphics are turned down to run smoothly. A Bluetooth controller works too. Tip: add this page to your home screen for full screen.</div>
+    <label for="name">Name <input id="name" maxlength="31" autocomplete="nickname" required></label>
+    <button id="go" type="submit">Join</button>
+    <div class="bar"><i id="bar"></i></div>
+    <div id="status" role="status" aria-live="polite">First visit downloads about 45 MB of game data. After that it's saved in your browser.</div>
+    <div class="keys"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or move up/down and <b>Jump</b> to pick, <b>Use</b> to go back. Works with <b>Space/W/S/E</b>, a <b>controller</b> (stick or D-pad, A, B) or the <b>touch</b> stick. <b>/help</b> in chat for the rules. Click the game to capture the mouse, <b>Esc</b> for the menu.</div>
+  </form>
+</div>
+
+<div id="overlay" class="screen" hidden>
+  <div class="card" role="alertdialog" aria-labelledby="ov-title" aria-describedby="ov-text">
+    <h2 id="ov-title">Joining the party</h2>
+    <div class="spin" id="ov-spin" hidden></div>
+    <p id="ov-text" role="status" aria-live="polite"></p>
+    <button id="ov-rejoin" type="button" hidden>Rejoin</button>
+  </div>
+</div>
+
+<div id="pause" class="screen" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="pz-title">
+    <h2 id="pz-title">Menu</h2>
+    <p>The party keeps going while this is open.</p>
+    <button id="pz-resume" type="button">Back to the party</button>
+    <label for="pz-sens">Mouse sensitivity <output id="pz-sens-v"></output><input id="pz-sens" type="range" min="0.5" max="10" step="0.5"></label>
+    <label for="pz-vol">Volume <output id="pz-vol-v"></output><input id="pz-vol" type="range" min="0" max="1" step="0.05"></label>
+    <button id="pz-fs" type="button" class="alt">Fullscreen</button>
+    <div class="keys"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
+    <button id="pz-leave" type="button" class="alt">Leave the party</button>
+  </div>
+</div>
+
+<div id="rotate" class="screen" aria-live="polite"><div><div class="phone" aria-hidden="true"></div><p>Turn your phone sideways to play.</p></div></div>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
+
+<script src="fflate.js"></script>
+<script src="xash.js"></script>
+<script src="boot.js"></script>
+</body>
+</html>

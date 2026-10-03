@@ -1,0 +1,179 @@
+38a39
+> #define TASK_MAPOV  49000
+130c131,132
+< new c_turntime;
+---
+> new c_turntime, c_hudscale;
+> new bool:g_xhHidden[33];
+206a209
+> 	c_hudscale = register_cvar("csp_hud_scale", "2");   // client hud_scale pushed to humans (Xash3D browser clients; 0 = leave alone)
+572,573c575,578
+< 		server_print("[CSP] probe seat%d %s: alive=%d solid=%d onground=%d pos=%.0f %.0f %.0f", s, g_seatName[s], is_user_alive(id),
+< 			entity_get_int(id, EV_INT_solid), (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0, o[0], o[1], o[2]);
+---
+> 		new Float:v[3]; entity_get_vector(id, EV_VEC_velocity, v);
+> 		server_print("[CSP] probe seat%d %s: alive=%d solid=%d onground=%d frozen=%d maxspd=%.0f vel=%.0f %.0f clear=%d pos=%.0f %.0f %.0f", s, g_seatName[s], is_user_alive(id),
+> 			entity_get_int(id, EV_INT_solid), (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0, (entity_get_int(id, EV_INT_flags) & FL_FROZEN) != 0,
+> 			get_entvar(id, var_maxspeed), v[0], v[1], spot_clear(o), o[0], o[1], o[2]);
+741a747
+> 	g_xhHidden[id] = false;
+743a750
+> 	set_task(2.0, "task_hudscale", id);
+825a833,852
+> public task_hudscale(id)
+> {
+> 	new v = get_pcvar_num(c_hudscale);
+> 	if (v > 0 && is_user_connected(id)) client_cmd(id, "hud_scale %d", v);
+> }
+> 
+> // Crosshair is only shown to whoever is acting; everyone else watches the board without it
+> update_crosshair()
+> {
+> 	static msg; if (!msg) msg = get_user_msgid("HideWeapon");
+> 	for (new id = 1; id <= MaxClients; id++)
+> 	{
+> 		if (!is_user_connected(id) || is_user_bot(id)) continue;
+> 		new bool:hide = (g_state == ST_BOARD && seat_of(id) != g_cur);
+> 		if (hide == g_xhHidden[id] && !hide) continue;
+> 		g_xhHidden[id] = hide;
+> 		message_begin(MSG_ONE, msg, _, id); write_byte(hide ? (1 << 6) : 0); message_end();
+> 	}
+> }
+> 
+827a855
+> 	g_xhHidden[id] = false;
+1141c1169
+< enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE };
+---
+> enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE, CAM_MAP };
+1214a1243,1247
+> 	new bool:mapView = (g_camMode == CAM_MAP);
+> 	new Float:from[3], Float:bestFrac = -1.0, Float:best[3];
+> 	if (mapView) map_view_target(want, look);
+> 	else
+> 	{
+1216,1218c1249
+< 
+< 	new Float:from[3]; from = look; from[2] += 20.0;
+< 	new Float:bestFrac = -1.0, Float:best[3];
+---
+> 	from = look; from[2] += 20.0;
+1232a1264
+> 	}
+1272a1305,1387
+> // Overhead "whole board" view: camera straight above the board's centre, high enough to frame every space
+> map_view_target(Float:want[3], Float:look[3])
+> {
+> 	new Float:lo[2], Float:hi[2], Float:top = -9999.0;
+> 	lo[0] = lo[1] = 99999.0; hi[0] = hi[1] = -99999.0;
+> 	for (new n = 0; n < g_nodeCount; n++)
+> 	{
+> 		for (new k = 0; k < 2; k++) { if (g_nodePos[n][k] < lo[k]) lo[k] = g_nodePos[n][k]; if (g_nodePos[n][k] > hi[k]) hi[k] = g_nodePos[n][k]; }
+> 		if (g_nodePos[n][2] > top) top = g_nodePos[n][2];
+> 	}
+> 	new Float:cx = (lo[0] + hi[0]) / 2.0, Float:cy = (lo[1] + hi[1]) / 2.0;
+> 	new Float:span = floatmax(hi[0] - lo[0], hi[1] - lo[1]);
+> 	new Float:h = span * 0.62 + 250.0 + top;
+> 	if (h > 4000.0) h = 4000.0;
+> 	want[0] = cx; want[1] = cy; want[2] = h;
+> 	look[0] = cx + 2.0; look[1] = cy; look[2] = 0.0;
+> }
+> 
+> // Redrawn every second while the map view is up: heading arrows on every link, a column over each pawn
+> // in its seat colour, and a tall red column plus ring on the hostages
+> public task_map_overlay()
+> {
+> 	if (g_camMode != CAM_MAP || g_state != ST_BOARD) { remove_task(TASK_MAPOV); return; }
+> 	static const COL[SEATS][3] = { {80, 160, 255}, {255, 90, 90}, {90, 230, 120}, {255, 220, 70} };
+> 	new Float:a[3], Float:c[3], Float:d[3];
+> 	for (new n = 0; n < g_nodeCount; n++)
+> 	for (new k = 0; k < g_nodeNextN[n]; k++)
+> 	{
+> 		new m = g_nodeNext[n][k];
+> 		xs_vec_sub_simple(g_nodePos[m], g_nodePos[n], d); d[2] = 0.0;
+> 		new Float:len = vector_length(d); if (len < 1.0) continue;
+> 		new Float:ux = d[0] / len, Float:uy = d[1] / len;
+> 		new Float:tip[3]; tip[0] = g_nodePos[n][0] + ux * len * 0.62; tip[1] = g_nodePos[n][1] + uy * len * 0.62; tip[2] = g_nodePos[n][2] + 4.0;
+> 		new Float:ah = len > 140.0 ? 70.0 : len * 0.4;
+> 		a[0] = tip[0] - ux * ah + -uy * ah * 0.5; a[1] = tip[1] - uy * ah + ux * ah * 0.5; a[2] = tip[2];
+> 		c[0] = tip[0] - ux * ah - -uy * ah * 0.5; c[1] = tip[1] - uy * ah - ux * ah * 0.5; c[2] = tip[2];
+> 		beam2(a, tip, 255, 255, 255, 14); beam2(c, tip, 255, 255, 255, 14);
+> 	}
+> 	for (new q = 0; q < SEATS; q++)
+> 	{
+> 		new Float:o[3]; pawn_origin(q, o);
+> 		a = o; a[2] -= 30.0; c = o; c[2] += 160.0;
+> 		beam2(a, c, COL[q][0], COL[q][1], COL[q][2], 60);
+> 	}
+> 	a = g_nodePos[g_hostage]; c = a; c[2] += 400.0; a[2] += 2.0;
+> 	beam2(a, c, 255, 30, 30, 90);
+> 	for (new k = 0; k < 8; k++)
+> 	{
+> 		new Float:t0 = float(k) * 45.0, Float:t1 = float(k + 1) * 45.0;
+> 		a[0] = g_nodePos[g_hostage][0] + 90.0 * floatcos(t0, degrees); a[1] = g_nodePos[g_hostage][1] + 90.0 * floatsin(t0, degrees); a[2] = g_nodePos[g_hostage][2] + 4.0;
+> 		c[0] = g_nodePos[g_hostage][0] + 90.0 * floatcos(t1, degrees); c[1] = g_nodePos[g_hostage][1] + 90.0 * floatsin(t1, degrees); c[2] = a[2];
+> 		beam2(a, c, 255, 30, 30, 20);
+> 	}
+> 	new leg[160], ll = formatex(leg, charsmax(leg), "MAP: red column = hostages (%s). Arrows show the way.^n", g_nodeArea[g_hostage]);
+> 	new const CN[SEATS][] = { "Blue", "Red", "Green", "Yellow" };
+> 	for (new q = 0; q < SEATS; q++) ll += formatex(leg[ll], charsmax(leg) - ll, "%s=%s  ", CN[q], g_seatName[q]);
+> 	set_hudmessage(255, 255, 255, -1.0, 0.04, 0, 0.0, 1.2, 0.0, 0.0, -1);
+> 	ShowSyncHudMsg(0, g_hudSync2, "%s", leg);
+> }
+> 
+> beam2(const Float:a[3], const Float:b[3], r, g, bl, width)
+> {
+> 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+> 	write_byte(TE_BEAMPOINTS);
+> 	engfunc(EngFunc_WriteCoord, a[0]); engfunc(EngFunc_WriteCoord, a[1]); engfunc(EngFunc_WriteCoord, a[2]);
+> 	engfunc(EngFunc_WriteCoord, b[0]); engfunc(EngFunc_WriteCoord, b[1]); engfunc(EngFunc_WriteCoord, b[2]);
+> 	write_short(g_beamSpr); write_byte(0); write_byte(0);
+> 	write_byte(11);            // 1.1 s, redrawn every second
+> 	write_byte(width); write_byte(0);
+> 	write_byte(r); write_byte(g); write_byte(bl);
+> 	write_byte(230); write_byte(0);
+> 	message_end();
+> }
+> 
+> toggle_map_view()
+> {
+> 	if (g_camMode == CAM_MAP) { cam_shot(CAM_FOLLOW); remove_task(TASK_MAPOV); return; }
+> 	cam_shot(CAM_MAP);
+> 	remove_task(TASK_MAPOV);
+> 	set_task(1.0, "task_map_overlay", TASK_MAPOV, _, _, "b");
+> 	task_map_overlay();
+> }
+> 
+1320a1436
+> 	update_crosshair();
+2262a2379
+> 	menu_additem(m, g_camMode == CAM_MAP ? "\yMap overlay: ON \d(back to the action)" : "\wMap overlay \d(pieces, flow, hostages)", "96");
+2288c2405,2406
+< 		case 99: { set_task(spd(0.2), "flow_roll", TASK_FLOW); return PLUGIN_HANDLED; }
+---
+> 		case 96: { toggle_map_view(); show_turn_menu(s); return PLUGIN_HANDLED; }
+> 		case 99: { if (g_camMode == CAM_MAP) toggle_map_view(); set_task(spd(0.2), "flow_roll", TASK_FLOW); return PLUGIN_HANDLED; }
+3343a3462,3467
+> 	if (g_mg == MG_MAZE)
+> 	{
+> 		// the lobby is a huge room whose only exit is a gap in its far corner: line up in front of it, facing it
+> 		o[0] = g_zStart[1][0] - 70.0 - float(slot / 2) * 60.0;
+> 		o[1] = g_zStart[0][1] + 50.0 + float(slot % 2) * 60.0;
+> 	}
+3411a3536,3549
+> // A human on a race map must be able to run: not frozen, not crawling at menu speed, not dead on the start line.
+> race_unstick(s, id, Float:t)
+> {
+> 	static Float:lastFix[33];
+> 	if (!is_user_alive(id))
+> 	{
+> 		if (t > 1.5 && get_gametime() - lastFix[id] > 2.0) { lastFix[id] = get_gametime(); dbg("%s is dead in the race: respawning.", g_seatName[s]); rg_round_respawn(id); }
+> 		return;
+> 	}
+> 	if (g_navThawed[id] && !nav_open(id)) nav_end(id);
+> 	if ((entity_get_int(id, EV_INT_flags) & FL_FROZEN) && !g_navMenu[id]) { unfreeze(id); dbg("%s was frozen in the race: released.", g_seatName[s]); }
+> 	if (get_entvar(id, var_maxspeed) < 100.0 && !g_navMenu[id]) { rg_reset_maxspeed(id); dbg("%s was slowed in the race: restored.", g_seatName[s]); }
+> }
+> 
+3424a3563
+> 		if (is_user_connected(id) && !is_user_bot(id)) race_unstick(s, id, t);

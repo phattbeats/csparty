@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121411">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="art/favicon.svg" type="image/svg+xml">
+<link rel="alternate icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>CS Party</title>
+<style>
+  :root { --bg:#121411; --panel:#1a1d18; --line:#383d30; --text:#ddd7c4; --muted:#8d8876; --hud:#f2a33a; --err:#e2654c; color-scheme: dark; }
+  [hidden] { display:none !important; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow:hidden;
+    overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
+  input { -webkit-user-select:text; user-select:text; }
+  #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; display:block; background:#000; outline:none; }
+  .screen { position:fixed; inset:0; display:grid; place-items:center; padding:16px; z-index:2; }
+  #gate { background:var(--bg); }
+  #overlay { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
+  .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
+  h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
+  h2 { font-size:22px; }
+  p { margin:0; color:var(--muted); }
+  label { display:grid; gap:6px; font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); padding:9px 10px; }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--hud); outline-offset:2px; }
+  button { font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; padding:11px; border:0; background:var(--hud); color:#1a1408; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .bar { height:8px; background:var(--bg); border:1px solid var(--line); }
+  .bar i { display:block; height:100%; width:0; background:var(--hud); transition:width .2s; }
+  #status { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; color:var(--muted); min-height:1.4em; }
+  #status.err { color:var(--err); }
+  .note { font-size:13px; color:var(--hud); border:1px solid var(--line); padding:8px 10px; }
+  .keys { font-size:13px; color:var(--muted); border-top:1px solid var(--line); padding-top:10px; }
+  .keys b { color:var(--text); font-weight:600; }
+  #ov-text { font-family:ui-monospace, Menlo, monospace; font-size:13px; }
+  .spin { width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--hud); border-radius:50%; animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #toast { position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:4; background:rgba(26, 29, 24, .9); border:1px solid var(--line);
+    color:var(--text); font:600 13px system-ui, sans-serif; letter-spacing:.04em; padding:7px 14px; pointer-events:none; }
+  #fs { position:fixed; right:14px; bottom:64px; z-index:4; padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text);
+    border:1px solid var(--line); opacity:0; transition:opacity .25s; }
+  #fs.show, .touch #fs { opacity:1; }
+  .touch #fs { top:max(10px, env(safe-area-inset-top)); bottom:auto; right:auto; left:50%; transform:translateX(-50%); }
+  #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
+  #pause .card { gap:12px; }
+  #pause button.alt { background:transparent; color:var(--text); border:1px solid var(--line); }
+  #pause button.alt:hover, #pause button.alt:focus-visible { border-color:var(--hud); color:var(--hud); }
+  #pause label { grid-template-columns:1fr auto; align-items:center; }
+  #pause label input { grid-column:1 / -1; padding:0; accent-color:var(--hud); }
+  #pause output { color:var(--text); font-family:ui-monospace, Menlo, monospace; }
+  /* join screen: GoldSrc party-menu design (art drop, cs-party-design-v1), scoped to #gate */
+  #gate { display:block; overflow:auto; padding:34px 22px 28px; color:var(--cream); background:radial-gradient(ellipse at 48% 8%,#3d4430 0,#1a2017 45%,#101410 85%);
+    font:16px/1.45 Tahoma,Arial,sans-serif; -webkit-user-select:none; user-select:none; }
+  #gate h1, #gate h2, #gate p, #gate label, #gate input, #gate button { text-transform:none; letter-spacing:normal; }
+  #gate label, #gate p { color:inherit; font-size:inherit; gap:normal; display:revert; }   /* the in-game card styles stop here */
+  #gate .bar { height:8px; background:#11170f; border:1px solid #0a0e08; margin-top:13px; }
+  #gate .bar i { background:var(--amber); }
+  #gate #status { font:12.5px/1.4 "Courier New",monospace; color:#c4c9b2; margin:9px 0 0; min-height:1.4em; }
+  #gate #status.err { color:#ff8a6b; }
+  #gate .note { font-size:13px; color:var(--amber); border:1px solid #5c644a; padding:8px 10px; margin:0 0 14px; }
+  #gate .join-button:disabled { opacity:.6; cursor:wait; }
+  #gate{--bg:#101410;--surface:#292e22;--inset:#191e17;--amber:#f4a331;--cream:#efe5ca;--muted:#c0c4ac;--border-light:#737863;--border-dark:#0c100a;--char-color:#e6603f}
+  #gate *{box-sizing:border-box}
+  #gate [hidden]{display:none!important}
+  #gate{margin:0;padding:34px 22px 28px;color:var(--cream);background:radial-gradient(ellipse at 48% 8%,#3d4430 0,#1a2017 45%,var(--bg) 85%);font:16px/1.45 Tahoma,Arial,sans-serif;min-height:100vh}
+  #gate button,#gate input{font:inherit}
+  #gate button,#gate label{touch-action:manipulation}
+  #gate button{cursor:pointer}
+  #gate button:focus-visible,#gate input:focus-visible,#gate summary:focus-visible{outline:3px solid #fff2a8;outline-offset:4px}
+  #gate input[type=radio]:focus-visible+*{outline:3px solid #fff2a8;outline-offset:3px}
+  #gate .menu{max-width:1120px;margin:auto;padding:0 24px 19px;background:var(--surface);border:2px solid;border-color:var(--border-light) var(--border-dark) var(--border-dark) var(--border-light);box-shadow:0 0 0 1px #000,9px 13px 0 #0005,0 22px 80px #0007}
+  #gate .window-bar{display:flex;justify-content:space-between;gap:12px;margin:0 -24px;padding:9px 14px;border-bottom:1px solid #535a42;background:linear-gradient(90deg,#474e36,#2e3526);font:bold 12px/1.2 "Courier New",monospace;letter-spacing:1.6px;color:#e2e4ce}
+  #gate .window-bar>span:first-child{display:flex;align-items:center;gap:8px}
+  #gate .mini-die{display:inline-grid;place-items:center;width:19px;height:19px;background:var(--amber);color:#232419;border-radius:3px;font-size:17px;letter-spacing:0}
+  #gate .masthead{display:flex;align-items:center;gap:42px;padding:22px 4px 25px}
+  #gate .logo{width:270px;height:auto;filter:drop-shadow(0 5px 0 #0c10086b)}
+  #gate .intro{padding-top:3px}
+  #gate .eyebrow{font:bold 12px/1.3 "Courier New",monospace;letter-spacing:1.5px;color:var(--amber);margin:0 0 7px}
+  #gate h1{font:400 clamp(28px,3.2vw,38px)/1.06 Impact,"Arial Narrow",sans-serif;letter-spacing:1px;text-transform:uppercase;margin:0 0 9px}
+  #gate .intro>p:last-child{margin:0;color:var(--muted);font-size:14px}
+  #gate .layout{display:grid;grid-template-columns:minmax(0,1fr) 326px;gap:25px;align-items:start}
+  #gate .roster{margin:0;padding:0;border:0;min-width:0}
+  #gate .team-heading{display:flex;align-items:center;gap:12px;color:#f2af79;font:bold 13px/1 "Courier New",monospace;letter-spacing:1px;margin:1px 0 12px}
+  #gate .team-line{flex:1;height:1px;background:#6c5840}
+  #gate .team-short{font-size:12px;color:#d4bc96}
+  #gate .team-heading.ct{margin-top:21px;color:#a9c9e8}
+  #gate .ct .team-line{background:#526676}
+  #gate .ct .team-short{color:#adc4d4}
+  #gate .character-row{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+  #gate .character-tile{display:flex;flex-direction:column;position:relative;min-width:0;cursor:pointer;background:#171d16;border:2px solid;border-color:#697059 #0d110b #0d110b #697059;box-shadow:2px 3px 0 #11150b;transition:transform .12s ease,filter .12s ease}
+  #gate .character-tile:hover{transform:translateY(-3px);filter:brightness(1.1)}
+  #gate .character-tile:has(input:checked){outline:3px solid var(--amber);outline-offset:1px;border-color:#f5d790 #5c3c12 #5c3c12 #f5d790;box-shadow:4px 5px 0 #14140b;transform:translateY(-3px)}
+  #gate .character-tile:has(input:focus-visible){outline:3px solid #fff2a8;outline-offset:4px}
+  #gate .character-tile input,#gate .random-tile input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+  #gate .card-art{position:relative;background:radial-gradient(circle at 55% 40%,color-mix(in srgb,var(--char-color) 30%,#293025) 0,#252c20 65%,#182014 100%);border-bottom:1px solid #0d140a;aspect-ratio:1;overflow:hidden}
+  #gate .card-art:after{content:"";position:absolute;inset:0;box-shadow:inset 0 0 0 1px #b8c09320;pointer-events:none}
+  #gate .portrait{background-image:url("art/character-atlas.webp");background-size:400% 200%;background-repeat:no-repeat;background-position:var(--atlas-x) var(--atlas-y);aspect-ratio:1;width:100%;image-rendering:auto}
+  #gate .card-art .portrait{position:relative;z-index:1}
+  #gate .player-tag{position:absolute;right:5px;top:5px;background:var(--amber);border:1px solid #fde2a0;color:#252419;font:bold 12px/1 "Courier New",monospace;padding:4px 5px;z-index:2;visibility:hidden}
+  #gate .character-tile:has(input:checked) .player-tag{visibility:visible}
+  #gate .card-caption{padding:10px 7px 9px;min-height:64px;display:flex;align-items:center;gap:6px;background:linear-gradient(#363c2b,#293122);flex:1}
+  #gate .badge{display:inline-grid;place-items:center;flex-shrink:0;border-radius:50%;width:29px;height:29px;background:var(--char-color);border:2px solid #ffffff50;box-shadow:0 3px 0 #0008,inset 0 -3px 0 #0002;color:#171c16;font:bold 10px/1 Tahoma,sans-serif}
+  #gate .character-name{font-size:12px;font-weight:bold;line-height:1.25;overflow-wrap:anywhere;hyphens:none}
+  #gate .random-tile{display:flex;align-items:center;gap:14px;position:relative;min-height:67px;margin-top:21px;padding:10px 15px;cursor:pointer;background:linear-gradient(100deg,#343c2c,#252d20);border:2px solid;border-color:#778163 #10170c #10170c #778163;box-shadow:2px 3px 0 #11150b}
+  #gate .random-tile:has(input:checked){outline:3px solid var(--amber);outline-offset:1px}
+  #gate .random-tile:has(input:focus-visible){outline:3px solid #fff2a8;outline-offset:4px}
+  #gate .random-icon{font:bold 29px/1 "Courier New",monospace;border:2px solid #f2daa6;border-radius:7px;width:40px;height:40px;display:grid;place-items:center;background:var(--amber);color:#252516;transform:rotate(-7deg);box-shadow:3px 3px 0 #12180f}
+  #gate .random-copy{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  #gate .random-copy strong{font:400 23px/1 Impact,"Arial Narrow",sans-serif;letter-spacing:.5px;text-transform:uppercase}
+  #gate .random-copy>span{font-size:13px;color:var(--muted)}
+  #gate .random-check{margin-left:auto;font:bold 12px "Courier New",monospace;color:#292717;padding:4px 7px;background:var(--amber);visibility:hidden}
+  #gate .random-tile:has(input:checked) .random-check{visibility:visible}
+  #gate .bevel{border:2px solid;border-color:#7d846b #11160d #11160d #7d846b;box-shadow:3px 4px 0 #14190e}
+  #gate .detail{background:var(--inset);--char-color:#e6603f}
+  #gate .detail-bar{display:flex;justify-content:space-between;padding:9px 12px;font:bold 12px/1 "Courier New",monospace;letter-spacing:1px;background:#414934;color:#e5e7d7;border-bottom:1px solid #0d130a}
+  #gate .preview-stage{height:204px;position:relative;overflow:hidden;background:linear-gradient(0deg,#222b1d,#151c15);border-bottom:2px solid #515a40}
+  #gate .preview-halo{position:absolute;width:190px;height:190px;border-radius:50%;border:12px solid color-mix(in srgb,var(--char-color) 55%,#3b402d);background:color-mix(in srgb,var(--char-color) 19%,#273022);left:50%;top:20px;transform:translateX(-50%);box-shadow:0 0 0 2px #0a100b,0 0 0 4px #565d4166}
+  #gate .preview-portrait{position:absolute;width:204px;height:204px;bottom:0;left:50%;transform:translateX(-50%);z-index:1}
+  #gate .preview-badge{position:absolute;bottom:12px;left:13px;z-index:2;width:39px;height:39px;font-size:12px}
+  #gate .preview-random{position:absolute;left:50%;top:34px;transform:translateX(-50%) rotate(-8deg);color:var(--amber);font:bold 128px/1 Impact,sans-serif;text-shadow:5px 5px #0f190d}
+  #gate .preview-random[hidden]{display:none}
+  #gate .detail-copy{padding:17px 16px 16px}
+  #gate .detail h2{font:400 27px/1.05 Impact,"Arial Narrow",sans-serif;letter-spacing:.5px;text-transform:uppercase;margin:0 0 17px;min-height:29px}
+  #gate .detail .eyebrow{color:color-mix(in srgb,var(--char-color) 70%,#fff2cf);font-size:11px}
+  #gate .die-heading,#gate .name-label{display:block;font:bold 12px/1.2 "Courier New",monospace;letter-spacing:1px;color:#c9ccb7;margin-bottom:9px}
+  #gate .die-faces{display:flex;gap:7px;min-height:43px}
+  #gate .die-face{display:grid;place-items:center;flex:1;height:39px;min-width:0;max-width:44px;border:2px solid;border-color:#fff4d4 #9e9375 #9e9375 #fff4d4;background:linear-gradient(135deg,#f8eed7,#d3c8a7);color:#262b20;font:bold 25px/1 "Courier New",monospace;border-radius:4px;box-shadow:2px 3px 0 #0008}
+  #gate .die-face.zero{color:#776f53}
+  #gate .summary{font-size:14px;line-height:1.4;margin:12px 0 19px;min-height:39px;color:#dce0ca}
+  #gate .name-label{margin-top:0}
+  #gate #name{width:100%;color:var(--cream);background:#11170f;border:2px solid;border-color:#0a0e08 #677157 #677157 #0a0e08;padding:10px 11px;font-size:16px;border-radius:0}
+  #gate #name::placeholder{color:#9ca18b}
+  #gate .join-button{width:100%;display:flex;justify-content:center;align-items:center;position:relative;margin-top:13px;padding:13px 26px;background:linear-gradient(#ffc761,#f4a331);color:#272716;font:400 23px/1 Impact,"Arial Narrow",sans-serif;letter-spacing:1px;border:2px solid;border-color:#ffdf94 #98601e #98601e #ffdf94;box-shadow:0 4px 0 #070d06;transition:transform .1s}
+  #gate .join-button:hover{filter:brightness(1.08)}
+  #gate .join-button:active{transform:translateY(3px);box-shadow:0 1px 0 #070d06}
+  #gate .join-key{position:absolute;right:10px;font:20px/1 "Courier New",monospace;color:#62471e}
+  #gate .demo-status{font-size:13px;color:#ffe0a1;margin:13px 0 0}
+  #gate .demo-status:empty{display:none}
+  #gate .footer{border-top:1px solid #5c644a;margin-top:25px;padding:14px 2px 0;font-size:12px;color:#c4c9b2}
+  #gate .footer>p{margin:0 0 10px;display:flex;align-items:baseline;gap:8px}
+  #gate .download-symbol{color:var(--amber);font:bold 16px "Courier New",monospace}
+  #gate .footer details{margin-top:7px}
+  #gate .footer summary{cursor:pointer;color:#dce0cb;display:list-item;font-size:13px}
+  #gate .footer details p{font-size:14px;line-height:1.65;color:#c4c9b2;margin:10px 0 0;max-width:850px}
+  #gate .sr-only{position:absolute!important;clip:rect(0,0,0,0);clip-path:inset(50%);width:1px;height:1px;overflow:hidden;white-space:nowrap}
+  #gate .no-script{padding:12px;color:var(--amber)}
+  @media(min-width:1250px){#gate .character-name{font-size:13px}
+  #gate .badge{width:31px;height:31px}
+  #gate .card-caption{min-height:67px}
+  }
+  @media(max-width:900px){#gate{padding:20px 15px}
+  #gate .menu{padding-left:17px;padding-right:17px}
+  #gate .window-bar{margin-left:-17px;margin-right:-17px}
+  #gate .masthead{gap:24px}
+  #gate .logo{width:220px}
+  #gate .layout{grid-template-columns:minmax(0,1fr) 280px;gap:18px}
+  #gate .character-row{gap:8px}
+  #gate .card-caption{flex-direction:column;align-items:center;text-align:center;gap:7px;min-height:81px}
+  #gate .character-name{font-size:12px}
+  #gate .detail-copy{padding:16px 12px}
+  #gate .detail h2{font-size:25px}
+  #gate .die-faces{gap:5px}
+  #gate .die-face{font-size:23px}
+  }
+  @media(max-width:690px){#gate{padding:10px}
+  #gate .menu{padding:0 15px 17px}
+  #gate .window-bar{margin:0 -15px}
+  #gate .masthead{gap:12px;padding:21px 0;align-items:center}
+  #gate .logo{width:clamp(135px,29vw,190px)}
+  #gate .intro .eyebrow{font-size:10px;letter-spacing:.6px}
+  #gate h1{font-size:25px;line-height:1.15}
+  #gate .intro>p:last-child{font-size:12px;line-height:1.4}
+  #gate .layout{grid-template-columns:1fr;gap:22px}
+  #gate .character-row{gap:8px}
+  #gate .card-caption{flex-direction:row;min-height:62px;padding:8px 5px;gap:5px;text-align:left}
+  #gate .character-name{font-size:12px}
+  #gate .badge{width:25px;height:25px;font-size:9px}
+  #gate .detail{display:grid;grid-template-columns:35% 65%}
+  #gate .detail-bar{grid-column:1/-1}
+  #gate .preview-stage{height:auto;min-height:255px;border-bottom:0;border-right:1px solid #515a40}
+  #gate .preview-halo{width:150px;height:150px;top:34px;border-width:9px}
+  #gate .preview-portrait{width:220px;height:220px;bottom:auto;top:25px}
+  #gate .preview-random{top:58px;font-size:110px}
+  #gate .preview-badge{bottom:14px}
+  #gate .detail-copy{padding:17px 15px}
+  #gate .detail h2{font-size:25px}
+  #gate .summary{min-height:0}
+  #gate .footer{margin-top:19px}
+  #gate .random-copy{gap:8px}
+  }
+  @media(max-width:430px){#gate .masthead{flex-direction:column;align-items:center;text-align:center;gap:14px}
+  #gate .logo{width:210px}
+  #gate .intro>p:last-child{font-size:13px}
+  #gate .intro .eyebrow{font-size:11px}
+  #gate h1{font-size:29px}
+  #gate .character-row{gap:6px}
+  #gate .card-caption{flex-direction:column;text-align:center;min-height:85px;gap:6px}
+  #gate .character-name{font-size:11px}
+  #gate .team-heading{font-size:12px;letter-spacing:.5px}
+  #gate .detail{display:block}
+  #gate .preview-stage{height:170px;min-height:0;border-right:0;border-bottom:2px solid #515a40}
+  #gate .preview-halo{top:14px;width:165px;height:165px}
+  #gate .preview-portrait{width:170px;height:170px;top:auto;bottom:0}
+  #gate .preview-random{top:16px}
+  #gate .detail-copy{padding:17px}
+  #gate .detail h2{font-size:28px}
+  #gate .die-face{height:43px;font-size:27px;max-width:none}
+  #gate .random-copy>span{font-size:12px}
+  #gate .window-bar{letter-spacing:1px;font-size:11px}
+  }
+  @media(prefers-reduced-motion:reduce){#gate *,#gate *:before,#gate *:after{transition:none!important;animation:none!important}
+  }
+  #gate h1, #gate h2 { color:var(--cream); }
+  /* phones held sideways (how the game is played): keep the roster in the first screen */
+  @media (max-height:500px) and (orientation:landscape) {
+    #gate { padding:8px 10px; } #gate .masthead { padding:8px 0 10px; gap:16px; } #gate .logo { width:120px; }
+    #gate h1 { font-size:22px; margin:0; } #gate .intro > p:last-child { display:none; } #gate .intro .eyebrow { margin-bottom:3px; }
+    #gate .note { font-size:11px; padding:5px 8px; margin-bottom:8px; } }
+  /* theme music: mute + volume, right end of the join screen's title bar */
+  #music { display:flex; align-items:center; gap:8px; margin:-5px 0; font:bold 12px/1 "Courier New",monospace; color:#e2e4ce; }
+  #gate #music button { width:30px; height:22px; padding:0; display:grid; place-items:center; background:#f4a331; color:#232419; border:1px solid #ffdf94; font:14px/1 system-ui, sans-serif; }
+  #gate #music.muted button { background:#191e17; color:#c0c4ac; border-color:#5c644a; }
+  #music input { width:110px; accent-color:#f4a331; margin:0; }
+  #music output { min-width:4ch; text-align:right; }
+  #music.muted input, #music.muted output { opacity:.45; }
+  @media (max-width:430px) { #music input { width:72px; } }
+  #rotate { display:none; z-index:5; background:var(--bg); text-align:center; }
+  #rotate .phone { width:46px; height:78px; border:3px solid var(--hud); border-radius:9px; margin:0 auto 18px; animation:turn 1.6s ease-in-out infinite; }
+  @keyframes turn { 0%, 30% { transform:rotate(0); } 60%, 100% { transform:rotate(-90deg); } }
+  @media (orientation: portrait) and (pointer: coarse) { .ingame #rotate { display:grid; } }   /* the name form is fine upright */
+  @media (prefers-reduced-motion: reduce) { .spin, #rotate .phone { animation:none; } .bar i, #fs { transition:none; } }
+</style>
+</head>
+<body>
+<canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+
+<div id="gate" class="screen">
+<main class="menu" id="cs-party">
+  <div class="window-bar"><span><span class="mini-die" aria-hidden="true">&#8281;</span> CS PARTY</span><div id="music" role="group" aria-label="Theme music"><button id="music-mute" type="button" aria-pressed="false" aria-label="Mute music">&#9835;</button><label for="music-vol" class="sr-only">Music volume</label><input id="music-vol" type="range" min="0" max="1" step="0.05"><output id="music-vol-v"></output></div></div>
+  <header class="masthead">
+    <img class="logo" src="art/logo.webp" alt="CS Party" width="720" height="360">
+    <div class="intro"><p class="eyebrow">CHARACTER SELECT</p><h1>Pick your character.</h1><p>Each character has a different die.</p></div>
+  </header>
+  <div class="note" id="touch" hidden><b>On a phone:</b> play in landscape. Left thumb moves (and steers the menus), <b>Jump</b> picks and jumps. Graphics are turned down to run smoothly. A Bluetooth controller works too. Tip: add this page to your home screen for full screen.</div>
+  <form id="form">
+    <div class="layout">
+      <fieldset class="roster" id="chars"><legend class="sr-only">Pick your character</legend><div id="char-grid"></div></fieldset>
+      <section class="detail bevel" aria-label="Selected character">
+        <div class="detail-bar"><span>YOUR CHARACTER</span><span id="detail-team">T</span></div>
+        <div class="preview-stage"><div class="preview-halo" aria-hidden="true"></div><div class="portrait preview-portrait" id="preview-portrait" aria-hidden="true"></div><div class="preview-random" id="preview-random" hidden aria-hidden="true">?</div><span class="badge preview-badge" id="preview-badge" aria-hidden="true">PX</span></div>
+        <div class="detail-copy"><p class="eyebrow" id="character-style">THE CLASSIC</p><h2 id="character-name">Phoenix Connexion</h2>
+          <div class="die-heading">CHARACTER DIE</div><div id="die-faces" class="die-faces" role="list" aria-label="Six equally likely die faces"></div>
+          <p class="summary" id="character-summary"></p>
+          <div class="sr-only" id="char-info" role="status" aria-live="polite" aria-atomic="true"></div>
+          <label class="name-label" for="name">YOUR NAME</label><input type="text" id="name" placeholder="Player name" required maxlength="31" autocomplete="nickname">
+          <button class="join-button" id="go" type="submit">JOIN THE PARTY<span class="join-key" aria-hidden="true">&#8629;</span></button>
+          <div class="bar"><i id="bar"></i></div>
+          <div id="status" role="status" aria-live="polite">First visit downloads about 47 MB. After that, it's cached in your browser.</div>
+        </div>
+      </section>
+    </div>
+  </form>
+  <footer class="footer"><p><span class="download-symbol" aria-hidden="true">&#8595;</span> First visit downloads about 47 MB. After that, it's cached in your browser.</p><details><summary>Controls &amp; how to play</summary><p>On your turn, <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or move up/down and <b>Jump</b> to pick, <b>Use</b> to go back. Keyboard: Space / W / S / E. Controller: stick or D-pad, A, B. Touch: on-screen stick. Type <b>/help</b> in chat for the rules. Click the game to capture the mouse; <b>Esc</b> opens the menu.</p></details></footer>
+</main>
+</div>
+
+<div id="overlay" class="screen" hidden>
+  <div class="card" role="alertdialog" aria-labelledby="ov-title" aria-describedby="ov-text">
+    <h2 id="ov-title">Joining the party</h2>
+    <div class="spin" id="ov-spin" hidden></div>
+    <p id="ov-text" role="status" aria-live="polite"></p>
+    <button id="ov-rejoin" type="button" hidden>Rejoin</button>
+  </div>
+</div>
+
+<div id="pause" class="screen" hidden>
+  <div class="card" role="dialog" aria-modal="true" aria-labelledby="pz-title">
+    <h2 id="pz-title">Menu</h2>
+    <p>The party keeps going while this is open.</p>
+    <button id="pz-resume" type="button">Back to the party</button>
+    <label for="pz-sens">Mouse sensitivity <output id="pz-sens-v"></output><input id="pz-sens" type="range" min="0.5" max="10" step="0.5"></label>
+    <label for="pz-vol">Volume <output id="pz-vol-v"></output><input id="pz-vol" type="range" min="0" max="1" step="0.05"></label>
+    <label for="pz-music">Music <output id="pz-music-v"></output><input id="pz-music" type="range" min="0" max="1" step="0.05"></label>
+    <button id="pz-fs"type="button" class="alt">Fullscreen</button>
+    <div class="keys"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
+    <button id="pz-leave" type="button" class="alt">Leave the party</button>
+  </div>
+</div>
+
+<div id="rotate" class="screen" aria-live="polite"><div><div class="phone" aria-hidden="true"></div><p>Turn your phone sideways to play.</p></div></div>
+
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
+
+<script src="fflate.js"></script>
+<script src="xash.js"></script>
+<script src="boot.js?v=0.4.12"></script>
+</body>
+</html>
