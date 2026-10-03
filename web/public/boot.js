@@ -186,7 +186,8 @@
         watch.sockets.delete(this);
         console.log(`[watch] relay socket closed (${e.code} ${e.reason || ""})`);
         // the relay turns a refused connection into a close code, so the reason can be told apart
-        if (REFUSED[e.code]) lost(REFUSED[e.code]);
+        // fatal while joining, or when it was the last socket; an extra socket refused mid-game isn't the party ending
+        if (REFUSED[e.code] && (!watch.joined || watch.sockets.size === 0)) lost(REFUSED[e.code]);
         else if (e.code === 1006 && !watch.joined && performance.now() - watch.since < 3000) {
           lost(keyQuery ? "The party key was refused, or the relay is full." : "The relay refused the connection. The link may need a party key.");
         } else if (watch.sockets.size === 0 && watch.state !== 0) lost(e.code === 1001 ? "The party server is restarting. Rejoin in a few seconds." : "The connection to the party server dropped.");
@@ -361,6 +362,14 @@
     if (pause.hidden) return;
     pause.hidden = true; $("canvas").focus();
     gamePrev = true;   // a Start/Back press that closed the menu mustn't reopen it from padGame
+    // the A or B press that closed the menu is still down: the game would read it as a fresh jump/use
+    // (picking a turn-menu item, or "Keep the money"). Hide whatever is held until it's let go.
+    const pad = [...(realPads?.() || [])].find(Boolean);
+    padHeld = new Set(); stickHeld = new Set();
+    if (pad) {
+      pad.buttons.forEach((b, i) => { if (b.pressed) padHeld.add(i); });
+      pad.axes.forEach((v, i) => { if (Math.abs(v) > 0.3) stickHeld.add(i); });
+    }
     // a click may take the mouse straight back; a key press isn't allowed to
     const r = fromClick ? $("canvas").requestPointerLock?.() : null;
     if (!fromClick) toast("Click the game to take the mouse back.", 3000);
@@ -421,12 +430,22 @@
   // In game, Back and Start are ours too (they open this menu): the engine binds Back to "pause", which
   // would freeze the server for everyone.
   const UP = { pressed: false, touched: false, value: 0 };
+  let padHeld = new Set(), stickHeld = new Set();
   if (realPads) navigator.getGamepads = => {
     const pads = realPads();
     if (!engine) return pads;   // join screen
     const t = performance.now(), rest = !pause.hidden;
-    return [...pads].map((p) => p && { id: p.id, index: p.index, mapping: p.mapping, connected: p.connected, timestamp: rest ? t : p.timestamp,
-      axes: rest ? p.axes.map(() => 0) : p.axes, buttons: [...p.buttons].map((b, i) => (rest || i === 8 || i === 9 ? UP : b)) });
+    return [...pads].map((p) => p && { id: p.id, index: p.index, mapping: p.mapping, connected: p.connected, timestamp: rest || padHeld.size || stickHeld.size ? t : p.timestamp,
+      axes: p.axes.map((v, i) => {
+        if (rest) return 0;
+        if (stickHeld.has(i)) { if (Math.abs(v) > 0.3) return 0; stickHeld.delete(i); }
+        return v;
+      }),
+      buttons: [...p.buttons].map((b, i) => {
+        if (rest || i === 8 || i === 9) return UP;
+        if (padHeld.has(i)) { if (b.pressed) return UP; padHeld.delete(i); }
+        return b;
+      }) });
   };
   // controller in game: Start or Back opens the menu
   let gamePrev = true;

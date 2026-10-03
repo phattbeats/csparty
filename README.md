@@ -93,9 +93,9 @@ Remote: `RCON_PASSWORD=... tools/rcon.py csp_start` (set `rcon_password` on the 
 | `csp_turns` | 15 | |
 | `csp_startmoney` | 800 | pistol-round money |
 | `csp_hostage_cost` | 5000 | price of a star |
-| `csp_blue` / `csp_red` | 750 / 750 | space payouts |
-| `csp_mg_win` | 2500 | minigame win |
-| `csp_loss_base` / `_step` / `_cap` | 250 / 250 / 1250 | CS-style loss bonus |
+| `csp_blue` / `csp_red` | 500 / 750 | space payouts |
+| `csp_mg_win` | 1500 | minigame win |
+| `csp_loss_base` / `_step` / `_cap` | 200 / 200 / 800 | CS-style loss bonus |
 | `csp_trap` | 1500 | C4 trap payout |
 | `csp_overtime` | 3 | last N turns pay double |
 | `csp_awards` | 1 | 0 off, 1 two announced bonus stars, 2 classic hidden three, 3 two announced cash prizes |

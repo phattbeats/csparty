@@ -59,6 +59,7 @@ const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dr
 const server = http.createServer((req, res) => {
   let url;
   try { url = decodeURIComponent((req.url || "/").split("?")[0]); } catch { res.writeHead(400).end(); return; }
+  if (url.includes("\0")) { res.writeHead(400).end(); return; }   // fs.stat throws synchronously on a NUL: one request took the relay down
   if (url === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     res.end(JSON.stringify({ ok: true, ...stats, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
@@ -110,7 +111,8 @@ const wss = new WebSocketServer({ server, path: "/relay", maxPayload: 64 * 1024,
 
 let seq = 0;
 wss.on("connection", (ws, req) => {
-  if (req.refuse) { log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
+  // a refused socket still gets an error listener: one malformed frame on it was an unhandled error that killed the relay
+  if (req.refuse) { ws.on("error", => {}); log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
   const id = ++seq, who = clientIp(req);
   perIp.set(who, (perIp.get(who) || 0) + 1);
   stats.peers++; stats.totalPeers++;
@@ -167,6 +169,9 @@ const shutdown = (sig) => {
   setTimeout(() => process.exit(0), 3000).unref();
 };
 process.on("SIGTERM", => shutdown("SIGTERM"));
+// Last resort: one bad request must not drop every player in the party. Log it and keep relaying.
+process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
+server.on("clientError", (e, sock) => { try { sock.destroy(); } catch {} });
 process.on("SIGINT", => shutdown("SIGINT"));
 
 server.listen(PORT, => log(`CS Party relay: http://0.0.0.0:${PORT}  ->  ${GAME_HOST}:${GAME_PORT}  (root ${ROOT})${KEY ? "  [party key on]" : ""}`));
