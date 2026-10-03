@@ -243,6 +243,7 @@ public plugin_init()
 	register_srvcmd("csp_state", "cmd_state");
 	register_srvcmd("csp_spec", "cmd_spec");
 	register_srvcmd("csp_probe", "cmd_probe");
+	register_srvcmd("csp_hudprobe", "cmd_hudprobe");   // dev: HUD-hide bits, suit and observer state per player
 	register_srvcmd("csp_nocam", "cmd_nocam");
 	register_srvcmd("csp_mapview", "cmd_mapview");   // dev: toggle the map overlay without a turn menu; "csp_mapview v" lists what's sent
 	register_srvcmd("csp_force_mg", "cmd_force_mg");
@@ -600,6 +601,19 @@ public mh_board(id, m, item)
 	return PLUGIN_HANDLED;
 }
 public cmd_stop() { match_abort(); return PLUGIN_HANDLED; }
+
+public cmd_hudprobe()
+{
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id)) continue;
+		new nm[32]; get_user_name(id, nm, charsmax(nm));
+		server_print("[CSP] hud %s: state %d alive %d hide %d clienthide %d suit %d iuser1 %d", nm, g_state, is_user_alive(id),
+			get_member(id, m_iHideHUD), get_member(id, m_iClientHideHUD), (get_entvar(id, var_weapons) & (1 << 31)) ? 1 : 0,
+			get_entvar(id, var_iuser1));
+	}
+	return PLUGIN_HANDLED;
+}
 
 public cmd_probe()
 {
@@ -1152,6 +1166,11 @@ seat_settle(id)
 	if (get_member(id, m_iJoiningState) == JOINED && get_member(id, m_iMenu) != Menu_ChooseTeam) return;
 	dbg("%n was still joining (state %d, menu %d): settled.", id, get_member(id, m_iJoiningState), get_member(id, m_iMenu));
 	set_member(id, m_iJoiningState, JOINED); set_member(id, m_iMenu, Menu_OFF);
+	// Skipping the menus skips GetIntoGame, which is what clears m_bJustConnected. While that's set, every
+	// spawn skips PlayerSpawn's equip, and that's where the HEV suit bit comes from: no suit, and the client
+	// draws no health, armor, money, timer, radar or ammo (the crosshair stays) until they rejoin.
+	set_member(id, m_bJustConnected, false);
+	if (is_user_alive(id)) set_entvar(id, var_weapons, get_entvar(id, var_weapons) | (1 << 31));   // WEAPON_SUIT
 	if (is_user_alive(id) && !g_navThawed[id]) rg_reset_maxspeed(id);
 }
 
@@ -1496,6 +1515,22 @@ cam_step(Float:dt)
 	new Float:a = g_camSnap ? 1.0 : ease(0.16, dt), Float:b = g_camSnap ? 1.0 : ease(0.22, dt);
 	for (new k = 0; k < 3; k++) { g_camPos[k] += (want[k] - g_camPos[k]) * a; g_camLook[k] += (look[k] - g_camLook[k]) * b; }
 	g_camSnap = false;
+	// The eased path between two clear spots can cut through a wall or out of the map, and from inside solid
+	// or the void the engine draws nothing: the browser shows black there. Keep the camera on the pawn's side.
+	if (!mapView)
+	{
+		new tr = create_tr2();
+		engfunc(EngFunc_TraceLine, from, g_camPos, IGNORE_MONSTERS, 0, tr);
+		new Float:frac; get_tr2(tr, TR_flFraction, frac);
+		if (frac < 1.0)
+		{
+			new Float:endp[3]; get_tr2(tr, TR_vecEndPos, endp);
+			xs_vec_sub_simple(from, endp, d); l = vector_length(d);
+			if (l > 1.0) for (new k = 0; k < 3; k++) endp[k] += d[k] / l * 10.0;
+			g_camPos = endp;
+		}
+		free_tr2(tr);
+	}
 
 	new Float:dir[3], Float:ang[3];
 	xs_vec_sub_simple(g_camLook, g_camPos, dir);
