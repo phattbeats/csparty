@@ -17,19 +17,21 @@ import crypto from "node:crypto";
 import http from "node:http";
 import dgram from "node:dgram";
 import fs from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { WebSocketServer } from "ws";
 
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
 const PORT = +arg("--port", process.env.PORT || 8080);
 const [GAME_HOST, GAME_PORT] = arg("--game", process.env.GAME || "127.0.0.1:27015").split(":");
+const GAME_IS_IP = net.isIP(GAME_HOST) !== 0;
 const ROOT = path.resolve(arg("--root", process.env.ROOT || "./public"));
 const MAX_PEERS = +(process.env.MAX_PEERS || 32);
 const MAX_PER_IP = +(process.env.MAX_PER_IP || 6);
 const IDLE_MS = +(process.env.IDLE_SECS || 120) * 1000;
 const BACKLOG_MAX = 512 * 1024;   // bytes queued to a slow browser before we start dropping server packets
 const KEY = arg("--key", process.env.PARTY_KEY || "");
-const PROTECTED = new Set(["/gamedata.zip"]);
+const PROTECTED_FILES = new Set([path.join(ROOT, "gamedata.zip")]);
 const keyOk = (reqUrl) => {
   if (!KEY) return true;
   let q; try { q = new URL(reqUrl || "/", "http://x").searchParams.get("key") || ""; } catch { return false; }
@@ -44,7 +46,8 @@ let blackholeUntil = 0;
 // X-Forwarded-For only means something behind your own reverse proxy (SWAG etc.). TRUST_PROXY=1 there;
 // exposed directly, a client could forge it to dodge MAX_PER_IP.
 const TRUST_PROXY = process.env.TRUST_PROXY === "1";
-const clientIp = (req) => (TRUST_PROXY && req.headers["x-forwarded-for"]?.split(",")[0].trim()) || req.socket.remoteAddress;
+// Behind Cloudflare the first X-Forwarded-For entry is whatever the client sent; CF-Connecting-IP isn't.
+const clientIp = (req) => (TRUST_PROXY && (req.headers["cf-connecting-ip"] || req.headers["x-forwarded-for"]?.split(",")[0].trim())) || req.socket.remoteAddress;
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/wasm",
@@ -69,17 +72,20 @@ const server = http.createServer((req, res) => {
   if (req.method !== "GET" && req.method !== "HEAD") { res.writeHead(405, { Allow: "GET, HEAD" }).end(); return; }
   const file = path.join(ROOT, url === "/" ? "index.html" : url);
   if (!file.startsWith(ROOT + path.sep) && file !== ROOT) { res.writeHead(403).end(); return; }
-  if (PROTECTED.has(url) && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
+  // check the file actually served: "//gamedata.zip" or "/x/..%2Fgamedata.zip" resolve to it too
+  const isProtected = PROTECTED_FILES.has(file);
+  if (isProtected && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("not found"); return; }
     const ext = path.extname(file);
     // ETag lets the page keep game data in its own cache and check it with one HEAD request
     const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
     const headers = { "Content-Type": TYPES[ext] || "application/octet-stream", "Content-Length": st.size, ETag: etag,
-      // engine files are immutable per deploy; pages and scripts revalidate
+      // everything revalidates by ETag (a 304 is cheap): fixed-name engine files cached for a week could pair
+      // a new xash.js with an old xash.wasm after an engine rebuild
       // the key-protected game data is Valve's content: never on a shared cache (Cloudflare kept serving a
       // week-old copy after updates). Browsers keep it in their own Cache Storage, checked by ETag.
-      "Cache-Control": PROTECTED.has(url) ? "private, no-cache" : [".zip", ".wasm", ".so", ".pk3"].includes(ext) ? "public, max-age=604800" : "no-cache" };
+      "Cache-Control": isProtected ? "private, no-cache" : "no-cache" };
     if (req.headers["if-none-match"] === etag) { res.writeHead(304, { ETag: etag }).end(); return; }
     res.writeHead(200, headers);
     if (req.method === "HEAD") { res.end(); return; }
@@ -117,8 +123,9 @@ wss.on("connection", (ws, req) => {
     log(`[${id}] closed: ${why} (${up} up / ${down} down${dropped ? ` / ${dropped} dropped` : ""})`);
   };
 
-  udp.on("message", (msg) => {
+  udp.on("message", (msg, from) => {
     if (closed || ws.readyState !== ws.OPEN) return;
+    if (GAME_IS_IP && (from.address !== GAME_HOST || from.port !== +GAME_PORT)) return;   // only the game server talks to browsers
     if (blackholeUntil && Date.now() < blackholeUntil) { dropped++; return; }
     // UDP semantics end to end: a browser that can't keep up loses packets instead of growing a queue
     if (ws.bufferedAmount > BACKLOG_MAX) { dropped++; stats.dropped++; return; }

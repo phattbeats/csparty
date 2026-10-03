@@ -156,6 +156,7 @@
     console.log(`[watch] state ${prev} -> ${st}`);
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
+      if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
       if (!watch.joined) { watch.joined = true; hideOverlay(); $("canvas").focus(); applySettings(); }
       toast("");
       return;
@@ -187,7 +188,11 @@
     const now = performance.now(), prevTick = watch.lastTick;
     const blocked = now - watch.lastTick > 3000;   // the engine held the main thread (map load): can't judge silence
     watch.lastTick = now;
-    if (blocked) { watch.lastRx = now; watch.since += now - prevTick; return; }   // a frozen main thread is the engine loading, not a stall
+    if (blocked) {
+      watch.lastRx = now; watch.since += now - prevTick;
+      if (watch.firstJoinDeadline) watch.firstJoinDeadline += now - prevTick;
+      return;
+    }   // a frozen main thread is the engine loading, not a stall
     if (watch.gaveUp) return;
     if (!watch.joined) {
       if (watch.firstJoinDeadline && now > watch.firstJoinDeadline) lost("Couldn't join the game server. It may be down or full.");
@@ -325,6 +330,7 @@
   const openPause = => {
     if (!pause.hidden || !inGame()) return;
     pause.hidden = false; $("pz-resume").focus();
+    pauseAt = performance.now(); padPrev = null; leaveArm(false);
     if (document.pointerLockElement) document.exitPointerLock();
     padLoop();
   };
@@ -367,17 +373,29 @@
   const focusables = => [...pause.querySelectorAll("button, input")];
   const moveFocus = (d) => {
     const f = focusables(), i = f.indexOf(document.activeElement);
-    f[(i + d + f.length) % f.length].focus();
+    f[Math.max(0, Math.min(f.length - 1, i + d))].focus();   // no wrap: Up from the top must not land on Leave
   };
   // controller: D-pad/stick to move, left/right for sliders, A to pick, B or Start to go back
-  let padPrev = {};
+  let padPrev = {}, pauseAt = 0;
+  // While the menu is open the engine sees every controller at rest (SDL polls navigator.getGamepads), so
+  // D-pad and A work the menu without also moving, jumping or picking in the game.
+  const realPads = navigator.getGamepads?.bind(navigator);
+  if (realPads) navigator.getGamepads = => {
+    const pads = realPads();
+    if (pause.hidden) return pads;
+    const t = performance.now();
+    return [...pads].map((p) => p && { id: p.id, index: p.index, mapping: p.mapping, connected: p.connected, timestamp: t,
+      axes: p.axes.map(() => 0), buttons: [...p.buttons].map(() => ({ pressed: false, touched: false, value: 0 })) });
+  };
   function padLoop() {
     if (pause.hidden) { padPrev = {}; return; }
-    const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
+    const pad = [...(realPads?.() || [])].find(Boolean);
     if (pad) {
       const ax = pad.axes || [], btn = (i) => !!pad.buttons[i]?.pressed;
       const now = { up: btn(12) || ax[1] < -0.6, down: btn(13) || ax[1] > 0.6, left: btn(14) || ax[0] < -0.6, right: btn(15) || ax[0] > 0.6,
         a: btn(0), b: btn(1) || btn(9) };
+      // the press that opened the menu (or one still held from the game) doesn't count
+      if (!padPrev || performance.now() - pauseAt < 300) padPrev = now;
       const hit = (k) => now[k] && !padPrev[k];
       if (hit("down")) moveFocus(1);
       if (hit("up")) moveFocus(-1);
@@ -404,7 +422,16 @@
   });
   const leave = => { leaving = true; location.reload(); };
   $("ov-rejoin").addEventListener("click", leave);
-  $("pz-leave").addEventListener("click", leave);   // pagehide disconnects properly
+  // Leave takes two presses, so a stray A/Enter/Space in the menu can't end your party
+  let leaveTimer = 0;
+  const leaveBtn = $("pz-leave"), leaveText = leaveBtn.textContent;
+  function leaveArm(on) {
+    clearTimeout(leaveTimer); leaveBtn.dataset.armed = on ? "1" : "";
+    leaveBtn.textContent = on ? "Press again to leave" : leaveText;
+    if (on) leaveTimer = setTimeout(() => leaveArm(false), 3000);
+  }
+  leaveBtn.addEventListener("click", => { leaveBtn.dataset.armed ? leave() : leaveArm(true); });   // pagehide disconnects properly
+  leaveBtn.addEventListener("blur", => leaveArm(false));
 
 
   // ------------------------------------------------------------------ character select
