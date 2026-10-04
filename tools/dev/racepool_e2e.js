@@ -54,6 +54,20 @@ function rcon(cmd) {
   note("joined board: " + await waitJoins(1, 240));
   await sleep(15000);
 
+  // PRESS=<kreedz map>: race that map alone and press its stop button for the player (test-only plugin
+  // tools/dev/csp_test_press.sma, srvcmd csp_press_stop): the player must win, not a bot on the clock.
+  if (process.env.PRESS) {
+    const before = joins();
+    note(`press: csp_test_remote 10 ffa ${process.env.PRESS} -> ${(await rcon(`csp_test_remote 10 ffa ${process.env.PRESS}`)).trim()}`);
+    note(`  in the race map: ${await waitJoins(before + 1, 240)}`);
+    await sleep(22000);   // waiting room + countdown
+    note(`  ${(await rcon("csp_press_stop")).trim()}`);
+    await sleep(1500);
+    await pg.evaluate(() => { document.getElementById("pause").hidden = true; });
+    await pg.screenshot({ path: `${OUT}/press-finish.png` });
+    note(`  back on the board: ${await waitJoins(before + 2, 120)}`);
+    await browser.close(); note("done"); return;
+  }
   const pool = ((await rcon("csp_test_remote pools")).match(/pool 10 Climb:([^\n]*)/) || ["", ""])[1].trim().split(/\s+/);
   note(`climb pool: ${pool.join(" ")}`);
   const runs = ["csp_test_remote 10 ffa kz_triangles", ...Array(+(process.env.DRAWS || pool.length)).fill("csp_test_remote 10 ffa")];

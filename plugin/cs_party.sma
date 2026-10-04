@@ -4491,12 +4491,13 @@ bool:map_used(const map[]) { new k[40]; formatex(k, charsmax(k), "|%s|", map); r
 // Tells browser clients at once, so they fetch its map pack during the intro (boot.js, CSP_MAP_).
 choose_race_map(mg)
 {
-	new cand[POOL_MAX], n = 0;
+	new cand[POOL_MAX], n = 0, fresh = 0;
 	for (new pass = 0; pass < 2 && !n; pass++)
 		for (new i = 0; i < g_poolN; i++)
 			if (g_poolMg[i] == mg && (pass || !map_used(g_poolMap[i]))) cand[n++] = i;
+	for (new i = 0; i < g_poolN; i++) if (g_poolMg[i] == mg && !map_used(g_poolMap[i])) fresh++;
 	set_race_map(n ? g_poolMap[cand[random(n)]] : MG_MAP[mg]);
-	dbg("%s plays on %s (%d left in its pool).", MG_NAME[mg], g_raceMap, n);
+	dbg("%s plays on %s (drawn from %d; %d unplayed).", MG_NAME[mg], g_raceMap, n, fresh);
 }
 
 set_race_map(const map[])
