@@ -311,3 +311,12 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Verified on the isolated copy: phaTT dropped mid-fight and all 4 bots went with him. All 4 seats were back in the fight within 2 s, phaTT's stand-in killed a CT, the CTs won 90 s later, and the server returned to the board and paid the result.
 - Deployed with the gate in one command: rcon status had 0 humans, peers was 0, and the live tags were 0.5.10-vq / 0.4.12. `csparty-up.sh` now carries the current tags, MAXPLAYERS=10 and the log limits (backup `csparty-up.sh.pre-ISSUE`). E2E logs are in `appdata/cs-party/logs/ISSUE-e2e/`.
 - Rollback: `docker rm -f cs-party-server cs-party-relay && docker rename cs-party-server-0510old cs-party-server && docker rename cs-party-relay-0412old cs-party-relay && docker start cs-party-server cs-party-relay`.
+
+
+## server 0.5.16-vq (2026-10-04 16:52 UTC): score table and tutorial no longer blink out (ISSUE, ISSUE)
+- The client never restarts a HUD message that's already up (one buffer per channel, so cs16-client's de-dup always matches a re-send). With a 4 s hold, the table timed out 4 s after it first went up and stayed gone until the next 2.5 s refresh.
+- Fix: the table and the minigame tutorial are held for 240 s (`HUD_HOLD`). The table is re-sent on text change, just after the hold runs out, and after each spawn (`ResetHUD`). Idle blanks the table. The tutorial is blanked when its window ends.
+- `patch0516/` (FROM cs-party-server:0.5.15-vq + amxx) -> `cs-party-server:0.5.16-vq`. `csparty-up.sh` backup: `csparty-up.sh.pre-ISSUE`. Deployed with the gate in one command: 0 humans in rcon status, peers 0, live tag 0.5.15-vq.
+- Live spot-check (GPU headless desktop player, 960x600): the table was in 120/120 board frames over 75 s and gone from all 11 frames after `csp_stop`. In the bhop race the table showed in every in-race frame, and the tutorial was up until 12.0 s race time and gone from 12.6 s on.
+- Known: a ~0.5 s blink once every 4 minutes at the hold handoff (no free HUD channel to overlap it).
+- Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0515old cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-ISSUE`.
