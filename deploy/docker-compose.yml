@@ -31,6 +31,7 @@ services:
       GAME: 127.0.0.1:27015
       TRUST_PROXY: "1"     # behind SWAG: per-IP limits use X-Forwarded-For
       PARTY_KEY: "${PARTY_KEY:?set PARTY_KEY - the relay serves Valve game data, keep it behind a key}"
+      MAX_PER_IP: "12"     # a party in one house shares a public IP; the default of 6 refused the 7th player
     volumes:
       - ${GAMEDATA:-./gamedata.zip}:/app/public/gamedata.zip:ro
     depends_on: [server]

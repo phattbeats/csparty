@@ -16,13 +16,14 @@ up_server() {
     -e MAP=de_dust2 -e PORT=27016 -e SV_LAN=1 -e MAXPLAYERS=10 -e RCON_PASSWORD="$RCON_PASSWORD" \
     --health-cmd 'bash -c "exec 3<>/dev/udp/127.0.0.1/27016; printf \"\xff\xff\xff\xffTSource Engine Query\x00\" >&3; timeout 3 head -c 5 <&3 | grep -qa ."' \
     --health-interval 30s --health-timeout 8s --health-start-period 60s --health-retries 3 \
-    cs-party-server:0.5.16-vq
+    cs-party-server:0.5.16-vq-ISSUE
 }
 
+# MAX_PER_IP: the relay's default of 6 refused the 7th player from one household (everyone shares the public IP).
 up_relay() {
   docker rm -f cs-party-relay >/dev/null 2>&1 || true
   docker run -d --name cs-party-relay --network host --restart unless-stopped --log-driver json-file --log-opt max-size=50m --log-opt max-file=1 \
-    -e PORT=8095 -e GAME=127.0.0.1:27016 -e TRUST_PROXY=1 -e PARTY_KEY="$PARTY_KEY" \
+    -e PORT=8095 -e GAME=127.0.0.1:27016 -e TRUST_PROXY=1 -e PARTY_KEY="$PARTY_KEY" -e MAX_PER_IP=12 \
     -v "$D/gamedata.zip:/app/public/gamedata.zip:ro" \
     --health-cmd "node -e \"fetch('http://127.0.0.1:8095/healthz').then((r) => process.exit(r.ok ? 0 : 1), => process.exit(1))\"" \
     --health-interval 30s --health-timeout 5s --health-retries 3 \
