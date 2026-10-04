@@ -36,8 +36,9 @@
   // con_notifytime 0: no console lines at the top left. The server's music cues (echo CSP_MUSIC_*), cvar
   // chatter, AMXX's "Type 'amx_help'..." and the like printed there; Module.print below still gets every line,
   // and chat has its own HUD at the bottom left. ?notify=N brings them back for debugging.
+  // scr_conspeed: the console snaps shut instead of sliding up over the first second of every new map
   const HUD_ARGS = [...(params.get("hud") ? ["+hud_scale", params.get("hud")] : []),
-    "+hud_fontscale", FONT_SCALE, "+con_notifytime", params.get("notify") || "0"];
+    "+hud_fontscale", FONT_SCALE, "+con_notifytime", params.get("notify") || "0", "+scr_conspeed", "100000"];
   const TOUCH_ARGS = TOUCH || params.has("touch") ? ["+touch_enable", "1", "+setinfo", "_csp_touch", "1"] : [];
 
   // engine pieces that live next to the page; written into the engine's filesystem before start
@@ -52,6 +53,7 @@
     "valve/extras.pk3": "extras_engine.pk3",       // Xash3D's own: console fonts, FiraSans for the menus
     "cstrike/extras.pk3": "extras_cs16.pk3",       // cs16-client's menu art and touch layouts (trimmed)
   };
+  const ENGINE_V = "2";   // bump when any of these files changes (2: menu module's own gpGlobals)
 
   // ------------------------------------------------------------------ game data (cached in the browser)
   const CACHE = "csp-gamedata-v1";
@@ -158,12 +160,14 @@
   };
   const lost = (why) => {
     if (watch.gaveUp) return; watch.gaveUp = true;
-    toast("");
+    toast(""); $("loading").hidden = true;
     overlay("Lost the party", why || "The connection to the game server stopped.", { rejoin: true });
   };
   const onState = (st) => {
     const prev = watch.state; watch.state = st; watch.since = performance.now(); typing = "";
     console.log(`[watch] state ${prev} -> ${st}`);
+    // the engine draws its console full screen while it connects and loads; the loading screen covers it
+    $("loading").hidden = !(st >= 1 && st <= 3) || watch.gaveUp;
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
@@ -175,8 +179,7 @@
       $("ov-text").textContent = st === 1 ? "Connecting to the server…" : st >= 2 ? "Loading the map…" : "Starting…";
       return;
     }
-    if (st === 0) { lost(watch.reason || "Disconnected from the game server."); return; }
-    toast("Loading the next map…");
+    if (st === 0) lost(watch.reason || "Disconnected from the game server.");
   };
   // Any message in, on any of the engine's sockets, counts as the server being there.
   const REFUSED = {
@@ -616,7 +619,7 @@
       status("Loading engine…");
       const libs = {};
       await Promise.all(Object.entries(LIBS).map(async ([dest, src]) => {
-        const r = await fetch(src); if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
+        const r = await fetch(src + "?v=" + ENGINE_V); if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
         libs[dest] = new Uint8Array(await r.arrayBuffer());
       }));
 

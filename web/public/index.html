@@ -18,11 +18,15 @@
   html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow:hidden;
     overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
   input { -webkit-user-select:text; user-select:text; }
-  /* min size: the engine crashed ("remainder by zero") when a phone page shrank to 250 px tall mid-game */
+  /* min size: keeps the 3D view and the HUD usable when a phone page shrinks (keyboard, split screen) */
   #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; height:100dvh; min-width:480px; min-height:320px; display:block; background:#000; outline:none; }
   .screen { position:fixed; inset:0; display:grid; place-items:center; padding:16px; z-index:2; }
   #gate { background:var(--bg); }
   #overlay { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:3; }
+  /* between maps the engine shows its full-screen console (server chatter, file lists): cover it */
+  #loading { background:radial-gradient(ellipse at 50% 30%, #2b3123 0, #161a13 55%, var(--bg) 100%); text-align:center; }
+  #loading img { width:min(300px, 50vw, 60vh); height:auto; display:block; margin:0 auto 4vh; filter:drop-shadow(0 5px 0 #0c10086b); }
+  #loading p { display:flex; align-items:center; justify-content:center; gap:12px; font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
   .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
   h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
   h2 { font-size:22px; }
@@ -285,6 +289,10 @@
 </main>
 </div>
 
+<div id="loading" class="screen" hidden aria-live="polite">
+  <div><img src="art/logo.webp" alt="CS Party" width="720" height="360"><p><span class="spin" aria-hidden="true"></span><span id="loading-text">Loading the next map…</span></p></div>
+</div>
+
 <div id="overlay" class="screen" hidden>
   <div class="card" role="alertdialog" aria-labelledby="ov-title" aria-describedby="ov-text">
     <h2 id="ov-title">Joining the party</h2>
@@ -316,6 +324,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.17"></script>
+<script src="boot.js?v=0.4.18"></script>
 </body>
 </html>

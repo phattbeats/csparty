@@ -63,6 +63,9 @@ em++ -sSIDE_MODULE=1 -O2 -o "$OUT/client_emscripten_wasm32.so" \
   -Wl,--whole-archive cs16-client/build-web/cl_dll/client_emscripten_wasm32.a -Wl,--no-whole-archive
 em++ -sSIDE_MODULE=1 -O2 -o "$OUT/menu_emscripten_wasm32.so" \
   -Wl,--whole-archive cs16-client/build-web/3rdparty/mainui_cpp/menu_emscripten_wasm32.a -Wl,--no-whole-archive
+# side modules share one symbol table, and the client's own gpGlobals would replace the menu's (menu fonts
+# rebuilt at height 0 on the next resize, then "remainder by zero" at a map change): give the menu its own name
+python3 "$HERE/rename_wasm_symbol.py" "$OUT/menu_emscripten_wasm32.so" gpGlobals uiGlobals
 # its extras.pk3 is mostly bot chatter and training maps; the browser needs the menu art and touch layouts
 python3 - "$(find cs16-client/build-web -name extras.pk3 | head -1)" "$OUT/extras_cs16.pk3" <<'EOF'
 import sys, zipfile

@@ -179,6 +179,7 @@ new bool:g_mgDone, g_mgWinners[SEATS], g_mgWinnerN;
 
 // entities / misc
 new c_autostart, bool:g_lobby, g_lobbyLeft, c_autobhop, g_awardLines[192];
+new c_pawnlight, bool:g_pawnLit[33];
 new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt, Float:g_introEnd;
 new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
 #define HOP_TIME 0.3
@@ -246,6 +247,7 @@ public plugin_init()
 	c_hudscale = register_cvar("csp_hud_scale", "0");   // client hud_scale pushed to humans (0 = leave alone; 2 turned text into white boxes in the browser)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
 	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
+	c_pawnlight = register_cvar("csp_pawnlight", "1");   // board pawns carry a dim light (see pawn_lights)
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
 	c_autojoin = register_cvar("csp_autojoin", "1");   // put new humans on a team without the team/class menus   // 1 = old every-turn buy menu as well as the buy zones
 
@@ -278,6 +280,8 @@ public plugin_init()
 
 	g_msgScoreInfo = get_user_msgid("ScoreInfo");
 	register_message(get_user_msgid("TextMsg"), "msg_textmsg");
+	new const HUDTEXT_MSGS[][] = { "HudText", "HudTextPro", "HudTextArgs" };   // hints arrive as HudTextArgs
+	for (new i = 0, m; i < sizeof HUDTEXT_MSGS; i++) if ((m = get_user_msgid(HUDTEXT_MSGS[i]))) register_message(m, "msg_hudtext");
 
 	load_board();
 	spawn_board_entities();
@@ -1483,7 +1487,26 @@ public fw_startframe()
 	last = now;
 	if (g_hopActive) hop_step();
 	if (task_exists(TASK_CAM)) cam_step(dt);
+	static Float:lightAt;
+	if (now - lightAt > 0.25 || now < lightAt) { lightAt = now; pawn_lights(); }
 	return FMRES_IGNORED;
+}
+
+// A model takes only the light of the floor under it (Xash3D has no ambient minimum), so pawns in dust2's
+// tunnels and in shade were black shapes even after the browser's lightgamma lift. EF_DIMLIGHT gives a
+// player a dynamic light at its origin (~215 units): the model's ambient light goes near its cap and the
+// floor around it gets a soft pool. Board states only (in a fight it would give away hiding players), and
+// only the bit we set is cleared, so a flashlight switched on in a minigame stays the player's.
+pawn_lights()
+{
+	new bool:on = get_pcvar_num(c_pawnlight) > 0 && (g_state == ST_BOARD || g_state == ST_MG_RESULT || g_state == ST_END || g_state == ST_RESUME);
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id)) { g_pawnLit[id] = false; continue; }
+		new bool:want = on && is_user_alive(id) && seat_of(id) >= 0, fx = entity_get_int(id, EV_INT_effects);
+		if (want && !(fx & EF_DIMLIGHT)) { entity_set_int(id, EV_INT_effects, fx | EF_DIMLIGHT); g_pawnLit[id] = true; }   // again after a respawn
+		else if (!want && g_pawnLit[id]) { entity_set_int(id, EV_INT_effects, fx & ~EF_DIMLIGHT); g_pawnLit[id] = false; }
+	}
 }
 
 public task_cam() {}
@@ -1960,7 +1983,7 @@ public task_hud()
 	new buf[448], len;
 	new hl[96], hw[100]; formatex(hl, charsmax(hl), "Hostages: %s  ($%d)", g_nodeArea[g_hostage], get_pcvar_num(c_hostage));
 	wrap_text(hl, hw, charsmax(hw), WRAP_TABLE);   // "Hostages: CT Spawn  ($5000)" ran off the right edge
-	len = formatex(buf, charsmax(buf), "CS PARTY  turn %d/%d%s^n%s^n^n", g_turn, g_maxTurns, overtime() ? "  OVERTIME" : "", hw);
+	len = formatex(buf, charsmax(buf), "CS PARTY  turn %d/%d%s^n%s^n^n", g_turn, g_maxTurns, overtime() ? "^nOVERTIME" : "", hw);   // on its own line: 30 characters ran off the right edge
 	new mode = get_pcvar_num(c_awards);
 	if (mode == 1 || mode == 3)
 	{
@@ -2187,6 +2210,15 @@ public msg_textmsg(msgid, dest, id)
 	if (equal(t, "#Terrorists_Win") || equal(t, "#CTs_Win") || equal(t, "#Round_Draw") || equal(t, "#Game_Commencing")
 		|| equal(t, "#Command_Not_Available") || equal(t, "#Cstrike_Tutor_", 15)) return PLUGIN_HANDLED;   // tutor texts (time-out on csp_towers) arrive untranslated
 	return PLUGIN_CONTINUE;
+}
+
+// "Press DUCK for Spectator Menu" (a hint to anyone who is still an observer, e.g. in the lobby) showed through the
+// help box. DUCK still opens the menu.
+public msg_hudtext(msgid, dest, id)
+{
+	if (get_msg_args() < 1) return PLUGIN_CONTINUE;
+	new t[16]; get_msg_arg_string(1, t, charsmax(t));
+	return equal(t, "#Spec_Duck") ? PLUGIN_HANDLED : PLUGIN_CONTINUE;
 }
 
 sync_money(s)
@@ -4002,7 +4034,12 @@ state_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, l
 delete_state() { new p[128]; state_path(p, charsmax(p)); if (file_exists(p)) delete_file(p); }
 
 // game.cfg also sets bot_join_after_player 1, and with it the bot quota drops to zero whenever no human is on a team
-public task_no_rotation() { set_cvar_num("mp_timelimit", 0); set_cvar_num("mp_maxrounds", 0); set_cvar_num("mp_winlimit", 0); set_cvar_num("bot_join_after_player", 0); }
+// (also after amxx.cfg) adminhelp's "Type 'amx_help'..." on every join landed in the browser's chat area
+public task_no_rotation()
+{
+	set_cvar_num("mp_timelimit", 0); set_cvar_num("mp_maxrounds", 0); set_cvar_num("mp_winlimit", 0); set_cvar_num("bot_join_after_player", 0);
+	if (cvar_exists("amx_help_display_msg")) set_cvar_num("amx_help_display_msg", 0);
+}
 
 public plugin_cfg()
 {
