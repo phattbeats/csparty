@@ -327,3 +327,11 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - `patch0516-cfg/` (FROM cs-party-server:0.5.16-vq + server.cfg) -> `cs-party-server:0.5.16-vq-ISSUE`. `csparty-up.sh` backup: `csparty-up.sh.pre-ISSUE`. Gate: 0 humans, peers 0, live tags 0.5.16-vq / 0.4.18.
 - Soak with the fix: 0 server crashes or restarts, 0 AMXX errors, ~120 MB, ~7% CPU; all 8 clients back after every map change.
 - Rollback: containers `cs-party-server-0.5.16-vqold` and `cs-party-relay-0.4.18old`.
+
+## server 0.5.17-vq (2026-10-04 20:43 UTC): pawn light is steady, no more "flashlights" (ISSUE)
+- Reported live: flickering lighting, "everyone has flashlights on". The 0.5.15 pawn light was `EF_DIMLIGHT`. Xash3D gives your own player a real flashlight beam for it (`CL_UpdateFlashlight`) and everyone else a world light with radius `200 + rand(0..31)` re-rolled every frame.
+- Stopgap 20:18 UTC: `csp_pawnlight 0` over rcon (no restart).
+- Fix: `TE_ELIGHT` per seated pawn, 90 units toward the director camera, radius 200, grey 110, 0.6 s life, re-sent every 0.25 s, key `4095 - id`. It lights models only. Studio models are lit only on faces turned toward a light, and a key equal to an entity index makes the client snap the light onto that entity's origin, so a light keyed to the pawn did almost nothing (+2 vs +6).
+- A/B on an isolated copy (own turn, still camera, light on/off/on): old +7 pawn brightness with added frame-to-frame change (1.9 -> 2.35); new +6, nothing added on the floor.
+- `patch0517/` (FROM cs-party-server:0.5.16-vq-ISSUE + amxx) -> `cs-party-server:0.5.17-vq`. `csparty-up.sh` backup: `csparty-up.sh.pre-0517`. Gate: 0 humans, peers 0, live tag 0.5.16-vq-ISSUE. Verified: plugin running, `csp_pawnlight` 1, `sv_rehlds_maxclients_from_single_ip` 32, healthy.
+- Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0.5.16-vq-ISSUEold cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-0517` (or keep 0.5.17 and set `csp_pawnlight 0`).
