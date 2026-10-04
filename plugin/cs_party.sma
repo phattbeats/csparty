@@ -656,6 +656,7 @@ public cmd_probe()
 }
 
 new g_forceMg = -1;
+new g_mgPlayed[MG_COUNT], g_mgLast = -1;   // pick_minigame's variety memory, kept across map changes
 public cmd_force_mg() { new a[8]; read_argv(1, a, charsmax(a)); g_forceMg = str_to_num(a); server_print("[CSP] next minigame forced to %d", g_forceMg); return PLUGIN_HANDLED; }
 
 public cmd_nocam() { remove_task(TASK_CAM); release_cameras(); server_print("[CSP] camera released"); return PLUGIN_HANDLED; }
@@ -761,6 +762,8 @@ match_start()
 		g_gPrim[s] = -1; g_gSec[s] = -1; g_gArmor[s] = 0; g_gFlash[s] = 0; g_gHE[s] = 0; g_gSmoke[s] = 0; g_gKit[s] = false;
 	}
 	for (new i = 0; i < MAX_NODES; i++) g_traps[i] = -1;
+	for (new m = 0; m < MG_COUNT; m++) g_mgPlayed[m] = 0;
+	g_mgLast = -1;
 	g_turn = 1; g_maxTurns = get_pcvar_num(c_turns); g_cur = 0;
 	for (new k = 0; k < SEATS; k++) { g_waitKind[k] = W_NONE; g_waitLast[k] = W_NONE; }
 	move_hostage();
@@ -2133,7 +2136,12 @@ turn_watchdog()
 			new cur = g_pos[s], a = g_nodeNext[cur][0], b = g_nodeNext[cur][1];
 			step_to(s, g_dist[b][g_hostage] < g_dist[a][g_hostage] ? b : a);
 		}
-		case W_HOSTAGE: { rescue(s); set_task(spd(2.6), "flow_step", TASK_FLOW); }
+		case W_HOSTAGE:
+		{
+			new bool:pay = g_money[s] >= get_pcvar_num(c_hostage);
+			if (pay) rescue(s);
+			set_task(spd(pay ? 2.6 : 0.4), "flow_step", TASK_FLOW);
+		}
 		case W_TARGET: switch (g_targetPurpose)
 		{
 			case 1: { new o = -1; for (new k = 0; k < SEATS; k++) if (k != s && (o < 0 || g_money[k] > g_money[o])) o = k; begin_duel(s, o); }
@@ -2468,7 +2476,7 @@ public task_dice()
 	for (new k = 0; k < g_diceN; k++)
 	{
 		if (g_diceHit[k] || !is_valid_ent(g_diceEnt[k])) continue;
-		if (tick % 2 == 0) g_diceFace[k] = (g_diceFace[k] + 1) % 6;
+		g_diceFace[k] = (g_diceFace[k] + random_num(1, 5)) % 6;   // every tick (20/s), a random jump: 10/s in order was easy to time
 		entity_set_int(g_diceEnt[k], EV_INT_skin, 1 + SKIN_DICE[g_seatSkin[s]][g_diceFace[k]]);
 	}
 	if (!g_diceOpen) return;
@@ -2601,8 +2609,11 @@ pawn_spot(s, node, Float:o[3])
 
 step_sfx(s)
 {
-	new f[40]; formatex(f, charsmax(f), "player/pl_step%d.wav", random_num(1, 4));
-	emit_sound(g_seatPlayer[s] ? g_seatPlayer[s] : 0, CHAN_BODY, f, 0.8, ATTN_NORM, 0, PITCH_NORM + random_num(-8, 8));
+	// a plain "play" for everyone: emitted from the pawn, the engine only sends it to players whose own body is
+	// within earshot (PAS), so a turn on the far side of the board was silent, and a seat with no player
+	// (g_seatPlayer 0) played it at the world origin
+	#pragma unused s
+	client_cmd(0, "play ^"player/pl_step%d.wav^"", random_num(1, 4));
 }
 
 step_to(s, node)
@@ -2647,13 +2658,12 @@ step_arrive(s, node)
 	new Float:pause = spd(0.12);
 	if (node == g_hostage)
 	{
+		// everyone stops at the hostages (Mario Party's star); without the money the only answer is to walk on
 		new cost = get_pcvar_num(c_hostage);
-		if (g_money[s] >= cost)
-		{
-			if (seat_is_bot(s)) { rescue(s); pause = spd(2.6); }
-			else { wait_for(s, W_HOSTAGE); show_hostage_menu(s); return; }
-		}
-		else subline("%s reaches the hostages but can't pay $%d.", g_seatName[s], cost);
+		banner("Hostages!");
+		if (!seat_is_bot(s)) { cam_shot(CAM_LAND); wait_for(s, W_HOSTAGE); show_hostage_menu(s); return; }
+		if (g_money[s] >= cost) { rescue(s); pause = spd(2.6); }
+		else { subline("%s reaches the hostages but can't pay $%d.", g_seatName[s], cost); pause = spd(1.6); }
 	}
 	// pass-through spaces: buy zones and the negotiator stop you whether you land or not
 	if (g_nodeType[node] == NT_SHOP)
@@ -3375,10 +3385,21 @@ public mh_branch(id, m, item)
 
 show_hostage_menu(s)
 {
-	new id = g_seatPlayer[s], title[96];
-	formatex(title, charsmax(title), "\yHostages!^n\wPay $%d to rescue?^n\dYou have $%d", get_pcvar_num(c_hostage), g_money[s]);
-	new m = menu_create(title, "mh_hostage");
-	menu_additem(m, "Rescue", "1"); menu_additem(m, "Keep the money", "0");
+	new id = g_seatPlayer[s], title[128], cost = get_pcvar_num(c_hostage);
+	new m;
+	if (g_money[s] >= cost)
+	{
+		formatex(title, charsmax(title), "\yHostages!^n\wPay $%d to rescue?^n\dYou have $%d", cost, g_money[s]);
+		m = menu_create(title, "mh_hostage");
+		menu_additem(m, "Rescue", "1"); menu_additem(m, "Keep the money", "0");
+	}
+	else
+	{
+		// item 0 must not be Rescue here: mh_hostage treats item 0 as paying
+		formatex(title, charsmax(title), "\yHostages!^n\wRescue costs $%d^n\dYou have $%d.^nCome back richer.", cost, g_money[s]);
+		m = menu_create(title, "mh_hostage_broke");
+		menu_additem(m, "Walk on", "0");
+	}
 	menu_setprop(m, MPROP_EXIT, MEXIT_NEVER);
 	nav_show(id, m, "mh_hostage");
 }
@@ -3394,6 +3415,19 @@ public mh_hostage(id, m, item)
 	new Float:pause = spd(0.4);
 	if (item == 0) { rescue(s); pause = spd(2.6); }
 	set_task(pause, "flow_step", TASK_FLOW);
+	return PLUGIN_HANDLED;
+}
+
+public mh_hostage_broke(id, m, item)
+{
+	if (item < 0 && (g_navRedraw[id] || g_navPicking)) return PLUGIN_HANDLED;
+	if (item < 0 && g_wdCancel) { menu_destroy(m); return PLUGIN_HANDLED; }
+	new s = seat_of(id);
+	if (item >= 0 && s >= 0) g_waitKind[s] = W_NONE;
+	menu_destroy(m);
+	if (s != g_cur || g_state != ST_BOARD) return PLUGIN_HANDLED;
+	subline("%s can't pay $%d and walks on.", g_seatName[s], get_pcvar_num(c_hostage));
+	set_task(spd(0.4), "flow_step", TASK_FLOW);
 	return PLUGIN_HANDLED;
 }
 
@@ -3550,17 +3584,27 @@ negotiate(s, t, bool:star)
 	}
 }
 
+// Weighted, not uniform: half the FFA and duel pool is map-change races, so a flat pick sent most
+// minigames off dust2. The dust2 fights weigh 4, Two Towers 2, the races 1; each play this match cuts a
+// minigame's weight, the last one never repeats, and a map-change minigame never follows another.
 pick_minigame(fmt)
 {
-	new pool[MG_COUNT], n = 0;
+	new pool[MG_COUNT], wt[MG_COUNT], n = 0, total = 0;
 	if (g_forceMg >= 0 && g_forceMg < MG_COUNT) return g_forceMg;   // dev override ignores format
-	for (new m = 0; m < MG_COUNT; m++)
-	{
-		if (!(MG_FORMATS[m] & fmt)) continue;
-		if (MG_MAP[m][0]) { new bsp[64]; formatex(bsp, charsmax(bsp), "maps/%s.bsp", MG_MAP[m]); if (!file_exists(bsp)) continue; }
-		pool[n++] = m;
-	}
-	return pool[random(n)];
+	new bool:lastRemote = g_mgLast >= 0 && g_mgLast < MG_COUNT && MG_MAP[g_mgLast][0] != 0;
+	for (new pass = 0; pass < 2 && !n; pass++)   // pass 1 drops the variety rules if they emptied the pool
+		for (new m = 0; m < MG_COUNT; m++)
+		{
+			if (!(MG_FORMATS[m] & fmt)) continue;
+			if (MG_MAP[m][0]) { new bsp[64]; formatex(bsp, charsmax(bsp), "maps/%s.bsp", MG_MAP[m]); if (!file_exists(bsp)) continue; }
+			if (!pass && (m == g_mgLast || (lastRemote && MG_MAP[m][0]))) continue;
+			new base = !MG_MAP[m][0] ? 4 : (mg_fight(m) ? 2 : 1);
+			wt[n] = max(1, base * 12 / (1 + 2 * g_mgPlayed[m])); total += wt[n]; pool[n++] = m;
+		}
+	new r = random(total), k = 0;
+	while (k < n - 1 && r >= wt[k]) { r -= wt[k]; k++; }
+	g_mgPlayed[pool[k]]++; g_mgLast = pool[k];
+	return pool[k];
 }
 
 fmt_name(fmt, out[], len)
@@ -4149,6 +4193,9 @@ save_state(phase)
 	}
 	new JSON:w = json_init_array(); for (new k = 0; k < g_mgWinnerN; k++) json_array_append_number(w, g_mgWinners[k]);
 	json_object_set_value(o, "winners", w); json_free(w);
+	jnum(o, "mgLast", g_mgLast);
+	new JSON:pl = json_init_array(); for (new m = 0; m < MG_COUNT; m++) json_array_append_number(pl, g_mgPlayed[m]);
+	json_object_set_value(o, "mgPlayed", pl); json_free(pl);
 	new p[128]; state_path(p, charsmax(p));
 	json_serial_to_file(o, p, true);
 	json_free(o);
@@ -4210,6 +4257,13 @@ load_state()
 	g_mgWinnerN = min(SEATS, json_array_get_count(w));
 	for (new k = 0; k < g_mgWinnerN; k++) g_mgWinners[k] = json_array_get_number(w, k);
 	json_free(w);
+	g_mgLast = json_object_has_value(o, "mgLast") ? json_object_get_number(o, "mgLast") : -1;
+	if (json_object_has_value(o, "mgPlayed"))
+	{
+		new JSON:pl = json_object_get_value(o, "mgPlayed");
+		for (new m = 0; m < MG_COUNT; m++) g_mgPlayed[m] = m < json_array_get_count(pl) ? json_array_get_number(pl, m) : 0;
+		json_free(pl);
+	}
 	json_free(o);
 	return phase;
 }
