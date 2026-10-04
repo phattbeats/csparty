@@ -335,3 +335,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - A/B on an isolated copy (own turn, still camera, light on/off/on): old +7 pawn brightness with added frame-to-frame change (1.9 -> 2.35); new +6, nothing added on the floor.
 - `patch0517/` (FROM cs-party-server:0.5.16-vq-ISSUE + amxx) -> `cs-party-server:0.5.17-vq`. `csparty-up.sh` backup: `csparty-up.sh.pre-0517`. Gate: 0 humans, peers 0, live tag 0.5.16-vq-ISSUE. Verified: plugin running, `csp_pawnlight` 1, `sv_rehlds_maxclients_from_single_ip` 32, healthy.
 - Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0.5.16-vq-ISSUEold cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-0517` (or keep 0.5.17 and set `csp_pawnlight 0`).
+
+## ISSUE: duck moved off Ctrl (relay 0.4.19)
+- Browser client no longer binds Ctrl: boot.js writes `cstrike/csp_keys.cfg` (`unbind ctrl`, `bind c +duck`) and runs it with `+exec`, so Ctrl+W/Ctrl+R can't be hit mid-play. Duck is now C. Not verified in-engine; check `bind c` in the console if crouch fails.
+- Deploy: `patch-relay19/` (FROM cs-party-relay:0.4.18, boot.js + index.html), `csparty-up.sh.pre-ISSUE`. Rollback container: `cs-party-relay-0.4.18-ISSUEold`.

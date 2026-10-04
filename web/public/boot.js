@@ -656,6 +656,8 @@
         em.FS.writeFile(ROOT + "/" + p, data, { canOwn: true });
       }
       for (const [p, data] of Object.entries(libs)) { mkdirp(em.FS, ROOT + "/" + p.split("/").slice(0, -1).join("/")); em.FS.writeFile(ROOT + "/" + p, data); }
+      // Ctrl+W closes the tab, so duck lives on C. (+duck can't ride the command line: a leading + starts a new command.)
+      em.FS.writeFile(ROOT + "/cstrike/csp_keys.cfg", "unbind ctrl\nbind c +duck\n");
       em.FS.chdir(ROOT);
       bar(1);
       $("gate").hidden = true;
@@ -667,7 +669,7 @@
       const server = params.get("server") || "10.27.0.1:27015";
       em.callMain(["-game", "cstrike", "+cl_advertise_engine_in_name", "0", "-windowed", "-ref", "gles3compat", "-noip6",
         ...(params.has("dev") ? ["-dev", "2", "-log"] : []), ...(params.has("nosound") ? ["-nosound"] : []),
-        ...GFX_ARGS, ...TOUCH_ARGS, ...HUD_ARGS, "+name", name, ...(char >= 0 ? ["+setinfo", "_csp_char", String(char)] : []), "+connect", server, "gs"]);
+        ...GFX_ARGS, ...TOUCH_ARGS, ...HUD_ARGS, "+exec", "csp_keys.cfg", "+name", name, ...(char >= 0 ? ["+setinfo", "_csp_char", String(char)] : []), "+connect", server, "gs"]);
     } catch (err) {
       console.error(err);
       $("gate").hidden = false; hideOverlay(); musicPlay(false);
