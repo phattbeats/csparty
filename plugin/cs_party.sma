@@ -133,7 +133,10 @@ new const MG_TUT[MG_COUNT][] = { "", "", "", "", "", "", "", "",
 	"HOW TO SURF^n^n- Land on the side of a ramp, not the top.^n- Hold A or D (stick left/right) toward the ramp.^n- Never press W. Turn the mouse to steer.^n- Fall off and you restart this stage.",
 	"HOW TO BHOP^n^n- Hold JUMP. You hop again every time you land.^n- Steer in the air with A / D and the mouse together.^n- Don't hold W while in the air.^n- Lava sends you back to the last checkpoint.",
 	"HOW TO CLIMB^n^n- Ladders: look up and hold W. Jump off with JUMP.^n- High ledges: JUMP, then hold DUCK in the air.^n- Beams are narrow: walk, don't run (hold SHIFT).^n- Fall and you go back to the last checkpoint.",
-	"", "" };
+	"HOW TO MAZE^n^n- Find the way out. First one out wins.^n- The walls are too tall to jump.^n- Dead ends are common: turn back early.^n- Don't follow the player in front of you.",
+	"" };
+// one line for the countdown, under the banner
+new const MG_TIP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "Hold A or D toward the ramp. Never press W.", "Hold JUMP. Steer in the air with A / D.", "Ladders: look up, hold W. Ledges: JUMP then DUCK.", "Find the way out. The walls are too tall to jump.", "" };
 new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
 // 0 = fixed loadout (gear untouched), 1 = all your gear, 2 = pistol, armor and nades only
 new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
@@ -2012,17 +2015,17 @@ table_off()
 	}
 }
 
-// minigame tutorial, top left: while everyone waits, and the first 12 s of the race
+// minigame tutorial, top left: while everyone waits, from the intro on the board, while everyone waits, and the first 25 s of the race
 hud_tutorial()
 {
 	static Float:tutAt, offLeft;
 	new Float:now = get_gametime(), Float:t = (g_state == ST_REMOTE_RACE) ? now - g_raceStart : 0.0;
-	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 12.0));
+	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 25.0) || (g_state == ST_MG_INTRO && MG_MAP[g_mg][0]));
 	if (!on && !offLeft) return;
 	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return;
 	tutAt = now;
 	offLeft = on ? 3 : offLeft - 1;   // blank it three times over (lost packets): it's held for minutes
-	set_hudmessage(255, 255, 255, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	set_hudmessage(255, 232, 90, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
 	show_hudmessage(0, "%s", on ? MG_TUT[g_mg] : " ");
 }
 
@@ -4331,7 +4334,8 @@ go_remote()
 	banner("%s", MG_NAME[g_mg]);
 	subline("Loading %s...", MG_MAP[g_mg]);
 	announce("%s is on its own map. Back on the board after the %s.", MG_NAME[g_mg], mg_fight(g_mg) ? "fight" : "race");
-	set_task(3.0, "task_changelevel_remote", TASK_FLOW);
+	if (MG_TUT[g_mg][0]) client_cmd(0, "echo CSP_HOWTO_%d", g_mg);   // the browser page shows the card over the loading screen
+	set_task(MG_TUT[g_mg][0] ? 6.0 : 3.0, "task_changelevel_remote", TASK_FLOW);
 }
 public task_changelevel_remote() { server_cmd("changelevel %s", MG_MAP[g_mg]); }
 
@@ -4431,6 +4435,7 @@ public task_countdown()
 	if (g_countdown > 0)
 	{
 		banner("%s  |  %d", MG_NAME[g_mg], g_countdown);
+		if (MG_TIP[g_mg][0]) subline("%s", MG_TIP[g_mg]);
 		client_cmd(0, "play ^"buttons/blip1.wav^"");
 		return;
 	}
