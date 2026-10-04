@@ -163,11 +163,21 @@
     toast(""); $("loading").hidden = true;
     overlay("Lost the party", why || "The connection to the game server stopped.", { rejoin: true });
   };
+  // Minigame index (the plugin's MG_*) -> how-to card, shown over the loading screen while the map loads
+  const HOWTO = {
+    8: "HOW TO SURF\n- Land on the side of a ramp, not the top.\n- Hold A or D toward the ramp.\n- Never press W. Turn the mouse to steer.\n- Fall off and you restart this stage.",
+    9: "HOW TO BHOP\n- Hold JUMP. You hop again every time you land.\n- Steer in the air with A / D and the mouse.\n- Don't hold W while in the air.\n- Lava sends you back to the last checkpoint.",
+    10: "HOW TO CLIMB\n- Ladders: look up and hold W. Jump off with JUMP.\n- High ledges: JUMP, then hold DUCK in the air.\n- Beams are narrow: walk, don't run (hold SHIFT).\n- Fall and you go back to the last checkpoint.",
+    11: "HOW TO MAZE\n- Find the way out. First one out wins.\n- The walls are too tall to jump.\n- Dead ends are common: turn back early.\n- Don't follow the player in front of you.",
+  };
+  let howto = "";
   const onState = (st) => {
     const prev = watch.state; watch.state = st; watch.since = performance.now(); typing = "";
     console.log(`[watch] state ${prev} -> ${st}`);
     // the engine draws its console full screen while it connects and loads; the loading screen covers it
     $("loading").hidden = !(st >= 1 && st <= 3) || watch.gaveUp;
+    const hc = $("loading-howto"); hc.textContent = howto; hc.hidden = !howto;
+    if (st === 4) howto = "";
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
@@ -632,7 +642,9 @@
         locateFile: (f) => f,
         print: (t) => {
           console.log(t);
-          if (t.includes("CSP_THEME_PLAY")) musicPlay(true);
+          const hw = /CSP_HOWTO_(\d+)/.exec(t);
+          if (hw) howto = HOWTO[+hw[1]] || "";
+          else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);
           else if (t.includes("CSP_THEME_STOP") && music.want) musicStop();
           else if (t.includes("CSP_MUSIC_BOARD")) boardPlay();
           else if (t.includes("CSP_MUSIC_OFF") && board.want) fadeOut(board, 1500);

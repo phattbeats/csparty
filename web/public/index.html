@@ -26,6 +26,7 @@
   /* between maps the engine shows its full-screen console (server chatter, file lists): cover it */
   #loading { background:radial-gradient(ellipse at 50% 30%, #2b3123 0, #161a13 55%, var(--bg) 100%); text-align:center; }
   #loading img { width:min(300px, 50vw, 60vh); height:auto; display:block; margin:0 auto 4vh; filter:drop-shadow(0 5px 0 #0c10086b); }
+  #loading-howto { margin:4vh auto 0; max-width:min(560px, 92vw); text-align:left; white-space:pre-line; font:600 clamp(16px, 2.6vh, 22px)/1.5 system-ui, sans-serif; color:#ffe85a; background:#0c1008cc; border:1px solid var(--line); padding:16px 20px; }
   #loading p { display:flex; align-items:center; justify-content:center; gap:12px; font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
   .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
   h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
@@ -290,7 +291,7 @@
 </div>
 
 <div id="loading" class="screen" hidden aria-live="polite">
-  <div><img src="art/logo.webp" alt="CS Party" width="720" height="360"><p><span class="spin" aria-hidden="true"></span><span id="loading-text">Loading the next map…</span></p></div>
+  <div><img src="art/logo.webp" alt="CS Party" width="720" height="360"><p><span class="spin" aria-hidden="true"></span><span id="loading-text">Loading the next map…</span></p><div id="loading-howto" hidden></div></div>
 </div>
 
 <div id="overlay" class="screen" hidden>
@@ -324,6 +325,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.19"></script>
+<script src="boot.js?v=0.4.20"></script>
 </body>
 </html>

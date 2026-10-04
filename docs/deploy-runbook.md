@@ -339,3 +339,8 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 ## ISSUE: duck moved off Ctrl (relay 0.4.19)
 - Browser client no longer binds Ctrl: boot.js writes `cstrike/csp_keys.cfg` (`unbind ctrl`, `bind c +duck`) and runs it with `+exec`, so Ctrl+W/Ctrl+R can't be hit mid-play. Duck is now C. Not verified in-engine; check `bind c` in the console if crouch fails.
 - Deploy: `patch-relay19/` (FROM cs-party-relay:0.4.18, boot.js + index.html), `csparty-up.sh.pre-ISSUE`. Rollback container: `cs-party-relay-0.4.18-ISSUEold`.
+
+## ISSUE: minigame how-to made visible (server 0.5.19-vq + relay 0.4.20)
+- Plugin: how-to card now also for Maze, in yellow, shown from the minigame intro on the board (the changelevel wait is 6 s when a card exists), through the wait and countdown, and for 25 s of the race (was 12). Countdown ticks add a one-line tip under the banner (MG_TIP).
+- Browser: the plugin echoes `CSP_HOWTO_<mg index>` before changelevel; boot.js shows the card over the loading screen (`#loading-howto`) until the client is in game again. Native clients can't show it (no HUD while loading).
+- Deploy: `patch0519/`, `patch-relay20/`, watcher `deploy0519-when-empty.sh` (gate: 0 peers, 0 humans, 3 checks, rolls back on failure; status in `deploy0519.status`). Rollback containers: `cs-party-server-0.5.18-vqold`, `cs-party-relay-0.4.19-ISSUEold`; `csparty-up.sh.pre-0519`.
