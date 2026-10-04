@@ -27,7 +27,7 @@ grep -q '^cs_party.amxx' "$T/cstrike/addons/amxmodx/configs/plugins.ini" || echo
 
 # CS Party itself, from the repo
 A=$T/cstrike/addons/amxmodx
-mkdir -p "$A/plugins" "$A/configs/cs_party/boards" "$A/configs/cs_party/minigames" "$T/cstrike/maps" "$T/cstrike/models"
+mkdir -p "$A/plugins" "$A/configs/cs_party/boards" "$A/configs/cs_party/minigames" "$T/cstrike/maps" "$T/cstrike/models" "$T/cstrike/sprites"
 cp "$REPO/build/cs_party.amxx" "$A/plugins/"
 cp "$REPO"/boards/*.ini "$A/configs/cs_party/boards/"
 cp "$REPO"/boards/*.nav "$T/cstrike/maps/"       # zBot nav for each board map (else the first load stalls minutes on nav analysis)
@@ -42,7 +42,8 @@ for ini in "$REPO"/maps/pool/*.ini; do
   [ -e "$ini" ] || continue; m=$(basename "$ini" .ini)
   [ -f "$T/cstrike/maps/$m.bsp" ] || echo "warning: $m has a zone .ini but no built map (tools/race_map.py build); the plugin leaves it out"
 done
-cp "$REPO/assets/csp_dice.mdl" "$T/cstrike/models/"
+cp "$REPO/assets/csp_dice.mdl" "$REPO/assets/csp_tile.mdl" "$T/cstrike/models/"
+cp "$REPO/assets/csp_space.spr" "$REPO/assets/csp_face.spr" "$T/cstrike/sprites/"   # map overlay (tools/build_mapicons.py)
 cp "$REPO/server/motd.txt" "$REPO/server/server.cfg" "$T/cstrike/"
 
 tar czf "$OUT" -C "$T" .

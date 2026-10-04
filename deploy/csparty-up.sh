@@ -28,7 +28,7 @@ up_relay() {
     -v "$D/mappacks:/app/public/mappacks:ro" \
     --health-cmd "node -e \"fetch('http://127.0.0.1:8095/healthz').then((r) => process.exit(r.ok ? 0 : 1), => process.exit(1))\"" \
     --health-interval 30s --health-timeout 5s --health-retries 3 \
-    cs-party-relay:0.4.22
+    cs-party-relay:0.4.23
 }
 
 case "${1:-all}" in
