@@ -70,6 +70,12 @@ new const ITEM_TIP[IT_COUNT][]   = { "2 crates", "3 crates", "pick a roll", "riv
 #define CH_BANNER 2
 #define CH_SUB    3      // sublines, the VIP reel, the race clock, the lobby countdown, phones' centre messages
 #define CH_TUT    4
+// The client never restarts a HUD message that's still up: every message on a channel lives in one buffer, so
+// its "already on screen" check always matches and a re-send only rewrites the text in place. So the table and
+// the tutorial get a long hold, changes show at once, and the table is re-sent just after its hold runs out.
+// (With a 4 s hold and a 2.5 s refresh, the table timed out 4 s after it first went up and stayed gone until
+// the next refresh: about 1 s in every 5, ISSUE.) Leaving the screen means blanking the text.
+#define HUD_HOLD  240.0
 new const SHOP_T[]  = { IT_KNIFE, IT_BHOP, IT_FAKE, IT_C4, IT_ROTATE, IT_RIGGED };
 new const SHOP_CT[] = { IT_KNIFE, IT_RIGGED, IT_SMOKE, IT_FAKE, IT_ROTATE, IT_INTEL };
 new const ARMORY_DROP[] = { IT_KNIFE, IT_KNIFE, IT_KNIFE, IT_FAKE, IT_FAKE, IT_SMOKE, IT_SMOKE, IT_C4, IT_C4, IT_RIGGED, IT_BHOP, IT_ROTATE };
@@ -280,6 +286,7 @@ public plugin_init()
 
 	g_msgScoreInfo = get_user_msgid("ScoreInfo");
 	register_message(get_user_msgid("TextMsg"), "msg_textmsg");
+	register_event("ResetHUD", "ev_resethud", "b");   // each spawn wipes the client's HUD messages
 	new const HUDTEXT_MSGS[][] = { "HudText", "HudTextPro", "HudTextArgs" };   // hints arrive as HudTextArgs
 	for (new i = 0, m; i < sizeof HUDTEXT_MSGS; i++) if ((m = get_user_msgid(HUDTEXT_MSGS[i]))) register_message(m, "msg_hudtext");
 
@@ -1955,22 +1962,55 @@ crosshair_sync()
 	}
 }
 
-// true when this player's table text differs from what they last got, or it's due for a refresh
+new g_tblHash[33], Float:g_tblAt[33], Float:g_tblUp[33];   // the table as this player last got it; g_tblUp: when it went up (0: not up)
+
+public ev_resethud(id) g_tblUp[id] = 0.0;
+
+// true when this player's table text differs from what they last got, it's due for a refresh (a lost packet),
+// or it isn't up (just joined or spawned, or the hold ran out). "" blanks it while it may still be up.
 bool:hud_changed(id, const text[], extra = 0)   // extra: anything else that moves it (spectating)
 {
-	static hash[33], Float:at[33];
 	new h = strlen(text) + extra * 7919;
 	for (new i = 0; text[i]; i++) h = h * 31 + text[i];
 	new Float:now = get_gametime();
-	if (h == hash[id] && now - at[id] < 2.5) return false;
-	hash[id] = h; at[id] = now;
+	if (now < g_tblAt[id]) g_tblUp[id] = g_tblAt[id] = 0.0;   // new map
+	if (g_tblUp[id] > 0.0 && now - g_tblUp[id] > HUD_HOLD + 0.3) g_tblUp[id] = 0.0;   // (tick after it timed out)
+	if (!text[0] && g_tblUp[id] == 0.0) return false;
+	if (text[0] && g_tblUp[id] == 0.0) g_tblUp[id] = now;
+	else if (h == g_tblHash[id] && now - g_tblAt[id] < 2.5) return false;
+	g_tblHash[id] = h; g_tblAt[id] = now;
 	return true;
+}
+
+table_off()
+{
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id) || !hud_changed(id, "")) continue;
+		set_hudmessage(242, 163, 58, 0.70, 0.12, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
+		show_hudmessage(id, " ");
+	}
+}
+
+// minigame tutorial, top left: while everyone waits, and the first 12 s of the race
+hud_tutorial()
+{
+	static Float:tutAt, offLeft;
+	new Float:now = get_gametime(), Float:t = (g_state == ST_REMOTE_RACE) ? now - g_raceStart : 0.0;
+	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 12.0));
+	if (!on && !offLeft) return;
+	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return;
+	tutAt = now;
+	offLeft = on ? 3 : offLeft - 1;   // blank it three times over (lost packets): it's held for minutes
+	set_hudmessage(255, 255, 255, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	show_hudmessage(0, "%s", on ? MG_TUT[g_mg] : " ");
 }
 
 public task_hud()
 {
 	crosshair_sync();
-	if (g_state == ST_IDLE) return;
+	hud_tutorial();
+	if (g_state == ST_IDLE) { table_off(); return; }
 	update_crosshair();
 	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MINIGAME || g_state == ST_MG_INTRO) refill_seats();
 	spare_names();
@@ -2015,10 +2055,9 @@ public task_hud()
 		// top right on PCs (menus own the left side); top centre on phones (buttons own the right side).
 		// Dead or spectating, the spectator bar covers the top fifth of the screen: start under it, and leave
 		// out the gear block (nothing to use it on) so the table still ends above the bottom bar.
-		// held 4 s and only re-sent when the text changes (or every 2.5 s): re-sending the same table twice a
-		// second made it blink on slow clients (phones, software GL) and the browser client
-		if (touch) set_hudmessage(242, 163, 58, 0.37, spec ? 0.22 : 0.15, 0, 0.0, 4.0, 0.0, 0.0, CH_TABLE);
-		else set_hudmessage(242, 163, 58, 0.70, spec ? 0.22 : 0.12, 0, 0.0, 4.0, 0.0, 0.0, CH_TABLE);
+		// held for minutes, re-sent when the text changes (see HUD_HOLD)
+		if (touch) set_hudmessage(242, 163, 58, 0.37, spec ? 0.22 : 0.15, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
+		else set_hudmessage(242, 163, 58, 0.70, spec ? 0.22 : 0.12, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
 		new mine = seat_of(id), mineTxt[200] = "";
 		if (mine >= 0 && !spec)
 		{
@@ -2115,20 +2154,8 @@ hud_race()
 	{
 		if (!is_user_connected(id) || is_user_bot(id)) continue;
 		new bool:spec = hud_spec(id);
-		set_hudmessage(242, 163, 58, is_touch(id) ? 0.50 : 0.70, spec ? 0.22 : (is_touch(id) ? 0.15 : 0.12), 0, 0.0, 4.0, 0.0, 0.0, CH_TABLE);
+		set_hudmessage(242, 163, 58, is_touch(id) ? 0.50 : 0.70, spec ? 0.22 : (is_touch(id) ? 0.15 : 0.12), 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
 		if (hud_changed(id, buf, _:spec)) show_hudmessage(id, "%s", buf);
-	}
-	if (MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 12.0)))
-	{
-		// same refresh rule as the table: long hold, resend every 2.5 s (a resend per tick made it flicker)
-		static Float:tutAt;
-		new Float:now = get_gametime();
-		if (now - tutAt >= 2.5 || now < tutAt)
-		{
-			tutAt = now;
-			set_hudmessage(255, 255, 255, 0.04, 0.30, 0, 0.0, 4.0, 0.0, 0.0, CH_TUT);
-			show_hudmessage(0, "%s", MG_TUT[g_mg]);
-		}
 	}
 }
 
