@@ -320,3 +320,10 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Live spot-check (GPU headless desktop player, 960x600): the table was in 120/120 board frames over 75 s and gone from all 11 frames after `csp_stop`. In the bhop race the table showed in every in-race frame, and the tutorial was up until 12.0 s race time and gone from 12.6 s on.
 - Known: a ~0.5 s blink once every 4 minutes at the hold handoff (no free HUD channel to overlap it).
 - Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0515old cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-ISSUE`.
+
+## server 0.5.16-vq-ISSUE + relay MAX_PER_IP=12 (2026-10-04 18:40 UTC): 7+ browser players kept across map changes (ISSUE)
+- 8-client soak (`tools/dev/stability_e2e.js`: 4 seated + 4 spectators, 35 min, 4 map changes) on an isolated copy. Every browser player reaches HLDS from 127.0.0.1 (the relay). A map change reconnects them all at once, and ReHLDS refused the 6th+ still-connecting client from one IP (`Too many connect packets from 127.0.0.1 (6>5)`), dropping them to "Lost the party".
+- Fix: `sv_rehlds_maxclients_from_single_ip 32` in server.cfg. Relay `MAX_PER_IP` 6 -> 12 (a party in one house shares one public IP).
+- `patch0516-cfg/` (FROM cs-party-server:0.5.16-vq + server.cfg) -> `cs-party-server:0.5.16-vq-ISSUE`. `csparty-up.sh` backup: `csparty-up.sh.pre-ISSUE`. Gate: 0 humans, peers 0, live tags 0.5.16-vq / 0.4.18.
+- Soak with the fix: 0 server crashes or restarts, 0 AMXX errors, ~120 MB, ~7% CPU; all 8 clients back after every map change.
+- Rollback: containers `cs-party-server-0.5.16-vqold` and `cs-party-relay-0.4.18old`.
