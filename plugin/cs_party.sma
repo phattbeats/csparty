@@ -185,7 +185,7 @@ new bool:g_mgDone, g_mgWinners[SEATS], g_mgWinnerN;
 
 // entities / misc
 new c_autostart, bool:g_lobby, g_lobbyLeft, c_autobhop, g_awardLines[192];
-new c_pawnlight, bool:g_pawnLit[33];
+new c_pawnlight;
 new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt, Float:g_introEnd;
 new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
 #define HOP_TIME 0.3
@@ -253,7 +253,7 @@ public plugin_init()
 	c_hudscale = register_cvar("csp_hud_scale", "0");   // client hud_scale pushed to humans (0 = leave alone; 2 turned text into white boxes in the browser)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
 	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
-	c_pawnlight = register_cvar("csp_pawnlight", "1");   // board pawns carry a dim light (see pawn_lights)
+	c_pawnlight = register_cvar("csp_pawnlight", "1");   // board pawns carry a steady entity light (see pawn_lights)
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
 	c_autojoin = register_cvar("csp_autojoin", "1");   // put new humans on a team without the team/class menus   // 1 = old every-turn buy menu as well as the buy zones
 
@@ -1500,19 +1500,36 @@ public fw_startframe()
 }
 
 // A model takes only the light of the floor under it (Xash3D has no ambient minimum), so pawns in dust2's
-// tunnels and in shade were black shapes even after the browser's lightgamma lift. EF_DIMLIGHT gives a
-// player a dynamic light at its origin (~215 units): the model's ambient light goes near its cap and the
-// floor around it gets a soft pool. Board states only (in a fight it would give away hiding players), and
-// only the bit we set is cleared, so a flashlight switched on in a minigame stays the player's.
+// tunnels and in shade were black shapes even after the browser's lightgamma lift. Each pawn gets an entity
+// light (TE_ELIGHT: lights models only, steady) 90 units toward the director camera, so the side everyone is
+// looking at is the lit side. A model is lit only on faces turned toward a light, so a light at its own origin
+// does next to nothing; that's why the key is 4095 - id and not the player's index (a key equal to an entity's
+// index makes the client move the light onto that entity every frame). A re-send with the same key replaces it.
+// EF_DIMLIGHT did this before (0.5.15) and looked like everyone had flashlights on: the client gives your own
+// player a real flashlight beam and everyone else a world light whose radius is re-rolled every frame, so it
+// flickered (ISSUE). Board states only (in a fight it would give away hiding players). Sent every 0.25 s
+// with a 0.6 s life, so a lost packet doesn't blink it.
 pawn_lights()
 {
 	new bool:on = get_pcvar_num(c_pawnlight) > 0 && (g_state == ST_BOARD || g_state == ST_MG_RESULT || g_state == ST_END || g_state == ST_RESUME);
+	if (!on) return;
+	new Float:o[3], Float:d[3], bool:cam = bool:is_valid_ent(g_cam);
 	for (new id = 1; id <= MaxClients; id++)
 	{
-		if (!is_user_connected(id)) { g_pawnLit[id] = false; continue; }
-		new bool:want = on && is_user_alive(id) && seat_of(id) >= 0, fx = entity_get_int(id, EV_INT_effects);
-		if (want && !(fx & EF_DIMLIGHT)) { entity_set_int(id, EV_INT_effects, fx | EF_DIMLIGHT); g_pawnLit[id] = true; }   // again after a respawn
-		else if (!want && g_pawnLit[id]) { entity_set_int(id, EV_INT_effects, fx & ~EF_DIMLIGHT); g_pawnLit[id] = false; }
+		if (!is_user_connected(id) || !is_user_alive(id) || seat_of(id) < 0) continue;
+		entity_get_vector(id, EV_VEC_origin, o);
+		if (cam) xs_vec_sub_simple(g_camPos, o, d); else { d[0] = 0.0; d[1] = 0.0; d[2] = 1.0; }
+		new Float:l = vector_length(d); if (l < 1.0) { d[0] = 0.0; d[1] = 0.0; d[2] = 1.0; l = 1.0; }
+		for (new k = 0; k < 3; k++) o[k] += d[k] / l * 90.0;
+		message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+		write_byte(TE_ELIGHT);
+		write_short(4095 - id);
+		write_coord_f(o[0]); write_coord_f(o[1]); write_coord_f(o[2]);
+		write_coord(200);                          // radius: full strength inside, falling off as r²/d² beyond
+		write_byte(110); write_byte(110); write_byte(110);
+		write_byte(6);                             // life, 0.1 s units
+		write_coord(0);                            // decay
+		message_end();
 	}
 }
 
