@@ -4,7 +4,7 @@ Most stars at the end wins. /party starts, /board picks the map.
 
 
 
-YOUR TURN: JUMP picks "Jump at the crate", JUMP again rolls.
+YOUR TURN: pick "Open a case" from the menu. The reel does the rest.
 
 Menus: number keys, or up/down + JUMP to pick, USE to go back.
 

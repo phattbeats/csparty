@@ -35,8 +35,9 @@ for m in csp_surf csp_bhop csp_climb csp_maze; do
   cp "$REPO/maps/$m.bsp" "$REPO/maps/$m.nav" "$T/cstrike/maps/"
   cp "$REPO/maps/$m.ini" "$A/configs/cs_party/minigames/"
 done
-cp "$REPO/assets/csp_dice.mdl" "$REPO/assets/csp_tile.mdl" "$T/cstrike/models/"
+cp "$REPO/assets/csp_dice.mdl" "$REPO/assets/csp_case.mdl" "$REPO/assets/csp_tile.mdl" "$T/cstrike/models/"
 cp "$REPO/assets/csp_space.spr" "$REPO/assets/csp_face.spr" "$T/cstrike/sprites/"   # map overlay (tools/build_mapicons.py)
+mkdir -p "$T/cstrike/sound/csp"; cp "$REPO"/assets/snd/cstrike/sound/csp/*.wav "$T/cstrike/sound/csp/"
 cp "$REPO/server/motd.txt" "$REPO/server/server.cfg" "$T/cstrike/"
 
 tar czf "$OUT" -C "$T" .

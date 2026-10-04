@@ -53,13 +53,13 @@ enum { FMT_FFA = 1, FMT_2V2 = 2, FMT_1V3 = 4, FMT_DUEL = 8 };
 enum { CONT_NEXT_SEAT = 0, CONT_NEXT_TURN };
 
 // Board items (Mario Party style). You get these from Black Markets, the Armory, and ? events,
-// then use them at the start of your turn before jumping at the crate.
+// then use them at the start of your turn before opening your case.
 enum { IT_KNIFE = 0, IT_BHOP, IT_RIGGED, IT_FAKE, IT_SMOKE, IT_C4, IT_ROTATE, IT_INTEL, IT_COUNT };
 new const ITEM_NAME[IT_COUNT][]  = { "Knife Out", "Bhop Script", "Rigged Crate", "Fake Call", "Smoke", "C4", "Rotate", "Hostage Intel" };
 new const ITEM_PRICE[IT_COUNT]   = { 500, 1200, 900, 300, 400, 800, 1000, 4000 };
 // Menu hints, kept short: the browser client cuts menu lines at about a third of the screen (~24 characters
 // at the default 1.5x text), so a hint only shows when the whole line fits (menu_hint).
-new const ITEM_TIP[IT_COUNT][]   = { "2 crates", "3 crates", "pick a roll", "rival -3", "dodge traps", "trap a space", "swap places", "to hostages" };
+new const ITEM_TIP[IT_COUNT][]   = { "2 cases", "3 cases", "pick a roll", "rival -3", "dodge traps", "trap a space", "swap places", "to hostages" };
 #define MENU_FIT 22   // ~24 visible characters, minus the nav cursor's "* "
 #define WRAP_PC     30   // HUD: centred text between the menus and the table (~10 px a character at 960x600)
 #define WRAP_TOUCH  36   // HUD: centred text on phones, between the chat and the right-hand buttons
@@ -201,7 +201,13 @@ new Float:g_camPos[3], Float:g_camAng[3];
 new g_msgScoreInfo;
 #define DICE_HALF   18.0
 #define DICE_LIFT   82.0      // crate center above player origin; standing hull top is +36, a jump reaches ~+81
-new g_diceEnt[3], g_diceN, bool:g_diceHit[3], g_diceVal[3], g_diceFace[3], bool:g_diceArmed, Float:g_diceStart, Float:g_diceBotJump, bool:g_diceOpen;
+#define REEL_SLOTS 9
+#define REEL_SP    38.0
+#define REEL_LEN   40
+#define REEL_WIN   30
+#define REEL_TIME  2.3     // seconds for the first reel; the roll used to wait on a jump, usually 1-3 s
+#define REEL_STAG  0.35
+new g_diceEnt[3 * REEL_SLOTS], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2];
 
 
 // cvars
@@ -214,7 +220,8 @@ public plugin_precache()
 	precache_model("models/rpgrocket.mdl");
 	precache_model("models/hostage.mdl");
 	precache_model("models/w_c4.mdl");
-	precache_model("models/csp_dice.mdl");
+	precache_model("models/csp_case.mdl");
+	precache_sound("csp/case_open.wav"); precache_sound("csp/case_tick.wav"); precache_sound("csp/case_land.wav"); precache_sound("csp/case_rare.wav"); precache_sound("csp/knife_sting.wav");
 	new const PROPS[][] = { "models/w_ak47.mdl", "models/w_m4a1.mdl", "models/w_awp.mdl", "models/w_kevlar.mdl", "models/w_deagle.mdl", "models/w_backpack.mdl", "models/player/vip/vip.mdl" };
 	for (new i = 0; i < sizeof PROPS; i++) precache_model(PROPS[i]);
 	precache_sound("items/gunpickup1.wav"); precache_sound("weapons/awp1.wav"); precache_sound("buttons/blip1.wav");
@@ -473,15 +480,16 @@ spawn_board_entities()
 		entity_set_int(e, EV_INT_skin, g_nodeType[i]);
 		g_tileEnt[i] = e;
 	}
-	for (new k = 0; k < 3; k++)
+	for (new k = 0; k < sizeof g_diceEnt; k++)
 	{
 		new e = create_entity("info_target");
 		if (!e) continue;
-		entity_set_string(e, EV_SZ_classname, "csp_dice");
-		entity_set_model(e, "models/csp_dice.mdl");
+		entity_set_string(e, EV_SZ_classname, "csp_case");
+		entity_set_model(e, "models/csp_case.mdl");
 		entity_set_size(e, Float:{-18.0, -18.0, -18.0}, Float:{18.0, 18.0, 18.0});
 		entity_set_int(e, EV_INT_solid, SOLID_NOT);
 		entity_set_int(e, EV_INT_movetype, MOVETYPE_NOCLIP);
+		entity_set_int(e, EV_INT_rendermode, kRenderTransTexture);
 		entity_set_int(e, EV_INT_effects, EF_NODRAW);
 		g_diceEnt[k] = e;
 	}
@@ -803,7 +811,8 @@ match_abort()
 		if (g_lateSpec[id]) set_task(2.0, "task_autojoin", TASK_RACE + 100 + id);   // the match they waited out is over
 	}
 	delete_state();
-	for (new k = 0; k < 3; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
+	for (new k = 0; k < sizeof g_diceEnt; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
+	g_diceOpen = false;
 	g_state = ST_IDLE;
 	board_music(false);
 	restore_cvars();
@@ -2465,155 +2474,205 @@ public flow_turn_ready()
 public flow_bot_buy() { new s = g_cur; ai_buy_gear(s); if (get_pcvar_num(c_buyany)) ai_shop(s, SIDE_NONE); ai_use_items(s); set_task(spd(0.8), "flow_roll", TASK_FLOW); }
 public flow_human_buy() { show_turn_menu(g_cur); }
 
-// ------------------------------------------------------------- dice crates --
-// One crate floats above your head (two with Knife Out). It spins and flips through your
-// character's die faces; jump into it and it stops on whatever face is showing.
+// ------------------------------------------------------------ case opening --
+// Open a case, CS:GO style: a reel of rarity cards slides past a fixed centre and slows to a stop on the
+// winner. Each character's die faces map to rarities by rank (their top value is the gold knife), so the odds
+// are the old dice odds. Knife Out / Bhop Script open 2 / 3 reels stacked, stopping a beat apart. The
+// entities are models every client already has (csp_case.mdl), so spectators and the broadcast camera see it.
+
+new const RAR_NAME[5][] = { "Mil-Spec", "Restricted", "Classified", "Covert", "Knife" };
+new const RAR_RGB[5][3] = { {75, 105, 255}, {136, 71, 255}, {211, 44, 230}, {235, 75, 75}, {255, 215, 0} };
+
+// 0 blue .. 3 red by how many better values the character's die has; 4 (gold) is their top value
+rarity_of(sk, val)
+{
+	new above = 0;
+	for (new f = 0; f < 6; f++)
+	{
+		new v = SKIN_DICE[sk][f];
+		if (v <= val) continue;
+		new bool:dup = false;
+		for (new g = 0; g < f; g++) if (SKIN_DICE[sk][g] == v) dup = true;
+		if (!dup) above++;
+	}
+	return 4 - min(above, 4);
+}
+
+Float:reel_time(r) { return REEL_TIME + float(r) * REEL_STAG; }
 
 public flow_roll()
 {
-	new s = g_cur, id = g_seatPlayer[s];
+	new s = g_cur, id = g_seatPlayer[s], sk = g_seatSkin[s];
 	g_waitKind[s] = W_NONE;
 	g_diceN = 1 + g_extraCrates[s];
 	g_extraCrates[s] = 0;
-	new Float:base[3]; base = g_nodePos[g_pos[s]];
-	for (new k = 0; k < 3; k++)
-	{
-		if (!is_valid_ent(g_diceEnt[k])) continue;
-		g_diceHit[k] = false; g_diceFace[k] = random(6);
-		if (k >= g_diceN) { entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW); continue; }
-		new Float:o[3]; o = base;
-		new Float:side = (float(k) - float(g_diceN - 1) / 2.0) * 44.0;          // spread along the camera's right
-		o[0] += side * g_camFwd[1]; o[1] -= side * g_camFwd[0];
-		new Float:po[3]; if (is_user_alive(id)) entity_get_vector(id, EV_VEC_origin, po); else { po = base; po[2] += 37.0; }
-		o[2] = po[2] + DICE_LIFT;
-		if (g_diceN == 1) { o[0] = po[0]; o[1] = po[1]; }
-		else { o[0] += po[0] - base[0]; o[1] += po[1] - base[1]; }
-		entity_set_origin(g_diceEnt[k], o);
-		entity_set_int(g_diceEnt[k], EV_INT_effects, 0);
-		entity_set_int(g_diceEnt[k], EV_INT_skin, 0);
-		entity_set_vector(g_diceEnt[k], EV_VEC_avelocity, Float:{ 30.0, 220.0, 0.0 });
-	}
-	g_diceArmed = true; g_diceOpen = true;
-	cam_shot(CAM_DICE);
-	if (get_pcvar_num(c_debug) > 1)
-	{
-		new Float:c[3], Float:po[3]; entity_get_vector(g_diceEnt[0], EV_VEC_origin, c); pawn_origin(s, po);
-		dbg("crate up: crate %.0f %.0f %.0f  pawn %.0f %.0f %.0f", c[0], c[1], c[2], po[0], po[1], po[2]);
-	}
-	g_diceStart = get_gametime();
-	g_diceBotJump = get_gametime() + spd(random_float(0.9, 1.6));
-	if (is_user_alive(id))
-	{
-		if (g_navThawed[id]) nav_end(id);
-		entity_set_int(id, EV_INT_flags, entity_get_int(id, EV_INT_flags) & ~FL_FROZEN);   // free to jump; task_dice pins them to the space
-	}
-	emit_sound(g_diceEnt[0], CHAN_ITEM, "items/gunpickup2.wav", 0.8, ATTN_NORM, 0, PITCH_NORM);
-	if (!seat_is_bot(s)) { center_print(id,"JUMP into the crate!"); subline("%s: jump into the crate!", g_seatName[s]); }
-	remove_task(TASK_DICE);
-	set_task(0.05, "task_dice", TASK_DICE, _, _, "b");
-}
-
-public task_dice()
-{
-	new s = g_cur, id = g_seatPlayer[s];
-	static tick; tick++;
-	// flip faces
-	for (new k = 0; k < g_diceN; k++)
-	{
-		if (g_diceHit[k] || !is_valid_ent(g_diceEnt[k])) continue;
-		g_diceFace[k] = (g_diceFace[k] + random_num(1, 5)) % 6;   // every tick (20/s), a random jump: 10/s in order was easy to time
-		entity_set_int(g_diceEnt[k], EV_INT_skin, 1 + SKIN_DICE[g_seatSkin[s]][g_diceFace[k]]);
-	}
-	if (!g_diceOpen) return;
 	new bool:alive = bool:is_user_alive(id);
+	new Float:po[3], Float:F[2];
 	if (alive)
 	{
-		// pin the pawn to its space; only vertical movement allowed
-		new Float:o[3], Float:want[3]; entity_get_vector(id, EV_VEC_origin, o);
-		want = g_nodePos[g_pos[s]];
-		static const Float:OFF[SEATS][2] = { {-14.0, -14.0}, {14.0, -14.0}, {-14.0, 14.0}, {14.0, 14.0} };
-		want[0] += OFF[s][0]; want[1] += OFF[s][1];
-		if (floatabs(o[0] - want[0]) > 3.0 || floatabs(o[1] - want[1]) > 3.0)
+		new Float:ang[3]; entity_get_vector(id, EV_VEC_origin, po); entity_get_vector(id, EV_VEC_angles, ang);
+		F[0] = floatcos(ang[1], degrees); F[1] = floatsin(ang[1], degrees);
+	}
+	else
+	{
+		po = g_nodePos[g_pos[s]]; po[2] += 37.0;
+		new Float:l = floatsqroot(g_camFwd[0] * g_camFwd[0] + g_camFwd[1] * g_camFwd[1]);
+		if (l < 0.01) { F[0] = 1.0; F[1] = 0.0; } else { F[0] = g_camFwd[0] / l; F[1] = g_camFwd[1] / l; }
+	}
+	g_reelS[0] = -F[1]; g_reelS[1] = F[0];                   // screen-right for the dice camera shot, which sits out front looking back
+	new Float:face[3], Float:fwd[3]; fwd[0] = F[0]; fwd[1] = F[1]; vector_to_angle(fwd, face); face[0] = 0.0; face[2] = 0.0;
+	if (alive) { if (g_navThawed[id]) nav_end(id); freeze(id); }
+	for (new r = 0; r < 3; r++)
+	{
+		g_reelDone[r] = true; g_reelIdx[r] = -999;
+		if (r < g_diceN)
 		{
-			o[0] = want[0]; o[1] = want[1]; entity_set_origin(id, o);
-			new Float:v[3]; entity_get_vector(id, EV_VEC_velocity, v); v[0] = 0.0; v[1] = 0.0; entity_set_vector(id, EV_VEC_velocity, v);
+			g_reelDone[r] = false;
+			g_reelC[r] = po; g_reelC[r][2] = po[2] + DICE_LIFT + (float(g_diceN - 1) / 2.0 - float(r)) * 44.0;
+			for (new i = 0; i < REEL_LEN; i++) g_reelR[r][i] = rarity_of(sk, SKIN_DICE[sk][random(6)]);
+			g_diceVal[r] = SKIN_DICE[sk][random(6)];
+			if (r == 0 && g_rigged[s] > 0) { g_diceVal[r] = g_rigged[s]; g_rigged[s] = 0; }
+			g_reelR[r][REEL_WIN] = rarity_of(sk, g_diceVal[r]);
 		}
-		new bool:onGround = (entity_get_int(id, EV_INT_flags) & FL_ONGROUND) != 0;
-		if (onGround) g_diceArmed = true;
-		// bots jump on their own schedule
-		if (seat_is_bot(s))
+		for (new k = 0; k < REEL_SLOTS; k++)
 		{
-			// bots under bot_stop don't run player physics, so play the jump arc for them: v0 268 u/s, gravity 800
-			new Float:t = get_gametime() - g_diceBotJump;
-			if (t >= 0.0)
-			{
-				new Float:spot[3]; pawn_spot(s, g_pos[s], spot);
-				new Float:z = 268.0 * t - 400.0 * t * t;
-				if (z <= 0.0 && t > 0.2) { z = 0.0; g_diceBotJump = get_gametime() + spd(random_float(0.9, 1.4)); }
-				spot[2] += floatmax(z, 0.0);
-				entity_set_origin(id, spot);
-				onGround = z <= 0.0;
-				if (onGround) g_diceArmed = true;
-			}
-		}
-		// head hits crate bottom?
-		new Float:top[3]; entity_get_vector(id, EV_VEC_absmax, top);
-		for (new k = 0; k < g_diceN; k++)
-		{
-			if (g_diceHit[k] || !g_diceArmed) continue;
-			new Float:c[3]; entity_get_vector(g_diceEnt[k], EV_VEC_origin, c);
-			if (get_pcvar_num(c_debug) > 1 && !onGround) dbg("air: top %.0f crate bottom %.0f", top[2], c[2] - DICE_HALF);
-			if (top[2] >= c[2] - DICE_HALF - 2.0) { dice_hit(k); g_diceArmed = false; break; }
+			new e = g_diceEnt[r * REEL_SLOTS + k];
+			if (!is_valid_ent(e)) continue;
+			entity_set_vector(e, EV_VEC_velocity, Float:{ 0.0, 0.0, 0.0 });
+			entity_set_vector(e, EV_VEC_angles, face);
+			entity_set_int(e, EV_INT_skin, 0);
+			entity_set_float(e, EV_FL_renderamt, 0.0);
+			entity_set_int(e, EV_INT_effects, r < g_diceN ? 0 : EF_NODRAW);
+			if (r < g_diceN) entity_set_origin(e, g_reelC[r]);
 		}
 	}
-	// nobody jumped (AFK or dead pawn): hit it for them
-	if (get_gametime() - g_diceStart > (seat_is_bot(s) ? spd(8.0) : 12.0) || !alive)
-		for (new k = 0; k < g_diceN; k++) if (!g_diceHit[k]) { dice_hit(k); break; }
+	g_diceOpen = true;
+	cam_shot(CAM_DICE);
+	g_reelStart = get_gametime();
+	client_cmd(0, "play ^"csp/case_open.wav^"");
+	if (g_diceN > 1) subline("%s opens %d cases", g_seatName[s], g_diceN); else subline("%s opens a case", g_seatName[s]);
+	remove_task(TASK_DICE);
+	set_task(0.04, "task_reel", TASK_DICE, _, _, "b");
 }
 
-dice_hit(k)
+public task_reel()
 {
-	new s = g_cur;
-	g_diceHit[k] = true;
-	g_diceVal[k] = SKIN_DICE[g_seatSkin[s]][g_diceFace[k]];
-	if (k == 0 && g_rigged[s] > 0) { g_diceVal[k] = g_rigged[s]; g_rigged[s] = 0; }
-	new e = g_diceEnt[k];
-	entity_set_int(e, EV_INT_skin, 1 + g_diceVal[k]);
-	entity_set_vector(e, EV_VEC_avelocity, Float:{ 0.0, 0.0, 0.0 });
-	new Float:ang[3], Float:c[3], Float:d[3]; entity_get_vector(e, EV_VEC_origin, c);
-	xs_vec_sub_simple(g_camPos, c, d); vector_to_angle(d, ang); ang[0] = 0.0; ang[2] = 0.0;   // turn a face to the camera
-	entity_set_vector(e, EV_VEC_angles, ang);
-	c[2] += 10.0; entity_set_origin(e, c);                                                  // bonk
-	set_task(0.12, "task_dice_settle", TASK_DICE + 10 + k);
-	emit_sound(e, CHAN_ITEM, "weapons/c4_beep1.wav", 1.0, ATTN_NORM, 0, PITCH_HIGH);
+	new Float:el = get_gametime() - g_reelStart, bool:lead = true, bool:all = true;
+	for (new r = 0; r < g_diceN; r++)
+	{
+		if (g_reelDone[r]) continue;
+		new Float:T = reel_time(r), Float:u = floatmin(el / T, 1.0), Float:inv = 1.0 - u;
+		new Float:x = float(REEL_WIN) * REEL_SP * (1.0 - inv * inv * inv);
+		new Float:xv = float(REEL_WIN) * REEL_SP * 3.0 * inv * inv / T;
+		new ic = floatround(x / REEL_SP);
+		if (ic != g_reelIdx[r])
+		{
+			g_reelIdx[r] = ic;
+			if (ic >= 0 && ic < REEL_LEN) reel_tick(r, ic, u, lead);
+		}
+		lead = false;
+		reel_place(r, x, u >= 1.0 ? 0.0 : xv, ic);
+		if (u >= 1.0) { g_reelDone[r] = true; reel_land(r); } else all = false;
+	}
+	if (all)
+	{
+		remove_task(TASK_DICE);
+		g_diceOpen = false;
+		set_task(spd(0.9), "flow_dice_done", TASK_FLOW);
+	}
+}
+
+reel_place(r, Float:x, Float:xv, ic)
+{
+	for (new k = -(REEL_SLOTS / 2); k <= REEL_SLOTS / 2; k++)
+	{
+		new i = ic + k, slot = ((i % REEL_SLOTS) + REEL_SLOTS) % REEL_SLOTS, e = g_diceEnt[r * REEL_SLOTS + slot];
+		if (!is_valid_ent(e)) continue;
+		new Float:off = float(i) * REEL_SP - x, Float:o[3], Float:v[3];
+		o[0] = g_reelC[r][0] + g_reelS[0] * off; o[1] = g_reelC[r][1] + g_reelS[1] * off; o[2] = g_reelC[r][2];
+		v[0] = -g_reelS[0] * xv; v[1] = -g_reelS[1] * xv; v[2] = 0.0;
+		entity_set_origin(e, o);
+		entity_set_vector(e, EV_VEC_velocity, v);
+		new Float:a = floatabs(off);
+		entity_set_float(e, EV_FL_renderamt, a < 100.0 ? 255.0 : (a > 152.0 ? 0.0 : 255.0 * (152.0 - a) / 52.0));
+		entity_set_int(e, EV_INT_skin, (i >= 0 && i < REEL_LEN) ? 1 + g_reelR[r][i] : 1);
+	}
+}
+
+reel_light(r, rar, rad, life)
+{
+	new Float:o[3]; o = g_reelC[r];
+	o[0] += g_reelS[1] * 40.0; o[1] -= g_reelS[0] * 40.0;       // toward the camera
 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
-	write_byte(TE_SPARKS);
-	engfunc(EngFunc_WriteCoord, c[0]); engfunc(EngFunc_WriteCoord, c[1]); engfunc(EngFunc_WriteCoord, c[2] - DICE_HALF);
+	write_byte(TE_ELIGHT);
+	write_short(4070 - r);
+	write_coord_f(o[0]); write_coord_f(o[1]); write_coord_f(o[2]);
+	write_coord(rad);
+	write_byte(RAR_RGB[rar][0]); write_byte(RAR_RGB[rar][1]); write_byte(RAR_RGB[rar][2]);
+	write_byte(life);
+	write_coord(0);
 	message_end();
-	dbg("%s hits crate %d: %d", g_seatName[s], k + 1, g_diceVal[k]);
-	for (new j = 0; j < g_diceN; j++) if (!g_diceHit[j]) return;
-	g_diceOpen = false;
-	set_task(spd(0.9), "flow_dice_done", TASK_FLOW);
 }
 
-public task_dice_settle(taskid)
+reel_tick(r, ic, Float:u, bool:lead)
 {
-	new k = taskid - TASK_DICE - 10;
-	if (!is_valid_ent(g_diceEnt[k])) return;
-	new Float:c[3]; entity_get_vector(g_diceEnt[k], EV_VEC_origin, c); c[2] -= 10.0; entity_set_origin(g_diceEnt[k], c);
+	reel_light(r, g_reelR[r][ic], 170, 2);
+	if (lead) emit_sound(g_diceEnt[r * REEL_SLOTS], CHAN_ITEM, "csp/case_tick.wav", 0.6, ATTN_NONE, 0, 125 - floatround(u * 35.0));
+}
+
+reel_flash(rar, alpha, Float:secs)
+{
+	static msg; if (!msg) msg = get_user_msgid("ScreenFade");
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		message_begin(MSG_ONE, msg, _, id);
+		write_short(floatround(secs * 4096.0)); write_short(0); write_short(0x0000);
+		write_byte(RAR_RGB[rar][0]); write_byte(RAR_RGB[rar][1]); write_byte(RAR_RGB[rar][2]); write_byte(alpha);
+		message_end();
+	}
+}
+
+reel_land(r)
+{
+	new rar = g_reelR[r][REEL_WIN], e = g_diceEnt[r * REEL_SLOTS + REEL_WIN % REEL_SLOTS];
+	for (new k = 0; k < REEL_SLOTS; k++)
+	{
+		new o = g_diceEnt[r * REEL_SLOTS + k];
+		if (is_valid_ent(o)) entity_set_vector(o, EV_VEC_velocity, Float:{ 0.0, 0.0, 0.0 });
+	}
+	new Float:c[3]; c = g_reelC[r];
+	if (is_valid_ent(e)) { entity_set_origin(e, c); entity_set_float(e, EV_FL_renderamt, 255.0); }
+	reel_light(r, rar, 100 + 70 * rar, 10 + 4 * rar);
+	new sparks = rar >= 4 ? 4 : (rar >= 1 ? 1 : 0);
+	for (new k = 0; k < sparks; k++)
+	{
+		message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+		write_byte(TE_SPARKS);
+		engfunc(EngFunc_WriteCoord, c[0] + random_float(-14.0, 14.0)); engfunc(EngFunc_WriteCoord, c[1] + random_float(-14.0, 14.0)); engfunc(EngFunc_WriteCoord, c[2] + random_float(-14.0, 14.0));
+		message_end();
+	}
+	if (rar >= 4) { client_cmd(0, "play ^"csp/knife_sting.wav^""); reel_flash(rar, 190, 0.9); }
+	else if (rar >= 2) { client_cmd(0, "play ^"csp/case_rare.wav^""); reel_flash(rar, rar >= 3 ? 110 : 80, 0.5); }
+	else client_cmd(0, "play ^"csp/case_land.wav^"");
+	dbg("%s case %d: %d (%s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar]);
 }
 
 public flow_dice_done()
 {
 	new s = g_cur, id = g_seatPlayer[s];
 	remove_task(TASK_DICE);
-	for (new k = 0; k < 3; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
+	for (new k = 0; k < sizeof g_diceEnt; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
 	if (is_user_alive(id)) { place_pawn(s); freeze(id); }
-	new r = 0; for (new k = 0; k < g_diceN; k++) r += g_diceVal[k];
+	new r = 0, best = 0; for (new k = 0; k < g_diceN; k++) { r += g_diceVal[k]; best = max(best, g_reelR[k][REEL_WIN]); }
 	new fl = g_flashed[s];
 	if (fl) { r = max(0, r - fl); g_flashed[s] = 0; }
-	if (g_diceN > 1 || fl) banner("%s rolls %d%s%s", g_seatName[s], r, g_diceN > 1 ? (g_diceN == 3 ? " (bhop script)" : " (knife out)") : "", fl ? " (faked out -3)" : "");
-	else banner("%s rolls %d", g_seatName[s], r);
+	new msg[128];
+	if (g_diceN > 1 || fl) formatex(msg, charsmax(msg), "%s rolls %d%s%s%s", g_seatName[s], r, g_diceN > 1 ? (g_diceN == 3 ? " (bhop script)" : " (knife out)") : "", best >= 4 ? " KNIFE!" : "", fl ? " (faked out -3)" : "");
+	else if (best >= 4) formatex(msg, charsmax(msg), "%s pulls a KNIFE! Rolls %d", g_seatName[s], r);
+	else formatex(msg, charsmax(msg), "%s opens a %s. Rolls %d", g_seatName[s], RAR_NAME[best], r);
+	hud_all(CH_BANNER, RAR_RGB[best][0], RAR_RGB[best][1], RAR_RGB[best][2], true, spd(3.0), 0.1, 0.3, msg);
+	dbg("== %s", msg);
 	g_stepsLeft = r; g_moveDepth = 0;
 	cam_shot(CAM_FOLLOW);
 	set_task(spd(1.2), "flow_step", TASK_FLOW);
@@ -2917,9 +2976,9 @@ bool:use_item(s, it, target)
 	take_item(s, it);
 	switch (it)
 	{
-		case IT_KNIFE:  { g_extraCrates[s] = 1; announce("%s pulls the knife. Two crates this roll.", g_seatName[s]); }
-		case IT_BHOP:   { g_extraCrates[s] = 2; announce("%s runs a bhop script. Three crates!", g_seatName[s]); }
-		case IT_RIGGED: { g_rigged[s] = target; announce("%s rigs the crate.", g_seatName[s]); }
+		case IT_KNIFE:  { g_extraCrates[s] = 1; announce("%s pulls the knife. Two cases this roll.", g_seatName[s]); }
+		case IT_BHOP:   { g_extraCrates[s] = 2; announce("%s runs a bhop script. Three cases!", g_seatName[s]); }
+		case IT_RIGGED: { g_rigged[s] = target; announce("%s rigs the case.", g_seatName[s]); }
 		case IT_FAKE:   { g_flashed[target] += 3; announce("%s fakes a call. %s's next roll is -3.", g_seatName[s], g_seatName[target]); }
 		case IT_SMOKE:  { g_smoke[s] = true; announce("%s pops smoke.", g_seatName[s]); }
 		case IT_C4:     { g_traps[g_pos[s]] = s; refresh_traps(); announce("%s plants C4 in %s.", g_seatName[s], g_nodeArea[g_pos[s]]); }
@@ -3171,7 +3230,7 @@ public hc_nav_prethink(const id)
 }
 
 // ---------------------------------------------------------------- menus --
-// Your turn: buy gear, use items, jump at the crate.
+// Your turn: buy gear, use items, open a case.
 show_turn_menu(s)
 {
 	new id = g_seatPlayer[s];
@@ -3180,7 +3239,7 @@ show_turn_menu(s)
 	// short lines: the browser client cuts menus at about a third of the screen (gear is on the right-hand table)
 	new title[96]; formatex(title, charsmax(title), "\yYour turn  \w$%d^n\dHostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	new m = menu_create(title, "mh_turn"), line[64], info[4];
-	menu_additem(m, "\rJump at the crate \d(roll)", "99");
+	menu_additem(m, "\rOpen a case \d(roll)", "99");
 	menu_additem(m, "\wBuy gear \d(minigames)", "97");
 	menu_additem(m, g_camMode == CAM_MAP ? "\yMap overlay \d(close)" : "\wMap overlay", "96");
 	for (new k = 0; k < g_itemN[s]; k++)

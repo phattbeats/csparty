@@ -7,7 +7,7 @@ Status: v0.5, playable start to finish with bots and humans, from CS 1.6, a desk
 ## How a match plays
 
 - Up to 4 seats. Humans on T or CT get seats first, bots fill the rest. Spectators watch.
-- **Your turn:** buy gear (the real 1.6 buy menu, real prices, board money), use board items, then **jump into the crate** over your head to roll your character's die.
+- **Your turn:** buy gear (the real 1.6 buy menu, real prices, board money), use board items, then **open a case** (a CS:GO-style reel of rarity cards; your character's top roll is the gold knife).
 - Everyone watches one broadcast camera that follows whoever's turn it is: fade, intro shot, dice shot, follow shot, landing shot, hostage cutaway.
 - **Board:** generated from the map's bot nav mesh. Blue +$, red -$, ? events, bombsites (plant a C4 trap down the road), Black Markets at T and CT spawn (board items), Camper, Armory, Duel, VIP Escort, Negotiator.
 - **Stars:** reach the hostages, pay $5,000. They move after every rescue.
@@ -20,7 +20,7 @@ Status: v0.5, playable start to finish with bots and humans, from CS 1.6, a desk
 
 ## Controls
 
-Every CS Party menu works with digits, or with a cursor: move up/down to highlight, **Jump** to pick, **Use** to go back. "Jump at the crate" is always first, so a whole turn is Jump, Jump.
+Every CS Party menu works with digits, or with a cursor: move up/down to highlight, **Jump** to pick, **Use** to go back. "Open a case" is always first, so a whole turn is Jump, Jump.
 
 | | Menus | Turn | Minigames |
 |---|---|---|---|

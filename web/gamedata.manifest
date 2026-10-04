@@ -18,6 +18,12 @@ cstrike/gfx/vgui/round_corner_se.tga
 cstrike/gfx/vgui/round_corner_sw.tga
 cstrike/liblist.gam
 cstrike/models/csp_dice.mdl
+cstrike/models/csp_case.mdl
+cstrike/sound/csp/case_open.wav
+cstrike/sound/csp/case_tick.wav
+cstrike/sound/csp/case_land.wav
+cstrike/sound/csp/case_rare.wav
+cstrike/sound/csp/knife_sting.wav
 cstrike/models/hostage.mdl
 cstrike/models/p_ak47.mdl
 cstrike/models/p_aug.mdl
