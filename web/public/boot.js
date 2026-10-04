@@ -138,6 +138,11 @@
     } catch {}
     $("canvas").focus();
   });
+  // Chrome/Edge hand Ctrl+W and friends to the page only while the keyboard is locked, and only in fullscreen
+  document.addEventListener("fullscreenchange", => {
+    if (document.fullscreenElement) navigator.keyboard?.lock?.().catch(() => {});
+    else navigator.keyboard?.unlock?.();
+  });
   let fsTimer = 0;
   addEventListener("mousemove", => {
     if (!$("gate").hidden || document.pointerLockElement) return;
@@ -668,8 +673,8 @@
         em.FS.writeFile(ROOT + "/" + p, data, { canOwn: true });
       }
       for (const [p, data] of Object.entries(libs)) { mkdirp(em.FS, ROOT + "/" + p.split("/").slice(0, -1).join("/")); em.FS.writeFile(ROOT + "/" + p, data); }
-      // Ctrl+W closes the tab, so duck lives on C. (+duck can't ride the command line: a leading + starts a new command.)
-      em.FS.writeFile(ROOT + "/cstrike/csp_keys.cfg", "unbind ctrl\nbind c +duck\n");
+      // Ctrl stays duck; C is a spare duck key for when the browser keeps Ctrl+W. (+duck can't ride the command line: a leading + starts a new command.)
+      em.FS.writeFile(ROOT + "/cstrike/csp_keys.cfg", "bind c +duck\n");
       em.FS.chdir(ROOT);
       bar(1);
       $("gate").hidden = true;
