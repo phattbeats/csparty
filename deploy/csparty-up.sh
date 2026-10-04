@@ -25,6 +25,7 @@ up_relay() {
   docker run -d --name cs-party-relay --network host --restart unless-stopped --log-driver json-file --log-opt max-size=50m --log-opt max-file=1 \
     -e PORT=8095 -e GAME=127.0.0.1:27016 -e TRUST_PROXY=1 -e PARTY_KEY="$PARTY_KEY" -e MAX_PER_IP=12 \
     -v "$D/gamedata.zip:/app/public/gamedata.zip:ro" \
+    -v "$D/mappacks:/app/public/mappacks:ro" \
     --health-cmd "node -e \"fetch('http://127.0.0.1:8095/healthz').then((r) => process.exit(r.ok ? 0 : 1), => process.exit(1))\"" \
     --health-interval 30s --health-timeout 5s --health-retries 3 \
     cs-party-relay:0.4.23

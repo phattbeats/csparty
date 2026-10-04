@@ -2,7 +2,7 @@
 # Packs the CS Party server overlay: everything that goes on top of a stock SteamCMD HLDS (app 90, cstrike).
 #   from SERVER_DIR (a working install you built): ReHLDS engine binaries, ReGameDLL_CS, Metamod-R,
 #     AMX Mod X with ReAPI, zBot chatter data, the dust2 nav mesh
-#   from this repo: the plugin, boards, minigame maps + zones, the dice model, MOTD, server.cfg
+#   from this repo: the plugin, boards, minigame maps + zones, race pool maps, the dice model, MOTD, server.cfg
 # No Valve files go in. Output feeds deploy/Dockerfile.server.
 #
 # usage: tools/package_server.sh <SERVER_DIR> [out.tar.gz]     (default out: deploy/cs-party-server-overlay.tar.gz)
@@ -34,6 +34,13 @@ cp "$REPO"/boards/*.nav "$T/cstrike/maps/"       # zBot nav for each board map (
 for m in csp_surf csp_bhop csp_climb csp_maze; do
   cp "$REPO/maps/$m.bsp" "$REPO/maps/$m.nav" "$T/cstrike/maps/"
   cp "$REPO/maps/$m.ini" "$A/configs/cs_party/minigames/"
+done
+# race pool maps (tools/race_map.py build): zone .ini from the repo, the map files from build/racemaps/server
+cp "$REPO"/maps/pool/*.ini "$A/configs/cs_party/minigames/" 2>/dev/null || true
+[ -d "$REPO/build/racemaps/server" ] && cp -a "$REPO/build/racemaps/server/." "$T/"
+for ini in "$REPO"/maps/pool/*.ini; do
+  [ -e "$ini" ] || continue; m=$(basename "$ini" .ini)
+  [ -f "$T/cstrike/maps/$m.bsp" ] || echo "warning: $m has a zone .ini but no built map (tools/race_map.py build); the plugin leaves it out"
 done
 cp "$REPO/assets/csp_dice.mdl" "$REPO/assets/csp_case.mdl" "$REPO/assets/csp_tile.mdl" "$T/cstrike/models/"
 cp "$REPO/assets/csp_space.spr" "$REPO/assets/csp_face.spr" "$T/cstrike/sprites/"   # map overlay (tools/build_mapicons.py)

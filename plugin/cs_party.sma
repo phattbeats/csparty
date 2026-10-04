@@ -140,8 +140,15 @@ new const MG_TIP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "Hold A or D to
 new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
 // 0 = fixed loadout (gear untouched), 1 = all your gear, 2 = pistol, armor and nades only
 new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-// minigames played on CS Party's own maps (changelevel and back)
+// minigames played on their own maps (changelevel and back). A race draws its map from a pool (scan_pools);
+// this is the map it falls back to when its pool is empty.
 new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "csp_bhop", "csp_climb", "csp_maze", "csp_towers" };
+// race map pools: every configs/cs_party/minigames/<map>.ini with its .bsp on the server, sorted into a race by
+// the .ini's "pool <surf|bhop|climb|maze|none>" line, else by the map's name (surf_, bhop_, kz_/climb_, maze_)
+#define POOL_MAX 64
+new g_poolMap[POOL_MAX][32], g_poolMg[POOL_MAX], g_poolN;
+new g_raceMap[32];      // the map this match's map minigame plays on: drawn at its intro, or csp_test_remote's pick
+new g_mapsUsed[600];    // race maps played this match, "|map|" each: none repeats until its pool runs out
 // zBots can't surf, bhop, climb or solve a maze: on race maps they "finish" at a random time in this window (seconds)
 new const Float:MG_BOT_TIME[MG_COUNT][2] = { {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0},
 	{40.0, 75.0}, {35.0, 65.0}, {40.0, 70.0}, {30.0, 60.0}, {0.0, 0.0} };
@@ -243,6 +250,7 @@ public plugin_init()
 	register_forward(FM_StartFrame, "fw_startframe");                        // camera + pawn hops, every server frame
 	register_forward(FM_CmdStart, "fw_nav_cmdstart");                      // analog forward/back for the cursor
 	register_forward(FM_CheckVisibility, "fw_checkvis");                   // map overlay: keep the camera and pieces sent
+	RegisterHam(Ham_Use, "func_button", "ham_button_use");                 // kreedz race maps: the stop-timer button finishes
 
 	c_turns   = register_cvar("csp_turns", "15");
 	c_start   = register_cvar("csp_startmoney", "800");
@@ -670,16 +678,23 @@ public cmd_force_mg() { new a[8]; read_argv(1, a, charsmax(a)); g_forceMg = str_
 
 public cmd_nocam() { remove_task(TASK_CAM); release_cameras(); server_print("[CSP] camera released"); return PLUGIN_HANDLED; }
 
-// dev: skip the board and go straight to a minigame map. csp_test_remote <mg index> [1v3]
-// 1v3 puts seat 0 alone on T against the other three.
+// dev: skip the board and go straight to a minigame map. csp_test_remote <mg index> [1v3|ffa] [map]
+// 1v3 puts seat 0 alone on T against the other three. [map] plays that map instead of a pool draw, to check
+// one pool map on its own (any map with a zone .ini and a .bsp the server can load). "csp_test_remote pools" lists them.
 public cmd_test_remote()
 {
-	new a[8]; read_argv(1, a, charsmax(a)); new mg = str_to_num(a);
+	new a[8]; read_argv(1, a, charsmax(a));
+	if (equal(a, "pools")) { list_pools(); return PLUGIN_HANDLED; }
+	new mg = str_to_num(a);
 	if (mg < 0 || mg >= MG_COUNT || !MG_MAP[mg][0]) { server_print("[CSP] not a map minigame"); return PLUGIN_HANDLED; }
+	new map[32], why[64]; read_argv(3, map, charsmax(map));
+	if (map[0] && !race_map_ok(map, why, charsmax(why))) { server_print("[CSP] can't play %s: %s", map, why); return PLUGIN_HANDLED; }
+	if (map[0] && !race_map_nav(map)) server_print("[CSP] warning: %s has no .nav, so no bots will join it", map);
 	if (g_state == ST_IDLE) { match_start(); remove_task(TASK_FLOW); }
 	if (g_state == ST_IDLE) return PLUGIN_HANDLED;
 	new f[8]; read_argv(2, f, charsmax(f)); new bool:solo = bool:equal(f, "1v3");
 	g_mg = mg; g_mgFmt = solo ? FMT_1V3 : FMT_FFA; g_cont = CONT_NEXT_TURN;
+	if (map[0]) set_race_map(map); else choose_race_map(mg);
 	for (new s = 0; s < SEATS; s++) { g_mgIn[s] = true; g_mgSide[s] = (solo && s == 0) ? SIDE_T : SIDE_CT; }
 	go_remote();
 	return PLUGIN_HANDLED;
@@ -772,7 +787,7 @@ match_start()
 	}
 	for (new i = 0; i < MAX_NODES; i++) g_traps[i] = -1;
 	for (new m = 0; m < MG_COUNT; m++) g_mgPlayed[m] = 0;
-	g_mgLast = -1;
+	g_mgLast = -1; g_mapsUsed[0] = 0;
 	g_turn = 1; g_maxTurns = get_pcvar_num(c_turns); g_cur = 0;
 	for (new k = 0; k < SEATS; k++) { g_waitKind[k] = W_NONE; g_waitLast[k] = W_NONE; }
 	move_hostage();
@@ -3700,7 +3715,7 @@ pick_minigame(fmt)
 		for (new m = 0; m < MG_COUNT; m++)
 		{
 			if (!(MG_FORMATS[m] & fmt)) continue;
-			if (MG_MAP[m][0]) { new bsp[64]; formatex(bsp, charsmax(bsp), "maps/%s.bsp", MG_MAP[m]); if (!file_exists(bsp)) continue; }
+			if (MG_MAP[m][0] && !mg_has_map(m)) continue;
 			if (!pass && (m == g_mgLast || (lastRemote && MG_MAP[m][0]))) continue;
 			new base = !MG_MAP[m][0] ? 4 : (mg_fight(m) ? 2 : 1);
 			wt[n] = max(1, base * 12 / (1 + 2 * g_mgPlayed[m])); total += wt[n]; pool[n++] = m;
@@ -3719,6 +3734,8 @@ fmt_name(fmt, out[], len)
 begin_minigame()
 {
 	g_state = ST_MG_INTRO;
+	g_raceMap[0] = 0;
+	if (MG_MAP[g_mg][0]) choose_race_map(g_mg);
 	board_music(false);
 	cam_shot(CAM_WIDE);
 	new fn[16]; fmt_name(g_mgFmt, fn, charsmax(fn));
@@ -4239,13 +4256,15 @@ public task_no_rotation()
 public plugin_cfg()
 {
 	get_mapname(g_boardMap, charsmax(g_boardMap));
+	scan_pools();
 	set_task(2.0, "task_no_rotation");   // after game.cfg, which ReGameDLL runs late and sets mp_timelimit 20
 	set_cvar_num("pausable", 0);   // any client's "pause" (a controller's Back button is bound to it) would freeze the party
 	new p[128]; state_path(p, charsmax(p));
 	if (!file_exists(p)) return;
 	new phase = load_state();
 	new map[32]; get_mapname(map, charsmax(map));
-	new bool:onMinigameMap = bool:equal(map, "csp_", 4) && g_nodeCount == 0;
+	// a state file from before race pools has no raceMap: then every own map was a csp_ one
+	new bool:onMinigameMap = g_nodeCount == 0 && (g_raceMap[0] ? (equali(map, g_raceMap) != 0) : (equal(map, "csp_", 4) != 0));
 	if (phase == 1 && onMinigameMap) { start_remote_wait(); return; }
 	if (phase == 2 && !onMinigameMap) { start_resume(); return; }
 	dbg("Stale state file (phase %d on %s); discarding.", phase, map);
@@ -4298,6 +4317,7 @@ save_state(phase)
 	new JSON:w = json_init_array(); for (new k = 0; k < g_mgWinnerN; k++) json_array_append_number(w, g_mgWinners[k]);
 	json_object_set_value(o, "winners", w); json_free(w);
 	jnum(o, "mgLast", g_mgLast);
+	json_object_set_string(o, "raceMap", g_raceMap); json_object_set_string(o, "mapsUsed", g_mapsUsed);
 	new JSON:pl = json_init_array(); for (new m = 0; m < MG_COUNT; m++) json_array_append_number(pl, g_mgPlayed[m]);
 	json_object_set_value(o, "mgPlayed", pl); json_free(pl);
 	new p[128]; state_path(p, charsmax(p));
@@ -4362,6 +4382,9 @@ load_state()
 	for (new k = 0; k < g_mgWinnerN; k++) g_mgWinners[k] = json_array_get_number(w, k);
 	json_free(w);
 	g_mgLast = json_object_has_value(o, "mgLast") ? json_object_get_number(o, "mgLast") : -1;
+	g_raceMap[0] = 0; g_mapsUsed[0] = 0;
+	if (json_object_has_value(o, "raceMap")) json_object_get_string(o, "raceMap", g_raceMap, charsmax(g_raceMap));
+	if (json_object_has_value(o, "mapsUsed")) json_object_get_string(o, "mapsUsed", g_mapsUsed, charsmax(g_mapsUsed));
 	if (json_object_has_value(o, "mgPlayed"))
 	{
 		new JSON:pl = json_object_get_value(o, "mgPlayed");
@@ -4436,18 +4459,186 @@ go_remote()
 	g_mgWinnerN = 0;
 	save_state(1);
 	banner("%s", MG_NAME[g_mg]);
-	subline("Loading %s...", MG_MAP[g_mg]);
-	announce("%s is on its own map. Back on the board after the %s.", MG_NAME[g_mg], mg_fight(g_mg) ? "fight" : "race");
+	subline("Loading %s...", g_raceMap);
+	announce("%s is on its own map (%s). Back on the board after the %s.", MG_NAME[g_mg], g_raceMap, mg_fight(g_mg) ? "fight" : "race");
 	if (MG_TUT[g_mg][0]) client_cmd(0, "echo CSP_HOWTO_%d", g_mg);   // the browser page shows the card over the loading screen
+	client_cmd(0, "echo CSP_MAP_%s", g_raceMap);   // again: anyone who joined since the intro fetches its map pack too
 	set_task(MG_TUT[g_mg][0] ? 6.0 : 3.0, "task_changelevel_remote", TASK_FLOW);
 }
-public task_changelevel_remote() { server_cmd("changelevel %s", MG_MAP[g_mg]); }
+public task_changelevel_remote() { server_cmd("changelevel %s", g_raceMap); }
+
+// ---------------------------------------------------------------- race map pools --
+// Which race a minigame map belongs to: its .ini's "pool" line, else its name. -1 = none.
+pool_mode_of(const name[], const pool[])
+{
+	if (pool[0])
+	{
+		if (equali(pool, "surf")) return MG_SURF;
+		if (equali(pool, "bhop")) return MG_BHOP;
+		if (equali(pool, "climb") || equali(pool, "kz")) return MG_CLIMB;
+		if (equali(pool, "maze")) return MG_MAZE;
+		return -1;   // "pool none" keeps a map out of every pool
+	}
+	if (equali(name, "surf_", 5) || equali(name, "csp_surf", 8)) return MG_SURF;
+	if (equali(name, "bhop_", 5) || equali(name, "csp_bhop", 8)) return MG_BHOP;
+	if (equali(name, "kz_", 3) || equali(name, "bkz_", 4) || equali(name, "climb_", 6) || equali(name, "csp_climb", 9)) return MG_CLIMB;
+	if (equali(name, "maze_", 5) || equali(name, "csp_maze", 8)) return MG_MAZE;
+	return -1;
+}
+
+zone_ini_path(const map[], path[], len)
+{
+	new cfg[96]; get_configsdir(cfg, charsmax(cfg));
+	formatex(path, len, "%s/cs_party/minigames/%s.ini", cfg, map);
+}
+
+// The .ini's "pool" line, and whether it has a way to finish (a finish box, or kreedz stop buttons).
+bool:zone_ini_peek(const map[], pool[], plen)
+{
+	new path[192]; zone_ini_path(map, path, charsmax(path));
+	pool[0] = 0;
+	new f = fopen(path, "rt"); if (!f) return false;
+	new line[160], key[16], val[32], bool:fin = false;
+	while (!feof(f))
+	{
+		fgets(f, line, charsmax(line)); trim(line);
+		if (!line[0] || line[0] == ';') continue;
+		parse(line, key, charsmax(key), val, charsmax(val));
+		if (equal(key, "pool")) copy(pool, plen, val);
+		else if (equal(key, "finish") || (equal(key, "buttons") && str_to_num(val) != 0)) fin = true;
+	}
+	fclose(f);
+	return fin;
+}
+
+// Can the server load this map without dying? HLDS quits on the spot ("Host_Error") when a WAD in the
+// worldspawn "wad" key is missing, and third-party maps name WADs from their author's disk. Also checks the
+// BSP version (30 = Half-Life; Quake and Source maps crash) and that the zone .ini has a finish.
+bool:race_map_ok(const map[], why[], len)
+{
+	new bsp[64], pool[16]; formatex(bsp, charsmax(bsp), "maps/%s.bsp", map);
+	if (!zone_ini_peek(map, pool, charsmax(pool))) { copy(why, len, "no zone .ini with a finish or buttons"); return false; }
+	new f = fopen(bsp, "rb");
+	if (!f) { copy(why, len, "no .bsp"); return false; }
+	new hdr[3]; fread_blocks(f, hdr, 3, BLOCK_INT);   // version, entity lump offset, entity lump length
+	if (hdr[0] != 30) { fclose(f); formatex(why, len, "BSP version %d, not 30", hdr[0]); return false; }
+	static ent[3072];   // worldspawn is the first entity; its keys fit in this
+	fseek(f, hdr[1], SEEK_SET);
+	new n = fread_blocks(f, ent, min(hdr[2], charsmax(ent)), BLOCK_CHAR);
+	fclose(f);
+	ent[max(0, n)] = 0;
+	new close = contain(ent, "}"); if (close > 0) ent[close] = 0;
+	new at = contain(ent, "^"wad^""); if (at < 0) return true;   // every texture inside the BSP
+	new q1 = contain(ent[at + 5], "^""); if (q1 < 0) return true;
+	new p = at + 5 + q1 + 1, wad[64], wn = 0;
+	for (;; p++)
+	{
+		new c = ent[p];
+		if (c == ';' || c == '^"' || !c)
+		{
+			wad[wn] = 0; trim(wad);
+			if (wad[0] && !file_exists(wad, true)) { formatex(why, len, "missing WAD %s", wad); return false; }
+			wn = 0;
+			if (c != ';') break;
+		}
+		else if (c == '\' || c == '/') wn = 0;   // keep the file name only: the key holds the mapper's full path
+		else if (wn < charsmax(wad)) wad[wn++] = c;
+	}
+	return true;
+}
+
+scan_pools()
+{
+	g_poolN = 0;
+	new cfg[96], dir[128], file[64]; get_configsdir(cfg, charsmax(cfg));
+	formatex(dir, charsmax(dir), "%s/cs_party/minigames", cfg);
+	new h = open_dir(dir, file, charsmax(file)); if (!h) return;
+	do {
+		new len = strlen(file);
+		if (len < 5 || len > 35 || !equali(file[len - 4], ".ini")) continue;
+		file[len - 4] = 0;
+		new pool[16], why[64]; zone_ini_peek(file, pool, charsmax(pool));
+		new mg = pool_mode_of(file, pool); if (mg < 0) continue;
+		if (g_poolN >= POOL_MAX) { log_amx("Race pools: more than %d maps, %s left out.", POOL_MAX, file); continue; }
+		if (!race_map_ok(file, why, charsmax(why))) { log_amx("Race pools: %s left out (%s).", file, why); continue; }
+		if (!race_map_nav(file)) { log_amx("Race pools: %s left out (no maps/%s.nav: bots can't join the map without one).", file, file); continue; }
+		copy(g_poolMap[g_poolN], 31, file); g_poolMg[g_poolN++] = mg;
+	} while (next_file(h, file, charsmax(file)));
+	close_dir(h);
+}
+
+list_pools()
+{
+	for (new m = 0; m < MG_COUNT; m++)
+	{
+		if (!MG_MAP[m][0] || mg_fight(m)) continue;
+		new line[400], len = formatex(line, charsmax(line), "[CSP] pool %d %s:", m, MG_NAME[m]), n = 0;
+		for (new i = 0; i < g_poolN; i++) if (g_poolMg[i] == m) { len += formatex(line[len], charsmax(line) - len, " %s", g_poolMap[i]); n++; }
+		server_print("%s%s", line, n ? "" : " (empty: plays its default map if that loads)");
+	}
+	server_print("[CSP] played this match: %s", g_mapsUsed[0] ? g_mapsUsed : "-");
+}
+
+// zBots won't join a map that has no nav mesh (and the race then waits for their seats, and they never finish)
+bool:race_map_nav(const map[]) { new nav[64]; formatex(nav, charsmax(nav), "maps/%s.nav", map); return bool:file_exists(nav); }
+
+bool:mg_has_map(m)
+{
+	for (new i = 0; i < g_poolN; i++) if (g_poolMg[i] == m) return true;
+	new bsp[64]; formatex(bsp, charsmax(bsp), "maps/%s.bsp", MG_MAP[m]);
+	return bool:file_exists(bsp);
+}
+
+bool:map_used(const map[]) { new k[40]; formatex(k, charsmax(k), "|%s|", map); return containi(g_mapsUsed, k) >= 0; }
+
+// A random map from the minigame's pool that this match hasn't played yet (any of them once all have been).
+// Tells browser clients at once, so they fetch its map pack during the intro (boot.js, CSP_MAP_).
+choose_race_map(mg)
+{
+	new cand[POOL_MAX], n = 0, fresh = 0;
+	for (new pass = 0; pass < 2 && !n; pass++)
+		for (new i = 0; i < g_poolN; i++)
+			if (g_poolMg[i] == mg && (pass || !map_used(g_poolMap[i]))) cand[n++] = i;
+	for (new i = 0; i < g_poolN; i++) if (g_poolMg[i] == mg && !map_used(g_poolMap[i])) fresh++;
+	set_race_map(n ? g_poolMap[cand[random(n)]] : MG_MAP[mg]);
+	dbg("%s plays on %s (drawn from %d; %d unplayed).", MG_NAME[mg], g_raceMap, n, fresh);
+}
+
+set_race_map(const map[])
+{
+	copy(g_raceMap, charsmax(g_raceMap), map);
+	if (!map_used(map) && strlen(g_mapsUsed) + strlen(map) + 2 < charsmax(g_mapsUsed))
+		format(g_mapsUsed, charsmax(g_mapsUsed), "%s|%s|", g_mapsUsed, map);
+	client_cmd(0, "echo CSP_MAP_%s", map);
+}
+
+// ---------------------------------------------------------------- zones --
+// configs/cs_party/minigames/<map>.ini, one entry per line:
+//   start  x1 y1 z1  x2 y2 z2   the start box; racers line up across it facing +x (when there are no spawn lines)
+//   finish x1 y1 z1  x2 y2 z2   reach it to finish
+//   checkpoint ...              for the map's own respawn triggers; the plugin doesn't use them
+//   spawn  x y z yaw            a start spot (one per racer is best); overrides the start-box row
+//   buttons 1                   kreedz: pressing the map's stop-timer button finishes (counter_off, ...)
+//   progress x|-x|y|-y|z|-z|dist   who got furthest when time runs out (default: x on csp_ maps, else dist to the finish)
+//   pool surf|bhop|climb|maze|none   which race's pool the map is in (default: by its name)
+// No start box and no spawn lines: racers start on the map's own spawn points.
+#define ZSPAWN_MAX 8
+new Float:g_zSpawn[ZSPAWN_MAX][4], g_zSpawnN, bool:g_zStartOk, bool:g_zFinishOk, Float:g_zGoal[3], g_zProg;
+new bool:g_zButtons, g_btnStops, bool:g_btnHit[SEATS];
+new const KZ_STOP[][] = { "counter_off", "clockstopbutton", "clockstop", "but_stop", "counter_stop_button", "multi_stop", "stop_counter", "m_counter_end_emi" };
+
+bool:kz_stop_target(ent)
+{
+	new t[32]; entity_get_string(ent, EV_SZ_target, t, charsmax(t));
+	for (new i = 0; i < sizeof KZ_STOP; i++) if (equali(t, KZ_STOP[i])) return true;
+	return false;
+}
 
 load_zones()
 {
-	new map[32], path[160], cfg[96]; get_mapname(map, charsmax(map)); get_configsdir(cfg, charsmax(cfg));
-	formatex(path, charsmax(path), "%s/cs_party/minigames/%s.ini", cfg, map);
-	g_zonesOk = false;
+	new map[32], path[192]; get_mapname(map, charsmax(map)); zone_ini_path(map, path, charsmax(path));
+	g_zonesOk = false; g_zStartOk = false; g_zFinishOk = false; g_zSpawnN = 0; g_zButtons = false; g_btnStops = 0;
+	g_zProg = equal(map, "csp_", 4) ? 1 : 0;   // 0 dist, +-1/2/3 = axis x/y/z
 	new f = fopen(path, "rt"); if (!f) { log_amx("No zones for %s (%s).", map, path); return; }
 	new line[160], key[16], v[6][16];
 	while (!feof(f))
@@ -4457,10 +4648,51 @@ load_zones()
 		parse(line, key, charsmax(key), v[0], 15, v[1], 15, v[2], 15, v[3], 15, v[4], 15, v[5], 15);
 		new Float:lo[3], Float:hi[3];
 		for (new k = 0; k < 3; k++) { lo[k] = str_to_float(v[k]); hi[k] = str_to_float(v[k + 3]); }
-		if (equal(key, "start")) { g_zStart[0] = lo; g_zStart[1] = hi; }
-		else if (equal(key, "finish")) { g_zFinish[0] = lo; g_zFinish[1] = hi; g_zonesOk = true; }
+		if (equal(key, "start")) { g_zStart[0] = lo; g_zStart[1] = hi; g_zStartOk = true; }
+		else if (equal(key, "finish")) { g_zFinish[0] = lo; g_zFinish[1] = hi; g_zFinishOk = true; }
+		else if (equal(key, "spawn") && g_zSpawnN < ZSPAWN_MAX) { for (new k = 0; k < 4; k++) g_zSpawn[g_zSpawnN][k] = str_to_float(v[k]); g_zSpawnN++; }
+		else if (equal(key, "buttons")) g_zButtons = str_to_num(v[0]) != 0;
+		else if (equal(key, "progress"))
+		{
+			new sgn = v[0][0] == '-' ? -1 : 1, c = v[0][sgn < 0 ? 1 : 0];
+			g_zProg = c == 'x' ? sgn : c == 'y' ? 2 * sgn : c == 'z' ? 3 * sgn : 0;
+		}
 	}
 	fclose(f);
+	if (g_zFinishOk) for (new k = 0; k < 3; k++) g_zGoal[k] = (g_zFinish[0][k] + g_zFinish[1][k]) / 2.0;
+	if (g_zButtons)
+	{
+		new ent = -1;
+		while ((ent = find_ent_by_class(ent, "func_button")) > 0)
+		{
+			if (!kz_stop_target(ent)) continue;
+			if (!g_btnStops++ && !g_zFinishOk)
+			{
+				new Float:mn[3], Float:mx[3]; entity_get_vector(ent, EV_VEC_absmin, mn); entity_get_vector(ent, EV_VEC_absmax, mx);
+				for (new k = 0; k < 3; k++) g_zGoal[k] = (mn[k] + mx[k]) / 2.0;
+			}
+		}
+		if (!g_btnStops) log_amx("%s: buttons 1, but no kreedz stop button found.", map);
+	}
+	g_zonesOk = g_zFinishOk || g_btnStops > 0;
+	dbg("Zones for %s: start %d finish %d spawns %d stop buttons %d progress %d.", map, g_zStartOk, g_zFinishOk, g_zSpawnN, g_btnStops, g_zProg);
+}
+
+// kreedz maps stop their timer with a button: on a "buttons 1" map, pressing it is the finish
+public ham_button_use(ent, caller, activator)
+{
+	if (g_state != ST_REMOTE_RACE || !g_zButtons || activator < 1 || activator > MaxClients || !kz_stop_target(ent)) return HAM_IGNORED;
+	new s = seat_of(activator);
+	if (s >= 0 && g_mgIn[s]) g_btnHit[s] = true;
+	return HAM_IGNORED;
+}
+
+// how far along the course: what "got the furthest" compares when time runs out
+Float:race_progress(const Float:o[3])
+{
+	if (!g_zProg) return -get_distance_f(o, g_zGoal);
+	new ax = abs(g_zProg) - 1;
+	return g_zProg > 0 ? o[ax] : -o[ax];
 }
 
 bool:in_box(const Float:o[3], const Float:b[2][3]) { return o[0] >= b[0][0] && o[0] <= b[1][0] && o[1] >= b[0][1] && o[1] <= b[1][1] && o[2] >= b[0][2] - 40.0 && o[2] <= b[1][2] + 40.0; }
@@ -4469,24 +4701,34 @@ race_place(s)
 {
 	new id = g_seatPlayer[s]; if (!is_user_alive(id)) return;
 	new slot = 0; for (new k = 0; k < s; k++) if (g_mgIn[k]) slot++;
-	new Float:o[3];
-	// one row across the start, facing down the course (+x), 70 units apart
-	o[0] = g_zStart[0][0] + 60.0;
-	o[1] = (g_zStart[0][1] + g_zStart[1][1]) / 2.0 - 105.0 + float(slot) * 70.0;
-	o[2] = g_zStart[0][2] + 40.0;
-	if (g_mg == MG_MAZE)
-	{
-		// the lobby is a huge room whose only exit is a gap in its far corner: line up in front of it, facing it
-		o[0] = g_zStart[1][0] - 70.0 - float(slot / 2) * 60.0;
-		o[1] = g_zStart[0][1] + 50.0 + float(slot % 2) * 60.0;
-	}
 	// racers stay solid: SOLID_NOT players never touch triggers, and the course teleports are triggers.
-	// start slots are 60 units apart, wider than a 32-unit hull.
 	// bots finish on a clock and never use the course, so they can't block anyone
 	entity_set_int(id, EV_INT_solid, is_user_bot(id) ? SOLID_NOT : SOLID_SLIDEBOX);
+	if (!g_zSpawnN && !g_zStartOk) return;   // the map's own spawn points are the start
+	new Float:o[3], Float:ang[3];
+	if (g_zSpawnN)
+	{
+		new k = slot % g_zSpawnN;
+		for (new j = 0; j < 3; j++) o[j] = g_zSpawn[k][j];
+		ang[1] = g_zSpawn[k][3];
+	}
+	else
+	{
+		// one row across the start, facing down the course (+x), 70 units apart (wider than a 32-unit hull)
+		o[0] = g_zStart[0][0] + 60.0;
+		o[1] = (g_zStart[0][1] + g_zStart[1][1]) / 2.0 - 105.0 + float(slot) * 70.0;
+		o[2] = g_zStart[0][2] + 40.0;
+		new map[32]; get_mapname(map, charsmax(map));
+		if (equal(map, "csp_maze"))
+		{
+			// the lobby is a huge room whose only exit is a gap in its far corner: line up in front of it, facing it
+			o[0] = g_zStart[1][0] - 70.0 - float(slot / 2) * 60.0;
+			o[1] = g_zStart[0][1] + 50.0 + float(slot % 2) * 60.0;
+		}
+	}
 	entity_set_origin(id, o);
 	entity_set_vector(id, EV_VEC_velocity, Float:{0.0, 0.0, 0.0});
-	new Float:ang[3]; entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang); entity_set_int(id, EV_INT_fixangle, 1);
+	entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang); entity_set_int(id, EV_INT_fixangle, 1);
 }
 
 // ---------------------------------------------------------------- race (on the minigame map) --
@@ -4521,7 +4763,7 @@ public task_remote_wait()
 	}
 	for (new s = 0; s < SEATS; s++)
 	{
-		g_finished[s] = false; g_finishTime[s] = 0.0;
+		g_finished[s] = false; g_finishTime[s] = 0.0; g_btnHit[s] = false;
 		g_botFinish[s] = random_float(MG_BOT_TIME[g_mg][0], MG_BOT_TIME[g_mg][1]);
 		new id = g_seatPlayer[s];
 		if (!is_user_connected(id)) continue;
@@ -4582,11 +4824,12 @@ public task_race()
 		if (is_user_alive(id))
 		{
 			new Float:o[3]; entity_get_vector(id, EV_VEC_origin, o);
-			if (g_zonesOk && in_box(o, g_zFinish)) done = true;
+			if ((g_zFinishOk && in_box(o, g_zFinish)) || g_btnHit[s]) done = true;
 			if (is_user_bot(id) && t >= g_botFinish[s] && g_zonesOk)
 			{
-				new Float:f[3]; for (new k = 0; k < 3; k++) f[k] = (g_zFinish[0][k] + g_zFinish[1][k]) / 2.0;
-				f[2] = g_zFinish[0][2] + 40.0; entity_set_origin(id, f); done = true;
+				// to the finish box for anyone watching; a stop button sits in a wall, so stay put there
+				if (g_zFinishOk) { new Float:f[3]; f = g_zGoal; f[2] = g_zFinish[0][2] + 40.0; entity_set_origin(id, f); }
+				done = true;
 			}
 		}
 		if (!done) continue;
@@ -4613,9 +4856,9 @@ public task_race()
 	if (t > 120.0 && g_mgWinnerN == 0 && !g_raceOver)
 	{
 		g_raceOver = true;   // with nobody left to win it, this ran (and queued a changelevel) every tick
-		// nobody made it: furthest along the course (+x) wins
-		new best = -1, Float:bx = -99999.0;
-		for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) { new Float:o[3]; entity_get_vector(g_seatPlayer[s], EV_VEC_origin, o); if (o[0] > bx) { bx = o[0]; best = s; } }
+		// nobody made it: furthest along the course wins (race_progress)
+		new best = -1, Float:bx = -999999.0;
+		for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) { new Float:o[3]; entity_get_vector(g_seatPlayer[s], EV_VEC_origin, o); new Float:pr = race_progress(o); if (pr > bx) { bx = pr; best = s; } }
 		if (best >= 0) g_mgWinners[g_mgWinnerN++] = best;
 		banner("Time! %s got the furthest.", best >= 0 ? g_seatName[best] : "Nobody");
 		set_task(4.0, "task_race_over", TASK_RACE + 2);
