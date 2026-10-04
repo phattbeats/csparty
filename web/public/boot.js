@@ -116,6 +116,30 @@
     for (const part of dir.split("/").filter(Boolean)) { cur += "/" + part; try { FS.mkdir(cur); } catch {} }
   }
 
+  // ------------------------------------------------------------------ race map packs
+  // Race pool maps aren't in gamedata.zip: each comes as its own small pack, mappacks/<map>.zip (tools/race_map.py).
+  // The plugin names the map at the minigame intro (CSP_MAP_<map>), several seconds before the map change, so it's
+  // in the file system when the engine loads it. A pack that fails leaves the engine's own download as the fallback.
+  const mapPacks = new Map();   // map -> "loading" | "ok"
+  async function fetchMapPack(map) {
+    if (!engine || mapPacks.has(map)) return;
+    try { engine.FS.stat(`${ROOT}/cstrike/maps/${map}.bsp`); mapPacks.set(map, "ok"); return; } catch {}   // in gamedata.zip
+    mapPacks.set(map, "loading");
+    try {
+      const r = await fetch(`mappacks/${encodeURIComponent(map)}.zip${keyQuery}`, { cache: "no-cache" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const files = await unzipInWorker(new Uint8Array(await r.arrayBuffer()));
+      let n = 0;
+      for (const [p, data] of Object.entries(files)) {
+        if (p.endsWith("/")) continue;
+        mkdirp(engine.FS, ROOT + "/" + p.split("/").slice(0, -1).join("/"));
+        engine.FS.writeFile(ROOT + "/" + p, data, { canOwn: true }); n++;
+      }
+      mapPacks.set(map, "ok");
+      console.log(`[boot] map pack ${map}: ${n} files`);
+    } catch (e) { mapPacks.delete(map); console.warn(`[boot] map pack ${map}:`, e); }
+  }
+
   // ------------------------------------------------------------------ overlays
   const overlay = (title, text, { rejoin = false, spin = false } = {}) => {
     $("ov-title").textContent = title; $("ov-text").textContent = text || "";
@@ -647,6 +671,8 @@
         locateFile: (f) => f,
         print: (t) => {
           console.log(t);
+          const mp = /CSP_MAP_([\w.\-]+)/.exec(t);
+          if (mp) fetchMapPack(mp[1]);
           const hw = /CSP_HOWTO_(\d+)/.exec(t);
           if (hw) howto = HOWTO[+hw[1]] || "";
           else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);

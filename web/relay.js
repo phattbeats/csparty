@@ -74,7 +74,8 @@ const server = http.createServer((req, res) => {
   const file = path.join(ROOT, url === "/" ? "index.html" : url);
   if (!file.startsWith(ROOT + path.sep) && file !== ROOT) { res.writeHead(403).end(); return; }
   // check the file actually served: "//gamedata.zip" or "/x/..%2Fgamedata.zip" resolve to it too
-  const isProtected = PROTECTED_FILES.has(file);
+  // race map packs hold slices of Valve's WADs too
+  const isProtected = PROTECTED_FILES.has(file) || file.startsWith(path.join(ROOT, "mappacks") + path.sep);
   if (isProtected && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("not found"); return; }
