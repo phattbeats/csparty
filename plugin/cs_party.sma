@@ -24,6 +24,7 @@
 #include <hamsandwich>
 #include <reapi>
 #include <json>
+#include "cs_party_tips.inc"   // generated from web/public/tips.json by tools/gen_tips.py
 
 #define PLUGIN  "CS Party"
 #define VERSION "0.2.0"
@@ -867,6 +868,7 @@ new Float:g_seatLeftAt[SEATS], bool:g_seatAway[SEATS];
 // new humans skip the team and class menus: a party server just seats you
 public client_putinserver(id)
 {
+	tip_reset(id);
 	g_xhHidden[id] = false;
 	if (is_user_bot(id)) return;
 	set_task(0.5, "task_name_fix", id + TASK_RACE + 140);
@@ -2047,7 +2049,7 @@ crosshair_sync()
 
 new g_tblHash[33], Float:g_tblAt[33], Float:g_tblUp[33];   // the table as this player last got it; g_tblUp: when it went up (0: not up)
 
-public ev_resethud(id) g_tblUp[id] = 0.0;
+public ev_resethud(id) { g_tblUp[id] = 0.0; tip_hud_wiped(id); }
 
 // true when this player's table text differs from what they last got, it's due for a refresh (a lost packet),
 // or it isn't up (just joined or spawned, or the hold ran out). "" blanks it while it may still be up.
@@ -2076,23 +2078,127 @@ table_off()
 }
 
 // minigame tutorial, top left: while everyone waits, from the intro on the board, while everyone waits, and the first 25 s of the race
-hud_tutorial()
+bool:hud_tutorial()
 {
 	static Float:tutAt, offLeft;
 	new Float:now = get_gametime(), Float:t = (g_state == ST_REMOTE_RACE) ? now - g_raceStart : 0.0;
 	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 25.0) || (g_state == ST_MG_INTRO && MG_MAP[g_mg][0]));
-	if (!on && !offLeft) return;
-	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return;
+	if (!on && !offLeft) return false;
+	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return true;
 	tutAt = now;
 	offLeft = on ? 3 : offLeft - 1;   // blank it three times over (lost packets): it's held for minutes
 	set_hudmessage(255, 232, 90, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
 	show_hudmessage(0, "%s", on ? MG_TUT[g_mg] : " ");
+	return true;
+}
+
+// ---------------------------------------------------------------- tips --
+// Tips come from web/public/tips.json (the page's loading screen reads the same file). In game they go to the
+// tutorial's HUD channel (CH_TUT), bottom centre, only while no minigame how-to card is using it. Held for
+// minutes and blanked with " " after TIP_SHOW seconds (see HUD_HOLD), so a tip never blinks. Rate limits:
+// an ambient tip at most every TIP_GAP seconds per player, a tip tied to the moment (your turn, landing on a
+// space) at most every TIP_GAP_CTX.
+#define TIP_SHOW     14.0
+#define TIP_GAP      45.0
+#define TIP_GAP_CTX  8.0
+new bool:g_tutBusy;
+new bool:g_tipUp[33], Float:g_tipAt[33], Float:g_tipOff[33], bool:g_tipSeen[33][TIP_N], g_tipTurns[33];
+
+tip_reset(id) { g_tipUp[id] = false; g_tipAt[id] = 0.0; g_tipTurns[id] = 0; for (new i = 0; i < TIP_N; i++) g_tipSeen[id][i] = false; }
+
+tip_hud_wiped(id) { g_tipUp[id] = false; }   // a spawn clears the client's HUD list
+
+tip_blank(id)
+{
+	g_tipUp[id] = false;
+	if (!is_user_connected(id)) return;
+	set_hudmessage(255, 232, 90, -1.0, 0.8, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	show_hudmessage(id, " ");
+}
+
+// picks an unseen tip for this moment: on = space just landed on (1-8, see tools/gen_tips.py), when = 1 turn, 2 wait
+tip_pick(id, on, when)
+{
+	new pool[TIP_N], n = 0, bool:touch = is_touch(id);
+	for (new pass = 0; pass < 2 && !n; pass++)
+	{
+		for (new i = 0; i < TIP_N; i++)
+		{
+			if (on ? TIP_ON[i] != on : (TIP_ON[i] || !(TIP_WHEN[i] & when))) continue;
+			if (TIP_DEV[i] == 1 && touch) continue;
+			if (TIP_DEV[i] == 2 && !touch) continue;
+			if (TIP_DEV[i] == 3) continue;   // controllers can't be told from the server
+			if (pass == 0 && g_tipSeen[id][i]) continue;
+			pool[n++] = i;
+		}
+		if (!n) for (new i = 0; i < TIP_N; i++) g_tipSeen[id][i] = false;   // all seen: start over
+	}
+	return n ? pool[random(n)] : -1;
+}
+
+tip_show(id, i)
+{
+	if (i < 0 || !is_user_connected(id) || is_user_bot(id) || hud_spec(id)) return;
+	new w[200], msg[220]; formatex(msg, charsmax(msg), "TIP: %s", TIP_TEXT[i]);
+	wrap_text(msg, w, charsmax(w), is_touch(id) ? WRAP_TOUCH : WRAP_PC);
+	set_hudmessage(255, 232, 90, -1.0, is_touch(id) ? 0.84 : 0.8, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	show_hudmessage(id, "%s", w);
+	new Float:now = get_gametime();
+	g_tipUp[id] = true; g_tipAt[id] = now; g_tipOff[id] = now + TIP_SHOW; g_tipSeen[id][i] = true;
+}
+
+// a tip tied to a moment: your turn starts (when 1) or you landed on a space (on)
+tip_moment(id, on, when)
+{
+	if (g_tutBusy || !is_user_connected(id) || is_user_bot(id) || get_gametime() - g_tipAt[id] < TIP_GAP_CTX) return;
+	new i = -1;
+	if (when == 1 && !on && g_tipTurns[id]++ == 0) i = TIP_FIRST_TURN;   // the first turn of a match always says you can buy gear
+	if (i < 0) i = tip_pick(id, on, when);
+	tip_show(id, i);
+}
+
+tip_on_land(s, node)
+{
+	new on = 0;
+	switch (g_nodeType[node])
+	{
+		case NT_EVENT: on = 1;
+		case NT_SHOP: on = 2;
+		case NT_ARMORY: on = 3;
+		case NT_CAMPER: on = 4;
+		case NT_DUEL: on = 5;
+		case NT_VIP: on = 6;
+		case NT_NEGOT: on = 7;
+		case NT_SITE: on = 8;
+	}
+	if (on && !seat_is_bot(s)) tip_moment(g_seatPlayer[s], on, 0);
+}
+
+// every tick: take tips down when their time is up or the board is over, and offer one to anyone waiting
+tips_tick(bool:tutBusy)
+{
+	g_tutBusy = tutBusy;
+	new Float:now = get_gametime();
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		if (g_tipUp[id])
+		{
+			if (tutBusy) g_tipUp[id] = false;   // the how-to card took the channel
+			else if (now >= g_tipOff[id] || g_state != ST_BOARD) tip_blank(id);
+			continue;
+		}
+		if (tutBusy || g_state != ST_BOARD || now - g_tipAt[id] < TIP_GAP) continue;
+		new s = seat_of(id);
+		if (s < 0 || s == g_cur || g_diceOpen) continue;   // your own turn gets its tip when the menu opens
+		tip_show(id, tip_pick(id, 0, 2));
+	}
 }
 
 public task_hud()
 {
 	crosshair_sync();
-	hud_tutorial();
+	tips_tick(hud_tutorial());
 	if (g_state == ST_IDLE) { table_off(); return; }
 	update_crosshair();
 	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MINIGAME || g_state == ST_MG_INTRO) refill_seats();
@@ -2730,12 +2836,14 @@ step_arrive(s, node)
 	{
 		g_shopSide = g_nodeShopSide[node];
 		banner("%s Black Market", g_shopSide == SIDE_T ? "T" : "CT");
+		tip_on_land(s, node);
 		if (seat_is_bot(s)) { ai_shop(s, g_shopSide); pause += spd(1.4); }
 		else { cam_shot(CAM_LAND); wait_for(s, W_SHOP); show_shop_menu(s); return; }
 	}
 	else if (g_nodeType[node] == NT_NEGOT)
 	{
 		banner("The Negotiator");
+		tip_on_land(s, node);
 		if (seat_is_bot(s)) { ai_negotiate(s); pause += spd(1.6); }
 		else { wait_for(s, W_NEGOT); show_negotiator_menu(s); return; }
 	}
@@ -2759,6 +2867,7 @@ land(s)
 {
 	cam_shot(CAM_LAND);
 	new n = g_pos[s], mult = overtime() ? 2 : 1;
+	tip_on_land(s, n);
 	new owner = g_traps[n];
 	if (owner >= 0 && owner != s)
 	{
@@ -3192,6 +3301,7 @@ show_turn_menu(s)
 	new id = g_seatPlayer[s];
 	if (!is_user_connected(id)) { g_seatBot[s] = true; flow_bot_buy(); return; }
 	wait_for(s, W_TURN);
+	tip_moment(id, 0, 1);
 	// short lines: the browser client cuts menus at about a third of the screen (gear is on the right-hand table)
 	new title[96]; formatex(title, charsmax(title), "\yYour turn  \w$%d^n\dHostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	new m = menu_create(title, "mh_turn"), line[64], info[4];
