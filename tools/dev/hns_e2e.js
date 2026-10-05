@@ -72,7 +72,8 @@ async function state() {
       note(`changelevel ${map}: rejoined ${await waitJoins(before + 1, 240)}`);
       await sleep(8000);
     }
-    const n = +((/hns arenas: (\d+)/.exec(await rcon("csp_hns_probe")) || [0, 0])[1]);
+    let n = 0;   // right after a map change the reply can time out
+    for (let k = 0; k < 5 && !n; k++) { n = +((/hns arenas: (\d+)/.exec(await rcon("csp_hns_probe")) || [0, 0])[1]); if (!n) await sleep(3000); }
     note(`${map}: ${n} arenas`);
     for (let a = 0; a < n; a++) {
       if (ONLY && !ONLY.includes(a)) continue;
@@ -86,26 +87,25 @@ async function state() {
       }
       if (s.st !== 3) { note(`${tag}: Hide and Seek never started (state ${s.st})`); continue; }
       note(`${tag}: started, browser player in seat ${s.seat}`);
-      await sleep(3000); await shot(`${tag}-hide`);
+      await sleep(2000); await shot(`${tag}-hide`);
       if (FENCE) {
-        await sleep(14000);   // the seeker's blindfold comes off at 15 s
+        await sleep(15000);   // the seeker's blindfold comes off at 15 s
         for (const k of [0, 3]) {
           note(`${tag}: ${(await rcon(`csp_hns_fenceview ${s.seat} ${k}`)).trim()}`);
           await sleep(1500); await shot(`${tag}-fence${k}`);
         }
         note(`${tag}: done`); continue;
       }
-      // walk: forward, then turn and keep going, to meet the fence
+      // corner test during the hide phase (nobody can die before 15 s), then a walk to meet the fence
+      if (s.seat >= 0) {
+        await rcon(`csp_hns_corners ${s.seat}`);
+        await sleep(4000); await shot(`${tag}-corners`);
+        await sleep(6000);
+      }
       await pg.keyboard.down("w"); await sleep(5000); await pg.keyboard.up("w");
       await pg.mouse.move(480, 300); await pg.mouse.move(780, 300);
       await pg.keyboard.down("w"); await sleep(5000); await pg.keyboard.up("w");
       await shot(`${tag}-walk`);
-      if (s.seat >= 0) {
-        await rcon(`csp_hns_corners ${s.seat}`);
-        await sleep(4000); await shot(`${tag}-corners`);
-        await sleep(8000); await pg.mouse.move(480, 300); await shot(`${tag}-fence`);
-        await sleep(4000);
-      }
       note(`${tag}: done`);
     }
   }
