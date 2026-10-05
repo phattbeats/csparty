@@ -12,7 +12,8 @@
 // open, so an invite link is just https://your.host/?key=PARTYKEY. Use it on anything internet-facing:
 // gamedata.zip is Valve's content, packed from your install for your friends, not for the world.
 //
-// Env knobs: MAX_PEERS (32), MAX_PER_IP (6), IDLE_SECS (120: no game traffic either way -> close).
+// Env knobs: MAX_PEERS (32), MAX_PER_IP (6), IDLE_SECS (120: no game traffic either way -> close),
+// LOBBY_SECRET + RELAY_ID (also accept the lobby Worker's per-lobby keys; see lobbyKeyOk).
 import crypto from "node:crypto";
 import http from "node:http";
 import dgram from "node:dgram";
@@ -32,9 +33,20 @@ const IDLE_MS = +(process.env.IDLE_SECS || 120) * 1000;
 const BACKLOG_MAX = 512 * 1024;   // bytes queued to a slow browser before we start dropping server packets
 const KEY = arg("--key", process.env.PARTY_KEY || "");
 const PROTECTED_FILES = new Set([path.join(ROOT, "gamedata.zip")]);
+// Lobby party keys (ISSUE, lobby/): the lobby Worker gives each lobby it sends here CODE.EXPIRY.SIG, an
+// HMAC-SHA256 over this relay's RELAY_ID with the LOBBY_SECRET both sides share. Accepted next to --key.
+const LOBBY_SECRET = process.env.LOBBY_SECRET || "", RELAY_ID = process.env.RELAY_ID || "";
+const lobbyKeyOk = (k) => {
+  const m = LOBBY_SECRET && RELAY_ID && /^([A-Z2-9]{5})\.(\d{9,11})\.([\w-]{24})$/.exec(k);
+  if (!m || +m[2] < Date.now() / 1000) return false;
+  const want = Buffer.from(crypto.createHmac("sha256", LOBBY_SECRET).update(`csp-lobby|${RELAY_ID}|${m[1]}|${m[2]}`).digest().subarray(0, 18).toString("base64url"));
+  const got = Buffer.from(m[3]);
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+};
 const keyOk = (reqUrl) => {
   if (!KEY) return true;
   let q; try { q = new URL(reqUrl || "/", "http://x").searchParams.get("key") || ""; } catch { return false; }
+  if (lobbyKeyOk(q)) return true;
   const got = Buffer.from(q);
   const want = Buffer.from(KEY);
   return got.length === want.length && crypto.timingSafeEqual(got, want);

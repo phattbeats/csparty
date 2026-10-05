@@ -747,4 +747,21 @@
       $("go").disabled = false;
     }
   });
+
+  // ------------------------------------------------------------------ lobby hand-off (lobby/, ISSUE)
+  // The lobby page sends everyone here with ?key= (that lobby's party key), ?name=, ?char= and ?lobby= (the
+  // lobby page, to go back to). The first arrival joins at once: the server's countdown starts with the first
+  // player in, so the party should land together. A reload (Leave) stays on this screen.
+  let lobbyUrl = null;
+  try { lobbyUrl = new URL(params.get("lobby") || ""); } catch {}
+  if (lobbyUrl && /^https?:$/.test(lobbyUrl.protocol)) {
+    if (params.get("name")) $("name").value = params.get("name").slice(0, 31);
+    const back = document.createElement("div"); back.className = "note";
+    const a = document.createElement("a"); a.href = lobbyUrl.href; a.textContent = "Back to the lobby"; a.style.color = "inherit";
+    back.append(`Party ${lobbyUrl.searchParams.get("code") || ""}: `, a);
+    $("form").before(back);
+    const once = "csp_lobby_" + (params.get("key") || "");
+    let first = true; try { first = !sessionStorage.getItem(once); sessionStorage.setItem(once, "1"); } catch {}
+    if (first) $("form").requestSubmit();
+  }
 })();
