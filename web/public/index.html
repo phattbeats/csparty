@@ -30,6 +30,7 @@
   .tip { margin:14px auto 0; max-width:min(560px, 92vw); font:600 14px/1.45 system-ui, sans-serif; color:#ffe85a; text-align:left; }
   .tip b { color:var(--text); letter-spacing:.06em; margin-right:6px; }
   #loading .tip { text-align:center; font-size:clamp(14px, 2.2vh, 18px); }
+  #ov-tip { margin:0; }
   #loading p { display:flex; align-items:center; justify-content:center; gap:12px; font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
   .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
   h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
@@ -304,6 +305,7 @@
     <div class="spin" id="ov-spin" hidden></div>
     <p id="ov-text" role="status" aria-live="polite"></p>
     <button id="ov-rejoin" type="button" hidden>Rejoin</button>
+    <div id="ov-tip" class="tip" hidden></div>
   </div>
 </div>
 

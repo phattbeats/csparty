@@ -231,7 +231,8 @@
     // the engine draws its console full screen while it connects and loads; the loading screen covers it
     $("loading").hidden = !(st >= 1 && st <= 3) || watch.gaveUp;
     const hc = $("loading-howto"); hc.textContent = howto; hc.hidden = !howto;
-    if (!$("loading").hidden) tipStart($("loading-tip")); else if (tipEl === $("loading-tip")) tipStop();
+    // the first join shows the "Joining the party" card over the loading screen, so the tip goes in the card then
+    if (!$("loading").hidden) tipStart($($("overlay").hidden ? "loading-tip" : "ov-tip")); else if (tipEl === $("loading-tip") || tipEl === $("ov-tip")) tipStop();
     if (st === 4) howto = "";
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
