@@ -118,3 +118,39 @@ slices are Valve's.
    `COPY racemaps/ /hlds/` and `COPY *.ini /hlds/cstrike/addons/amxmodx/configs/cs_party/minigames/`.
    `tools/package_server.sh` also does this from `maps/pool/` + `build/racemaps/server/`.
 3. Check the pools on the new server (`csp_test_remote pools`), and look for `left out` lines in the AMXX log.
+
+## Maze Run variants (ISSUE)
+
+`csp_maze` plus seven generated variants fill the maze pool. `tools/gen_minigame_maps.py` has `MAZE_VARIANTS`
+(grid size, cell size, seed, theme, dark, extra loops); `tools/build_maze_pack.py <sdhlt_tools> <game_dir>` compiles
+them, runs `race_map.py build`, writes the nav stub and copies the .ini and .map into `maps/pool/`. Textures are all
+cstrike.wad. Routes are at 250 u/s: "shortest" is the BFS route (a player who reads the maze), "follower" is the
+left-hand wall follower (a player who never reads it). The seeds were searched so the follower lands near 85-90 s and
+the shortest route is 30-45 s, which keeps a lost player in the 60-120 s band.
+
+| map | grid x cell | theme | shortest | follower | browser pack |
+|---|---|---|---|---|---|
+| csp_maze_brick8 | 8 x 256 | brick | 43 s | 88 s | 0.9 MB |
+| csp_maze_conc10 | 10 x 192 | concrete | 45 s | 87 s | 1.0 MB |
+| csp_maze_hedge | 12 x 160 | hedge | 41 s | 87 s | 0.9 MB |
+| csp_maze_metal14 | 14 x 144 | metal | 42 s | 88 s | 0.4 MB |
+| csp_maze_rust16 | 16 x 128 | rust | 34 s | 88 s | 0.9 MB |
+| csp_maze_dark10 | 10 x 192 | night, dark | 32 s | 87 s | 0.7 MB |
+| csp_maze_dark14 | 14 x 144 | night, dark | 36 s | 88 s | 0.7 MB |
+
+Dark variants have the lights off, so players need the flashlight (F). Every .ini has `pool maze`, `progress x`
+(the progress bar follows the way out) and 8 spawns.
+
+**Bots.** zBots can't read a maze. Each variant ships a one-area nav stub over the start zone (`g.write_nav_stub`),
+so the pool accepts the map and bots join; they "finish" on the clock in `MG_BOT_TIME` (30-60 s for maze), as on
+every race map. Each variant's .ini also has `bottime 50 100` (ISSUE key; older plugins ignore it): bots then
+finish after a player who reads the maze (~40 s) and around a lost one (~88 s), instead of 30-60 s, which beat most
+humans. The stub records the .bsp size, so it has to be written after `race_map.py build` (which rewrites the
+worldspawn wad key): `build_maze_pack.py` does that.
+
+**Testing.** `tools/dev/csp_mazewalk.sma` (dev only, never ships) walks the first human along the solution
+(`<out>/walk/<map>.walk`, written by the build) and logs `[WALK] reached the last waypoint after X s`. The race ends 5 s after the first finisher, so without
+`bottime` a bot on the 30-60 s clock can end it before the 250 u/s walker gets there; `csp_mazewalk_speed 400`
+(`SPEED=400` for the E2E) proves the route reaches the finish regardless.
+`tools/dev/maze_e2e.js` drives a browser client (`VIEW=desktop|phone`) through `csp_test_remote 11 ffa <map>`, starts
+the walker and screenshots the start, the run and the finish.
