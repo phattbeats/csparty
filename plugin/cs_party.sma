@@ -3665,6 +3665,12 @@ start_round_minigame()
 	}
 	g_mgFmt = (ct == 0 || t == 0) ? FMT_FFA : (ct == 2 ? FMT_2V2 : FMT_1V3);
 	g_mg = pick_minigame(g_mgFmt);
+	if (g_mg == MG_HNS && !(MG_FORMATS[g_mg] & g_mgFmt))   // forced (csp_force_mg) onto an all-one-colour round: one seeker
+	{
+		new k = random(SEATS);
+		for (new s = 0; s < SEATS; s++) g_mgSide[s] = s == k ? SIDE_CT : SIDE_T;
+		g_mgFmt = FMT_1V3;
+	}
 	g_cont = CONT_NEXT_TURN; g_mgWager = 0;
 	begin_minigame();
 }
@@ -4333,12 +4339,13 @@ public cmd_hns_probe()
 	return PLUGIN_HANDLED;
 }
 
-// dev: during a Hide and Seek round, throw seat 0 past every outer corner of the arena (and the middle of each outer
+// dev: csp_hns_corners [seat]  during a Hide and Seek round, throw the seat (default 0) past every outer corner of the arena (and the middle of each outer
 // edge) and report whether the boundary check brought them back
-new g_cornerStep, g_cornerFail;
+new g_cornerStep, g_cornerFail, g_cornerSeat;
 public cmd_hns_corners()
 {
 	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] corners: no Hide and Seek round"); return PLUGIN_HANDLED; }
+	new a[8]; read_argv(1, a, charsmax(a)); g_cornerSeat = clamp(str_to_num(a), 0, SEATS - 1);
 	g_cornerStep = 0; g_cornerFail = 0;
 	set_task(0.5, "task_hns_corner", TASK_HNSB + 5);
 	return PLUGIN_HANDLED;
@@ -4346,7 +4353,7 @@ public cmd_hns_corners()
 
 public task_hns_corner(taskid)
 {
-	new id = g_seatPlayer[0], ar = g_hnsAr;
+	new id = g_seatPlayer[g_cornerSeat], ar = g_hnsAr;
 	if (g_state != ST_MINIGAME || !is_user_alive(id)) { server_print("[CSP] corners: aborted"); return; }
 	// step k: box k/8, point k%8 (4 corners, 4 edge middles), pushed 90 units outward
 	new k = g_cornerStep, bi = -1, seen = 0;
@@ -4374,10 +4381,10 @@ public task_hns_corner(taskid)
 
 public task_hns_corner_check(const Float:from[3])
 {
-	new id = g_seatPlayer[0], Float:o[3];
+	new id = g_seatPlayer[g_cornerSeat], Float:o[3];
 	if (is_user_alive(id)) get_entvar(id, var_origin, o);
 	new bool:ok = is_user_alive(id) && hns_in_arena(g_hnsAr, o, 0.0);
-	if (is_user_alive(id) && g_mgSide[0] != SIDE_CT) unfreeze(id);
+	if (is_user_alive(id) && g_mgSide[g_cornerSeat] != SIDE_CT) unfreeze(id);
 	if (!ok) g_cornerFail++;
 	server_print("[CSP] corner test from (%.0f %.0f %.0f): %s now at (%.0f %.0f %.0f)", from[0], from[1], from[2], ok ? "back inside," : "ESCAPED,", o[0], o[1], o[2]);
 	set_task(0.05, "task_hns_corner", TASK_HNSB + 5);
