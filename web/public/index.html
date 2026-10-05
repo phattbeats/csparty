@@ -27,6 +27,10 @@
   #loading { background:radial-gradient(ellipse at 50% 30%, #2b3123 0, #161a13 55%, var(--bg) 100%); text-align:center; }
   #loading img { width:min(300px, 50vw, 60vh); height:auto; display:block; margin:0 auto 4vh; filter:drop-shadow(0 5px 0 #0c10086b); }
   #loading-howto { margin:4vh auto 0; max-width:min(560px, 92vw); text-align:left; white-space:pre-line; font:600 clamp(16px, 2.6vh, 22px)/1.5 system-ui, sans-serif; color:#ffe85a; background:#0c1008cc; border:1px solid var(--line); padding:16px 20px; }
+  .tip { margin:14px auto 0; max-width:min(560px, 92vw); font:600 14px/1.45 system-ui, sans-serif; color:#ffe85a; text-align:left; }
+  .tip b { color:var(--text); letter-spacing:.06em; margin-right:6px; }
+  #loading .tip { text-align:center; font-size:clamp(14px, 2.2vh, 18px); }
+  #ov-tip { margin:0; }
   #loading p { display:flex; align-items:center; justify-content:center; gap:12px; font:700 15px system-ui, sans-serif; letter-spacing:.06em; text-transform:uppercase; color:var(--text); }
   .card { width:min(440px, 100%); box-sizing:border-box; background:var(--panel); border:1px solid var(--line); padding:22px; display:grid; gap:14px; }
   h1, h2 { margin:0; font:700 30px/1 "Arial Narrow", system-ui, sans-serif; letter-spacing:.08em; color:var(--hud); text-transform:uppercase; }
@@ -282,6 +286,7 @@
           <button class="join-button" id="go" type="submit">JOIN THE PARTY<span class="join-key" aria-hidden="true">&#8629;</span></button>
           <div class="bar"><i id="bar"></i></div>
           <div id="status" role="status" aria-live="polite">First visit downloads about 47 MB. After that, it's cached in your browser.</div>
+          <div id="boot-tip" class="tip" hidden></div>
         </div>
       </section>
     </div>
@@ -291,7 +296,7 @@
 </div>
 
 <div id="loading" class="screen" hidden aria-live="polite">
-  <div><img src="art/logo.webp" alt="CS Party" width="720" height="360"><p><span class="spin" aria-hidden="true"></span><span id="loading-text">Loading the next map…</span></p><div id="loading-howto" hidden></div></div>
+  <div><img src="art/logo.webp" alt="CS Party" width="720" height="360"><p><span class="spin" aria-hidden="true"></span><span id="loading-text">Loading the next map…</span></p><div id="loading-howto" hidden></div><div id="loading-tip" class="tip" hidden></div></div>
 </div>
 
 <div id="overlay" class="screen" hidden>
@@ -300,6 +305,7 @@
     <div class="spin" id="ov-spin" hidden></div>
     <p id="ov-text" role="status" aria-live="polite"></p>
     <button id="ov-rejoin" type="button" hidden>Rejoin</button>
+    <div id="ov-tip" class="tip" hidden></div>
   </div>
 </div>
 
@@ -325,6 +331,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.24"></script>
+<script src="boot.js?v=0.4.25"></script>
 </body>
 </html>
