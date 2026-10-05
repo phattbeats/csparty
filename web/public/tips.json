@@ -1,0 +1,352 @@
+{
+ "_comment": "Single source of truth for CS Party tips (ISSUE). Edit here, then run tools/gen_tips.py to regenerate plugin/cs_party_tips.inc. when: turn = start of your turn, wait = while others play; on = space just landed on; dev = only for that input device. Keep text <= 100 chars: the HUD wraps at 30 (PC) / 36 (phone) characters.",
+ "tips": [
+  {
+   "id": "gear-buy",
+   "text": "On your turn, pick Buy gear in the menu to arm up for the minigames.",
+   "when": [
+    "turn"
+   ],
+   "first": "turn"
+  },
+  {
+   "id": "gear-keep",
+   "text": "Gear you buy comes into the minigames. Survive the round and you keep it. Die and it's gone.",
+   "when": [
+    "turn",
+    "wait"
+   ]
+  },
+  {
+   "id": "gear-loot",
+   "text": "Died in a minigame? Players can pick up your weapons, so grab theirs too.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "gear-rounds",
+   "text": "Pistol Round uses only your pistol, armor and grenades. Full Buy uses everything you own.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "gear-kit",
+   "text": "A Defuse Kit defuses a C4 trap on a space and pays you $500.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "gear-money",
+   "text": "Gear costs board money. Blue spaces earn it, so don't spend your last dollar before a star.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "item-use",
+   "text": "Use items from your turn menu, before you jump at the crate.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "item-knife",
+   "text": "Knife Out ($500): two dice crates on your next roll."
+  },
+  {
+   "id": "item-bhop",
+   "text": "Bhop Script ($1200): three dice crates on your next roll."
+  },
+  {
+   "id": "item-rigged",
+   "text": "Rigged Crate ($900): you pick the number your roll lands on."
+  },
+  {
+   "id": "item-fake",
+   "text": "Fake Call ($300): a rival's next roll is 3 lower."
+  },
+  {
+   "id": "item-smoke",
+   "text": "Smoke ($400): C4 traps and the Camper can't hurt you this turn."
+  },
+  {
+   "id": "item-c4",
+   "text": "C4 ($800): plant a trap on your space. A rival who lands on it pays you $1500."
+  },
+  {
+   "id": "item-rotate",
+   "text": "Rotate ($1000): swap places with a rival. Good when they're ahead."
+  },
+  {
+   "id": "item-intel",
+   "text": "Hostage Intel ($4000): jump straight to the hostages. Bring $5000 to rescue them."
+  },
+  {
+   "id": "item-limit",
+   "text": "You can carry 3 items. Use one before you pick up another.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "space-blue",
+   "text": "Blue (CT) spaces pay you cash. Red (T) spaces cost you cash.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "space-color",
+   "text": "The last blue or red space you land on before a minigame sets your team color.",
+   "when": [
+    "turn",
+    "wait"
+   ]
+  },
+  {
+   "id": "space-event",
+   "text": "? spaces are random events: a free weapon, a bonus, a bad flash, or a swap.",
+   "on": "event"
+  },
+  {
+   "id": "space-shop",
+   "text": "Black Market: spend money on items. T and CT markets stock different things.",
+   "on": "shop"
+  },
+  {
+   "id": "space-armory",
+   "text": "Armory: a free item off the rack. A full kit sells it for cash instead.",
+   "on": "armory"
+  },
+  {
+   "id": "space-camper",
+   "text": "Camper: a sniper takes cash, a weapon, your items or even a star. Smoke blocks the shot.",
+   "on": "camper"
+  },
+  {
+   "id": "space-duel",
+   "text": "Duel space: pick a rival for a 1v1 fight. The winner takes the cash.",
+   "on": "duel"
+  },
+  {
+   "id": "space-vip",
+   "text": "VIP Escort: a slot reel decides who pays whom. Anything can happen.",
+   "on": "vip"
+  },
+  {
+   "id": "space-negot",
+   "text": "The Negotiator: pay to take cash or a star from a rival as you pass.",
+   "on": "negot"
+  },
+  {
+   "id": "space-site",
+   "text": "Bomb site: you earn $300 and a C4 trap appears on a space further down the road.",
+   "on": "site"
+  },
+  {
+   "id": "space-c4",
+   "text": "A C4 trap hurts whoever lands on it. A Defuse Kit or Smoke saves you.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "space-map",
+   "text": "Open the map overlay from your turn menu to see every space's type.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "star-hostage",
+   "text": "Reach the hostages and pay $5000 to rescue them for a star.",
+   "when": [
+    "turn",
+    "wait"
+   ]
+  },
+  {
+   "id": "star-stop",
+   "text": "Everyone stops at the hostages as they pass. No $5000? You walk on.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "star-move",
+   "text": "After a rescue, the hostages move to a new spot on the board.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "star-win",
+   "text": "Most stars when the turns run out wins. Money breaks ties.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "star-bonus",
+   "text": "Two bonus stars are drawn each match. The leaders are listed on the table.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "star-bonus2",
+   "text": "Bonus stars pay out at the end to the leader, like Top Fragger or Max Money.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "star-tab",
+   "text": "Hold TAB to see the stars and who's winning.",
+   "when": [
+    "wait"
+   ],
+   "dev": "kbd"
+  },
+  {
+   "id": "mg-after",
+   "text": "After every player moves, everyone plays a minigame. Winners earn cash.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "mg-teams",
+   "text": "In team minigames, blue is CT and red is T. Same color, same team.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "mg-hns",
+   "text": "Hide and Seek: T hides. CT seeks with a knife after 20 seconds in the dark.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "mg-race",
+   "text": "Surf, Bhop, Climb and Maze are races. Fall and you go back to the last checkpoint.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "mg-towers",
+   "text": "Two Towers: AWPs and Deagles. Last side standing wins.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "dice-char",
+   "text": "Each character has its own dice. Check the faces on the character screen.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "dice-seal",
+   "text": "SEAL Team 6 only rolls 3s and 4s. Steady, never huge."
+  },
+  {
+   "id": "dice-guer",
+   "text": "Guerilla Warfare rolls only 1s and 6s. All or nothing."
+  },
+  {
+   "id": "dice-risk",
+   "text": "Elite Crew and GSG-9 can roll a 0 and stand still, or a 7 and fly."
+  },
+  {
+   "id": "dice-crate",
+   "text": "Jump into the floating crate to stop it. It lands on the face showing.",
+   "when": [
+    "turn"
+   ]
+  },
+  {
+   "id": "ctl-kbd",
+   "text": "Space picks menu items and jumps at the crate. E goes back. Number keys work too.",
+   "when": [
+    "turn"
+   ],
+   "dev": "kbd"
+  },
+  {
+   "id": "ctl-touch",
+   "text": "On a phone, push the stick up or down to move the menu cursor. Tap Jump to pick.",
+   "when": [
+    "turn"
+   ],
+   "dev": "touch"
+  },
+  {
+   "id": "ctl-pad",
+   "text": "On a controller, the stick or D-pad moves the menu cursor. The jump button picks.",
+   "when": [
+    "turn"
+   ],
+   "dev": "pad"
+  },
+  {
+   "id": "ctl-esc-kbd",
+   "text": "Press Esc to open settings: sound, mouse, text size and more.",
+   "when": [
+    "wait"
+   ],
+   "dev": "kbd"
+  },
+  {
+   "id": "ctl-esc-touch",
+   "text": "Tap the Menu button to open settings.",
+   "when": [
+    "wait"
+   ],
+   "dev": "touch"
+  },
+  {
+   "id": "ctl-esc-pad",
+   "text": "Press Start on a controller to open settings.",
+   "when": [
+    "wait"
+   ],
+   "dev": "pad"
+  },
+  {
+   "id": "cmd-help",
+   "text": "Say /help in chat to read the rules again.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "cmd-board",
+   "text": "Say /board in chat to pick the board map before a match.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "cmd-party",
+   "text": "Say /party in chat to start the match.",
+   "when": [
+    "wait"
+   ]
+  },
+  {
+   "id": "cmd-menu",
+   "text": "Closed your turn menu by mistake? Say /menu to bring it back.",
+   "when": [
+    "turn"
+   ]
+  }
+ ]
+}

@@ -3,3 +3,5 @@ maps/*.log
 maps/*.prt
 maps/*.wa_
 __pycache__/
+build/racemaps/
+web/public/mappacks/

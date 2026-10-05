@@ -116,6 +116,30 @@
     for (const part of dir.split("/").filter(Boolean)) { cur += "/" + part; try { FS.mkdir(cur); } catch {} }
   }
 
+  // ------------------------------------------------------------------ race map packs
+  // Race pool maps aren't in gamedata.zip: each comes as its own small pack, mappacks/<map>.zip (tools/race_map.py).
+  // The plugin names the map at the minigame intro (CSP_MAP_<map>), several seconds before the map change, so it's
+  // in the file system when the engine loads it. A pack that fails leaves the engine's own download as the fallback.
+  const mapPacks = new Map();   // map -> "loading" | "ok"
+  async function fetchMapPack(map) {
+    if (!engine || mapPacks.has(map)) return;
+    try { engine.FS.stat(`${ROOT}/cstrike/maps/${map}.bsp`); mapPacks.set(map, "ok"); return; } catch {}   // in gamedata.zip
+    mapPacks.set(map, "loading");
+    try {
+      const r = await fetch(`mappacks/${encodeURIComponent(map)}.zip${keyQuery}`, { cache: "no-cache" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const files = await unzipInWorker(new Uint8Array(await r.arrayBuffer()));
+      let n = 0;
+      for (const [p, data] of Object.entries(files)) {
+        if (p.endsWith("/")) continue;
+        mkdirp(engine.FS, ROOT + "/" + p.split("/").slice(0, -1).join("/"));
+        engine.FS.writeFile(ROOT + "/" + p, data, { canOwn: true }); n++;
+      }
+      mapPacks.set(map, "ok");
+      console.log(`[boot] map pack ${map}: ${n} files`);
+    } catch (e) { mapPacks.delete(map); console.warn(`[boot] map pack ${map}:`, e); }
+  }
+
   // ------------------------------------------------------------------ overlays
   const overlay = (title, text, { rejoin = false, spin = false } = {}) => {
     $("ov-title").textContent = title; $("ov-text").textContent = text || "";
@@ -176,17 +200,44 @@
     11: "HOW TO MAZE\n- Find the way out. First one out wins.\n- The walls are too tall to jump.\n- Dead ends are common: turn back early.\n- Don't follow the player in front of you.",
   };
   let howto = "";
+
+  // Tips: tips.json is the one catalog (the plugin's in-game HUD tips are generated from it by tools/gen_tips.py).
+  // They rotate under the progress bar and on the map-change loading screen.
+  let tipList = [], tipQueue = [], tipEl = null, tipTimer = 0;
+  const tipDevice = => TOUCH ? "touch" : ([...(navigator.getGamepads?.() || [])].some(Boolean) ? "pad" : "kbd");
+  const tipNext = => {
+    if (!tipEl || !tipList.length) return;
+    if (!tipQueue.length) {
+      const dev = tipDevice();
+      tipQueue = tipList.filter((t) => !t.dev || t.dev === dev).map((t) => t.text).sort(() => Math.random() - 0.5);
+    }
+    const b = document.createElement("b"); b.textContent = "TIP";
+    tipEl.replaceChildren(b, tipQueue.pop());
+    tipEl.hidden = false;
+  };
+  const tipStart = (el) => {
+    if (tipEl === el) return;
+    tipStop(); tipEl = el; tipNext();
+    tipTimer = setInterval(tipNext, 7000);
+  };
+  const tipStop = => { clearInterval(tipTimer); if (tipEl) tipEl.hidden = true; tipEl = null; };
+  fetch("tips.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : { tips: [] }).catch(() => ({ tips: [] }))
+    .then((j) => { tipList = j.tips || []; if (tipEl) tipNext(); });
+  tipStart($("boot-tip"));
+
   const onState = (st) => {
     const prev = watch.state; watch.state = st; watch.since = performance.now(); typing = "";
     console.log(`[watch] state ${prev} -> ${st}`);
     // the engine draws its console full screen while it connects and loads; the loading screen covers it
     $("loading").hidden = !(st >= 1 && st <= 3) || watch.gaveUp;
     const hc = $("loading-howto"); hc.textContent = howto; hc.hidden = !howto;
+    // the first join shows the "Joining the party" card over the loading screen, so the tip goes in the card then
+    if (!$("loading").hidden) tipStart($($("overlay").hidden ? "loading-tip" : "ov-tip")); else if (tipEl === $("loading-tip") || tipEl === $("ov-tip")) tipStop();
     if (st === 4) howto = "";
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
-      if (!watch.joined) { watch.joined = true; hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); }
+      if (!watch.joined) { watch.joined = true; tipStop(); hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); }
       toast("");
       return;
     }
@@ -647,6 +698,8 @@
         locateFile: (f) => f,
         print: (t) => {
           console.log(t);
+          const mp = /CSP_MAP_([\w.\-]+)/.exec(t);
+          if (mp) fetchMapPack(mp[1]);
           const hw = /CSP_HOWTO_(\d+)/.exec(t);
           if (hw) howto = HOWTO[+hw[1]] || "";
           else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);
