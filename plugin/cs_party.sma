@@ -202,8 +202,8 @@ new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
 new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopNode, Float:g_hopStart, bool:g_hopActive;
 new g_cam, g_hostageEnt, g_trapEnt[MAX_NODES], g_beamSpr;
 // map overlay (toggle_map_view): its entities, the per-space draw height and the planned overhead shot
-new g_mapEnt[MAX_NODES * 6], g_mapEntN, bool:g_mapEntFlag[2048], bool:g_mapHide[2048], g_mapMark[SEATS + 2], Float:g_nodeDrawZ[MAX_NODES];
-new Float:g_mapCam[3], Float:g_mapLook[3], Float:g_mapH;
+new g_mapEnt[MAX_NODES * 8], g_mapEntN, bool:g_mapEntFlag[2048], bool:g_mapHide[2048], g_mapMark[SEATS + 2], g_mapSpace[MAX_NODES], Float:g_nodeDrawZ[MAX_NODES];
+new Float:g_mapCam[3], Float:g_mapLook[3], Float:g_mapH, Float:g_mapPlane;
 new Float:g_camPos[3], Float:g_camAng[3];
 new g_msgScoreInfo;
 #define DICE_HALF   18.0
@@ -231,7 +231,8 @@ public plugin_precache()
 	precache_sound("events/task_complete.wav");
 	for (new k = 0; k < sizeof VO_LINES; k++) for (new i = 0; i < sizeof VO_LINES[]; i++) precache_sound(VO_LINES[k][i]);
 	g_beamSpr = precache_model("sprites/laserbeam.spr");
-	precache_model("sprites/dot.spr"); precache_model("sprites/iplayer.spr"); precache_model("sprites/ihostage.spr");   // map overlay markers
+	precache_model("sprites/iplayer.spr"); precache_model("sprites/ihostage.spr");   // map overlay markers
+	precache_model("sprites/csp_space.spr"); precache_model("sprites/csp_face.spr");   // tools/build_mapicons.py: a frame per space type / character
 	precache_model("models/csp_tile.mdl");
 }
 
@@ -1724,9 +1725,10 @@ cam_group_base(s, const Float:P[3], Float:base[3])
 // here uses temp-entity beams: the ground path dashes already fill the client's beam pool, and anything
 // over the limit just doesn't draw. The path, the arrows and the pieces are real entities instead, shown
 // only while the map view is up.
-// Seat colours, also tagged on the score table while the map is up.
-stock const MAP_COL[SEATS][3] = { {80, 160, 255}, {255, 90, 90}, {90, 230, 120}, {255, 220, 70} };
-stock const MAP_COLNAME[SEATS][] = { "blue", "red", "green", "yellow" };
+// Each piece is its character's portrait (csp_face.spr frame = SK_*) in the character-select colour, which also
+// rings whose turn it is; the score table tags each row with the character while the map is up.
+stock const CHAR_COL[SK_COUNT][3] = { {230, 96, 63}, {227, 181, 43}, {167, 213, 228}, {155, 173, 84}, {107, 159, 212}, {181, 185, 193}, {185, 138, 217}, {226, 226, 212} };
+stock const CHAR_SHORT[SK_COUNT][] = { "Phoenix", "Elite", "Arctic", "Guerilla", "SEAL", "GSG-9", "SAS", "GIGN" };
 
 // The camera entity leaves the world in this view, so it touches no BSP leaf and the engine's PVS check
 // would stop sending it: clients kept its last in-world position (a tilted, too-close view). Same for the
@@ -1820,8 +1822,8 @@ mark_ent(const spr[], r, g, bl)
 
 map_flag(e) { if (e > 0 && e < sizeof g_mapEntFlag) { g_mapEntFlag[e] = true; g_mapEnt[g_mapEntN++] = e; } }
 
-// Built once per board: a lit path along every link, arrowheads (two strokes each), a dot per seat, a ring for
-// whose turn it is and the hostage icon. All hidden until the map view is switched on.
+// Built once per board: a lit path along every link, arrowheads (two strokes each), an icon on every space
+// showing its type, a portrait per seat, a ring for whose turn it is and the hostage icon. All hidden until the map view is switched on.
 map_overlay_spawn()
 {
 	g_mapEntN = 0;
@@ -1833,10 +1835,12 @@ map_overlay_spawn()
 		for (new e = -1; (e = find_ent_by_class(e, CLUTTER[c])); ) map_hide(e);
 	if (!g_nodeCount) return;
 	for (new n = 0; n < g_nodeCount; n++) g_nodeDrawZ[n] = map_draw_z(n);
+	map_view_plan();   // spaces and pieces sit on a plane over the whole map (map_proj), so they need the overhead camera
 	for (new n = 0; n < g_nodeCount; n++)
 	for (new k = 0; k < g_nodeNextN[n]; k++)
 	{
 		new m = g_nodeNext[n][k], Float:a[3], Float:b[3], Float:d[3];
+		// the path stays down at the spaces: the client culls a beam that touches no leaf of the map
 		a = g_nodePos[n]; a[2] = g_nodeDrawZ[n];
 		b = g_nodePos[m]; b[2] = g_nodeDrawZ[m];
 		xs_vec_sub_simple(b, a, d);
@@ -1858,7 +1862,29 @@ map_overlay_spawn()
 		map_flag(beam_ent(w1, tip, 255, 255, 255, 255.0, 255.0));
 		map_flag(beam_ent(w2, tip, 255, 255, 255, 255.0, 255.0));
 	}
-	for (new s = 0; s < SEATS; s++) { g_mapMark[s] = mark_ent("sprites/dot.spr", MAP_COL[s][0], MAP_COL[s][1], MAP_COL[s][2]); map_flag(g_mapMark[s]); }
+	// every space, in the board tile's colours and labels (the tiles themselves are hidden: under roofs, too small).
+	// Spaces and portraits are kRenderTransColor sprites. That's the one mode where Xash both writes depth, so the
+	// path's beams (drawn after everything else) stay under them, and skips the "lightmap" it samples from the
+	// floor below an alpha-tested sprite. Up on the overlay plane there is no floor and the sample came back
+	// black; TransAlpha writes no depth, so the arrows ran over the pieces.
+	for (new n = 0; n < g_nodeCount; n++)
+	{
+		new e = mark_ent("sprites/csp_space.spr", 255, 255, 255);
+		g_mapSpace[n] = e;
+		if (!e) continue;
+		entity_set_int(e, EV_INT_rendermode, kRenderTransColor);
+		entity_set_float(e, EV_FL_frame, float(g_nodeType[n]));
+		new Float:o[3]; o = g_nodePos[n];
+		new Float:f = map_proj(o, g_mapPlane + 6.0);
+		entity_set_origin(e, o);
+		entity_set_float(e, EV_FL_scale, g_mapH * 0.05 * f / 128.0);   // a bit smaller than a portrait (csp_space.spr is 128 px)
+		map_flag(e);
+	}
+	for (new s = 0; s < SEATS; s++)
+	{
+		g_mapMark[s] = mark_ent("sprites/csp_face.spr", 255, 255, 255); map_flag(g_mapMark[s]);
+		if (g_mapMark[s]) entity_set_int(g_mapMark[s], EV_INT_rendermode, kRenderTransColor);
+	}
 	g_mapMark[SEATS] = mark_ent("sprites/ihostage.spr", 0, 0, 0); map_flag(g_mapMark[SEATS]);                 // CS's own overview icons
 	g_mapMark[SEATS + 1] = mark_ent("sprites/iplayer.spr", 255, 255, 255); map_flag(g_mapMark[SEATS + 1]);   // ring: whose turn
 }
@@ -1889,46 +1915,65 @@ map_view_plan()
 	// a nudge toward "screen up" sets the yaw: +y up (x across) or +x up (y across)
 	g_mapLook[0] = cx + (xAcross ? 0.0 : 2.0); g_mapLook[1] = cy + (xAcross ? 2.0 : 0.0); g_mapLook[2] = lo[2];
 	g_mapH = h;
+	// the overlay's plane: halfway up to the camera, over every roof and wall top on the board
+	new Float:top = lo[2];
+	for (new n = 0; n < g_nodeCount; n++) top = floatmax(top, g_nodeDrawZ[n]);
+	g_mapPlane = floatmax(lo[2] + h * 0.5, top + 400.0);
 	// the far corners must be inside the clients' draw distance
 	new Float:far = floatsqroot(h * h + hx * hx + hy * hy) + 600.0;
 	if (get_cvar_float("sv_zmax") < far) set_cvar_float("sv_zmax", float(floatround(far / 1024.0, floatround_ceil) * 1024));
 }
 
-// every frame while the map is up: a dot in the seat colour rides on each piece (over the roof when the piece
-// is indoors), a ring in the same colour marks whose turn it is, and the hostage icon sits on their space
+// Slide a point up its line of sight to the overhead camera until it is at height z: it still shows over the
+// same spot on screen, but now above every roof and wall top. Returns the factor that keeps a size on screen.
+Float:map_proj(Float:o[3], Float:z)
+{
+	new Float:dz = g_mapCam[2] - o[2];
+	if (dz < 1.0) return 1.0;
+	new Float:f = floatclamp((z - o[2]) / dz, 0.0, 0.9);
+	for (new k = 0; k < 3; k++) o[k] += (g_mapCam[k] - o[k]) * f;
+	return 1.0 - f;
+}
+
+// every frame while the map is up: the character's portrait rides on each piece (on the overlay plane, so roofs
+// and walls never cover it), a ring in the character's colour marks whose turn it is, and the hostage icon sits on their space
 map_marks_step()
 {
-	new Float:dia = g_mapH * 0.045;      // dot diameter: about 1/25 of the screen height (dot.spr fills its 16 px)
+	new Float:dia = g_mapH * 0.075;      // portrait diameter: about 1/15 of the screen height (csp_face.spr is 128 px)
+	new Float:sdia = g_mapH * 0.05;      // space icons (sized in map_overlay_spawn)
 	new Float:ring[3];
 	for (new s = 0; s < SEATS; s++)
 	{
 		new e = g_mapMark[s]; if (!is_valid_ent(e)) continue;
 		new Float:o[3]; pawn_origin(s, o);
-		new Float:z = g_nodeDrawZ[g_pos[s]] + 30.0; if (o[2] + 60.0 > z) z = o[2] + 60.0;
-		o[2] = z;
-		// pieces sharing a space: spread the dots so each colour shows
+		o[2] = g_nodePos[g_pos[s]][2];
+		// pieces sharing a space: spread the portraits so each one shows
 		new same = 0, before = 0;
 		for (new q = 0; q < SEATS; q++) if (g_pos[q] == g_pos[s]) { same++; if (q < s) before++; }
 		if (same > 1) { new Float:t = float(before) * 360.0 / float(same) + 45.0; o[0] += floatcos(t, degrees) * dia * 0.75; o[1] += floatsin(t, degrees) * dia * 0.75; }
+		if (s == g_cur) ring = o;
+		new Float:fk = map_proj(o, g_mapPlane + 16.0);
 		entity_set_origin(e, o);
-		entity_set_float(e, EV_FL_scale, dia / 16.0);
-		if (s == g_cur) { ring = o; ring[2] += 4.0; }
+		entity_set_float(e, EV_FL_scale, dia * fk / 128.0);
+		entity_set_float(e, EV_FL_frame, float(g_seatSkin[s]));
 	}
 	new r = g_mapMark[SEATS + 1];
 	if (is_valid_ent(r))
 	{
+		new Float:fk = map_proj(ring, g_mapPlane + 20.0);
 		entity_set_origin(r, ring);
-		entity_set_float(r, EV_FL_scale, dia * 2.4 / 32.0);   // iplayer is 32 px: a ring about twice the dot
-		new Float:col[3]; for (new k = 0; k < 3; k++) col[k] = float(MAP_COL[g_cur][k]);
+		entity_set_float(r, EV_FL_scale, dia * 1.9 * fk / 32.0);   // iplayer is 32 px: a ring around the portrait
+		new Float:col[3]; for (new k = 0; k < 3; k++) col[k] = float(CHAR_COL[g_seatSkin[g_cur]][k]);
 		entity_set_vector(r, EV_VEC_rendercolor, col);
 		entity_set_int(r, EV_INT_renderfx, kRenderFxPulseFastWide);
 	}
 	new h = g_mapMark[SEATS];
 	if (is_valid_ent(h))
 	{
-		new Float:o[3]; o = g_nodePos[g_hostage]; o[2] = g_nodeDrawZ[g_hostage] + 20.0;
+		new Float:o[3]; o = g_nodePos[g_hostage];
+		new Float:fk = map_proj(o, g_mapPlane + 10.0);
 		entity_set_origin(h, o);
-		entity_set_float(h, EV_FL_scale, dia * 2.6 / 32.0);   // ihostage is 32 px
+		entity_set_float(h, EV_FL_scale, sdia * 2.8 * fk / 32.0);   // ihostage is 32 px
 	}
 }
 
@@ -2074,16 +2119,16 @@ public task_hud()
 		}
 		if (g_awardN) len += formatex(buf[len], charsmax(buf) - len, "^n");
 	}
-	// map view: each row says which dot on the map is that player
+	// map view: each row says which portrait on the map is that player
 	new bool:mapTags = (g_camMode == CAM_MAP && g_state == ST_BOARD);
 	for (new s = 0; s < SEATS; s++)
-		len += formatex(buf[len], charsmax(buf) - len, "%s%-14.14s $%5d  *%d  W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? "  " : "", mapTags ? MAP_COLNAME[s] : "");
+		len += formatex(buf[len], charsmax(buf) - len, "%s%-14.14s $%5d  *%d  W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? "  " : "", mapTags ? CHAR_SHORT[g_seatSkin[s]] : "");
 
 	// Compact version for touch screens: no bonus-star block, it has to fit the top-centre column
 	new small[320], sl;
 	sl = formatex(small, charsmax(small), "CS PARTY  turn %d/%d%s  |  hostages: %s^n", g_turn, g_maxTurns, overtime() ? " OT" : "", g_nodeArea[g_hostage]);
 	for (new s = 0; s < SEATS; s++)
-		sl += formatex(small[sl], charsmax(small) - sl, "%s%-12.12s $%5d *%d W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? " " : "", mapTags ? MAP_COLNAME[s] : "");
+		sl += formatex(small[sl], charsmax(small) - sl, "%s%-12.12s $%5d *%d W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? " " : "", mapTags ? CHAR_SHORT[g_seatSkin[s]] : "");
 
 	// Personal part: your own gear and items, under the table.
 	for (new id = 1; id <= MaxClients; id++)
@@ -4491,12 +4536,13 @@ bool:map_used(const map[]) { new k[40]; formatex(k, charsmax(k), "|%s|", map); r
 // Tells browser clients at once, so they fetch its map pack during the intro (boot.js, CSP_MAP_).
 choose_race_map(mg)
 {
-	new cand[POOL_MAX], n = 0;
+	new cand[POOL_MAX], n = 0, fresh = 0;
 	for (new pass = 0; pass < 2 && !n; pass++)
 		for (new i = 0; i < g_poolN; i++)
 			if (g_poolMg[i] == mg && (pass || !map_used(g_poolMap[i]))) cand[n++] = i;
+	for (new i = 0; i < g_poolN; i++) if (g_poolMg[i] == mg && !map_used(g_poolMap[i])) fresh++;
 	set_race_map(n ? g_poolMap[cand[random(n)]] : MG_MAP[mg]);
-	dbg("%s plays on %s (%d left in its pool).", MG_NAME[mg], g_raceMap, n);
+	dbg("%s plays on %s (drawn from %d; %d unplayed).", MG_NAME[mg], g_raceMap, n, fresh);
 }
 
 set_race_map(const map[])
