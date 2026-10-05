@@ -102,6 +102,8 @@ const shot = (c, name) => c.pg.screenshot({ path: `${OUT}/${name}-${c.who}.png` 
     }
     await sleep(14000);   // seats rebind, round restart, 3-2-1 countdown
     for (const c of cs) await shot(c, `${map}-start`);
+    // PRESS_DELAY=<s>: wait before pressing, to see that bots don't finish early (the map's bottime window)
+    if (+process.env.PRESS_DELAY) { await sleep(+process.env.PRESS_DELAY * 1000); note(`  after ${process.env.PRESS_DELAY} s: finishes ${desk.finishes.join(";") || "none"}`); }
     for (let i = 0; i < 8 && !(desk.finishes.some((x) => x.startsWith("Desk")) && desk.finishes.some((x) => x.startsWith("Phone"))); i++) {
       // both at once: the race ends 5 s after the first finish
       const g1 = (await rcon(`csp_kz_goto Desk ${spots[0]}`)).trim(), g2 = (await rcon(`csp_kz_goto Phone ${spots[1]}`)).trim();
