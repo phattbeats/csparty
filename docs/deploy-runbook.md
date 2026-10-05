@@ -388,3 +388,15 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - 0.5.26-vq = 0.5.25-vq + `patch0526/hlds/` (maps, WADs, models, sprites, the inis and cs_party.amxx). Browser packs (1.2-3.5 MB each) copied into `appdata/cs-party/mappacks/`. No relay change.
 - Verified on the isolated stack (server :27060, relay :8100 on relay 0.4.25): every map raced to the real stop button in a browser client on desktop and phone (`tools/dev/climb_e2e.js` + test-only `tools/dev/csp_kztest.sma`; screenshots on ISSUE), no `left out` lines; with `PRESS_DELAY=75`, no bot finished in the first 75 s on the new plugin.
 - Gate: 0 humans on live, peers 0, live tag 0.5.25-vq (image 7a9d6485486e) (`deploy0526-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.25-vq-ISSUEold`, `csparty-up.sh.pre-0526-ISSUE`.
+
+## ISSUE: lobby Phase 1 (relay 0.4.26, 2026-10-05 02:3x UTC; Worker pending)
+
+- `lobby/`: Cloudflare Worker `csparty-lobby` (lobby + directory Durable Objects, lobby page). See `lobby/README.md`.
+- Relay 0.4.26 (`patch-relay26`, FROM 0.4.25 + relay.js/boot.js/index.html): accepts the Worker's per-lobby keys when
+  `LOBBY_SECRET` (in appdata `.env`, generated on the host) and `RELAY_ID=raid1` are set; `/healthz` adds `downloads` and
+  `idleSecs`. The static `PARTY_KEY` link works as before. Game page: `?lobby=` joins once on arrival and shows a link back.
+- Deployed behind the gate (rcon 0 humans, peers 0, live tag 0.4.25). Rollback: `cs-party-relay-0.4.25old` (stopped) and
+  `csparty-up.sh.pre-ISSUE`.
+- Worker deploy needs a Cloudflare token with Workers Scripts + Durable Objects edit (agents hold DNS-only):
+  `cd lobby && npm i && npx wrangler secret put LOBBY_SECRET` (value from appdata `.env`) `&& npm run deploy`.
+  `POOL` in `wrangler.toml` points at https://csparty.example.com.
