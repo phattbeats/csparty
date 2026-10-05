@@ -3,7 +3,8 @@
 // phase (red fence), a walk, and the corner escape test run on the browser player's own seat (csp_hns_corners <seat>).
 // The server console has the results ("placed at", "corner test ... back inside/ESCAPED", "left the arena").
 // Runs in the Playwright image on game-host (GPU) against an isolated stack. env: RELAY, KEY, RCON_PORT, RPW,
-// MAPS (de_dust2,de_inferno,...), ARENAS (optional "0 2": only these). Writes /work/out.
+// MAPS (de_dust2,de_inferno,...), ARENAS (optional "0 2": only these), FENCE=1 (instead of the walk and corner test: two
+// shots facing open stretches of fence, csp_hns_fenceview). Writes /work/out.
 const { chromium } = require("playwright");
 const dgram = require("dgram");
 const fs = require("fs");
@@ -12,6 +13,7 @@ const RELAY = process.env.RELAY || "http://127.0.0.1:8123";
 const URL = `${RELAY}/?key=${encodeURIComponent(process.env.KEY || "")}&nosound=1&dev=1`;
 const RPORT = +(process.env.RCON_PORT || 27093);
 const MAPS = (process.env.MAPS || "de_dust2").split(",");
+const FENCE = !!process.env.FENCE;
 const ONLY = process.env.ARENAS ? process.env.ARENAS.split(/\s+/).map(Number) : null;
 const OUT = "/work/out"; fs.mkdirSync(OUT, { recursive: true });
 const log = fs.createWriteStream(`${OUT}/browser.log`);
@@ -85,6 +87,14 @@ async function state() {
       if (s.st !== 3) { note(`${tag}: Hide and Seek never started (state ${s.st})`); continue; }
       note(`${tag}: started, browser player in seat ${s.seat}`);
       await sleep(3000); await shot(`${tag}-hide`);
+      if (FENCE) {
+        await sleep(14000);   // the seeker's blindfold comes off at 15 s
+        for (const k of [0, 3]) {
+          note(`${tag}: ${(await rcon(`csp_hns_fenceview ${s.seat} ${k}`)).trim()}`);
+          await sleep(1500); await shot(`${tag}-fence${k}`);
+        }
+        note(`${tag}: done`); continue;
+      }
       // walk: forward, then turn and keep going, to meet the fence
       await pg.keyboard.down("w"); await sleep(5000); await pg.keyboard.up("w");
       await pg.mouse.move(480, 300); await pg.mouse.move(780, 300);

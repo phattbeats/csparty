@@ -291,6 +291,7 @@ public plugin_init()
 	register_srvcmd("csp_hns_arena", "cmd_hns_arena");
 	register_srvcmd("csp_hns_probe", "cmd_hns_probe");
 	register_srvcmd("csp_hns_corners", "cmd_hns_corners");
+	register_srvcmd("csp_hns_fenceview", "cmd_hns_fenceview");
 	register_srvcmd("csp_hudprobe", "cmd_hudprobe");   // dev: HUD-hide bits, suit and observer state per player
 	register_srvcmd("csp_nocam", "cmd_nocam");
 	register_srvcmd("csp_mapview", "cmd_mapview");   // dev: toggle the map overlay without a turn menu; "csp_mapview v" lists what's sent
@@ -4346,6 +4347,7 @@ public cmd_hns_corners()
 {
 	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] corners: no Hide and Seek round"); return PLUGIN_HANDLED; }
 	new a[8]; read_argv(1, a, charsmax(a)); g_cornerSeat = clamp(str_to_num(a), 0, SEATS - 1);
+	remove_task(TASK_HNSB + 5); remove_task(TASK_HNSB + 6);   // a second request restarts the test instead of interleaving with it
 	g_cornerStep = 0; g_cornerFail = 0;
 	set_task(0.5, "task_hns_corner", TASK_HNSB + 5);
 	return PLUGIN_HANDLED;
@@ -4388,6 +4390,38 @@ public task_hns_corner_check(const Float:from[3])
 	if (!ok) g_cornerFail++;
 	server_print("[CSP] corner test from (%.0f %.0f %.0f): %s now at (%.0f %.0f %.0f)", from[0], from[1], from[2], ok ? "back inside," : "ESCAPED,", o[0], o[1], o[2]);
 	set_task(0.05, "task_hns_corner", TASK_HNSB + 5);
+}
+
+// dev: csp_hns_fenceview <seat> [n]  puts the seat 140 units inside the n-th fence segment that crosses open ground,
+// facing it, for screenshots of the fence
+public cmd_hns_fenceview()
+{
+	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] fenceview: no Hide and Seek round"); return PLUGIN_HANDLED; }
+	new a[8]; read_argv(1, a, charsmax(a)); new s = clamp(str_to_num(a), 0, SEATS - 1), id = g_seatPlayer[s];
+	read_argv(2, a, charsmax(a)); new want = str_to_num(a), found = 0;
+	if (!is_user_alive(id)) { server_print("[CSP] fenceview: seat %d isn't alive", s); return PLUGIN_HANDLED; }
+	for (new i = 0; i < g_fenceN; i++)
+	{
+		new Float:m[3], Float:dx = g_fence[i][2] - g_fence[i][0], Float:dy = g_fence[i][3] - g_fence[i][1];
+		new Float:len = floatsqroot(dx * dx + dy * dy); if (len < 1.0) continue;
+		dx /= len; dy /= len;
+		m[0] = (g_fence[i][0] + g_fence[i][2]) * 0.5; m[1] = (g_fence[i][1] + g_fence[i][3]) * 0.5; m[2] = g_fence[i][4];
+		new Float:ox = dy, Float:oy = -dx, Float:t[3];          // outward normal: the side that leaves the arena
+		t[0] = m[0] + ox * 16.0; t[1] = m[1] + oy * 16.0; t[2] = m[2];
+		if (hns_in_arena(g_hnsAr, t, 0.0)) { ox = -ox; oy = -oy; }
+		new Float:p[3]; p[0] = m[0] - ox * 140.0; p[1] = m[1] - oy * 140.0; p[2] = m[2] - 40.0 + 37.0;
+		if (!spot_clear(p) || !hns_in_arena(g_hnsAr, p, 24.0)) continue;
+		new tr = create_tr2(), Float:fr; engfunc(EngFunc_TraceLine, p, m, IGNORE_MONSTERS, 0, tr); get_tr2(tr, TR_flFraction, fr); free_tr2(tr);
+		if (fr < 1.0) continue;                                // fence behind a wall from here
+		if (found++ < want) continue;
+		new Float:ang[3], Float:zero[3]; ang[1] = floatatan2(oy, ox, degrees);
+		entity_set_origin(id, p); set_entvar(id, var_velocity, zero);
+		entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang); entity_set_int(id, EV_INT_fixangle, 1);
+		server_print("[CSP] fenceview: seat %d at (%.0f %.0f %.0f) facing fence segment %d", s, p[0], p[1], p[2], i);
+		return PLUGIN_HANDLED;
+	}
+	server_print("[CSP] fenceview: only %d open fence segments", found);
+	return PLUGIN_HANDLED;
 }
 
 public task_hns_release(taskid)
