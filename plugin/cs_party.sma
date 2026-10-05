@@ -818,7 +818,7 @@ apply_match_cvars()
 match_abort()
 {
 	if (g_state == ST_IDLE) return;
-	remove_task(TASK_FLOW); remove_task(TASK_CAM); remove_task(TASK_DICE); remove_task(TASK_RACE); g_hopActive = false;
+	remove_task(TASK_FLOW); remove_task(TASK_CAM); remove_task(TASK_DICE); for (new k = 1; k <= 3; k++) remove_task(TASK_DICE + k); remove_task(TASK_RACE); g_hopActive = false;
 	remove_task(TASK_RACE + 1); remove_task(TASK_RACE + 2);   // a running race and its changelevel
 	for (new k = 0; k < SEATS; k++) { g_waitKind[k] = W_NONE; g_waitLast[k] = W_NONE; }
 	for (new id = 1; id <= MaxClients; id++)
@@ -2500,6 +2500,15 @@ public flow_human_buy() { show_turn_menu(g_cur); }
 
 new const RAR_NAME[5][] = { "Mil-Spec", "Restricted", "Classified", "Covert", "Knife" };
 new const RAR_RGB[5][3] = { {75, 105, 255}, {136, 71, 255}, {211, 44, 230}, {235, 75, 75}, {255, 215, 0} };
+// what came out of the case, named on the reveal (one picked per reel)
+new const RAR_SKIN[5][4][] = {
+	{ "P250 | Sand Dune", "MP7 | Army Recon", "Nova | Polar Mesh", "Glock-18 | Groundwater" },
+	{ "M4A1 | Basilisk", "USP-S | Guardian", "Desert Eagle | Cobalt", "MAC-10 | Heat" },
+	{ "AK-47 | Redline", "AWP | Hyper Beast", "M4A4 | Desolate Space", "Glock-18 | Water Elemental" },
+	{ "AWP | Dragon Lore", "AK-47 | Fire Serpent", "M4A4 | Howl", "Desert Eagle | Blaze" },
+	{ "Karambit | Fade", "Butterfly Knife | Doppler", "M9 Bayonet | Crimson Web", "Bayonet | Tiger Tooth" }
+};
+new g_reelSkin[3];
 
 // 0 blue .. 3 red by how many better values the character's die has; 4 (gold) is their top value
 rarity_of(sk, val)
@@ -2551,6 +2560,9 @@ public flow_roll()
 			g_diceVal[r] = SKIN_DICE[sk][random(6)];
 			if (r == 0 && g_rigged[s] > 0) { g_diceVal[r] = g_rigged[s]; g_rigged[s] = 0; }
 			g_reelR[r][REEL_WIN] = rarity_of(sk, g_diceVal[r]);
+			g_reelSkin[r] = random(4);
+			// the near miss: often a knife sits right after the winner and creeps up as the reel stops. Display only, odds unchanged
+			if (g_reelR[r][REEL_WIN] < 4 && random(100) < 40) g_reelR[r][REEL_WIN + 1] = 4;
 		}
 		for (new k = 0; k < REEL_SLOTS; k++)
 		{
@@ -2580,8 +2592,9 @@ public task_reel()
 	{
 		if (g_reelDone[r]) continue;
 		new Float:T = reel_time(r), Float:u = floatmin(el / T, 1.0), Float:inv = 1.0 - u;
-		new Float:x = float(REEL_WIN) * REEL_SP * (1.0 - inv * inv * inv);
-		new Float:xv = float(REEL_WIN) * REEL_SP * 3.0 * inv * inv / T;
+		// quartic ease-out: fast spin, then a long crawl over the last few cards, where the near miss plays out
+		new Float:x = float(REEL_WIN) * REEL_SP * (1.0 - inv * inv * inv * inv);
+		new Float:xv = float(REEL_WIN) * REEL_SP * 4.0 * inv * inv * inv / T;
 		new ic = floatround(x / REEL_SP);
 		if (ic != g_reelIdx[r])
 		{
@@ -2670,10 +2683,65 @@ reel_land(r)
 		engfunc(EngFunc_WriteCoord, c[0] + random_float(-14.0, 14.0)); engfunc(EngFunc_WriteCoord, c[1] + random_float(-14.0, 14.0)); engfunc(EngFunc_WriteCoord, c[2] + random_float(-14.0, 14.0));
 		message_end();
 	}
-	if (rar >= 4) { client_cmd(0, "play ^"csp/knife_sting.wav^""); reel_flash(rar, 190, 0.9); }
-	else if (rar >= 2) { client_cmd(0, "play ^"csp/case_rare.wav^""); reel_flash(rar, rar >= 3 ? 110 : 80, 0.5); }
+	if (rar >= 4)
+	{
+		client_cmd(0, "play ^"csp/knife_sting.wav^"");
+		reel_flash(rar, 210, 1.2);
+		reel_shake(12.0, 1.0);
+		reel_burst(c, rar, 220, 25);
+		set_task(0.35, "task_knife_pulse", TASK_DICE + 1 + r);
+	}
+	else if (rar >= 2)
+	{
+		client_cmd(0, "play ^"csp/case_rare.wav^"");
+		reel_flash(rar, rar >= 3 ? 120 : 80, 0.5);
+		if (rar >= 3) { reel_shake(4.0, 0.5); reel_burst(c, rar, 120, 10); }
+	}
 	else client_cmd(0, "play ^"csp/case_land.wav^"");
-	dbg("%s case %d: %d (%s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar]);
+	new nm[64]; formatex(nm, charsmax(nm), rar >= 4 ? "* %s *" : "%s", RAR_SKIN[rar][g_reelSkin[r]]);
+	if (g_diceN > 1) format(nm, charsmax(nm), "Case %d: %s", r + 1, nm);
+	hud_all(CH_SUB, RAR_RGB[rar][0], RAR_RGB[rar][1], RAR_RGB[rar][2], false, spd(2.0), 0.0, 0.3, nm);
+	dbg("%s case %d: %d (%s, %s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar], RAR_SKIN[rar][g_reelSkin[r]]);
+}
+
+// second gold hit after a knife: the flash comes back and the sparks fly again
+public task_knife_pulse(t)
+{
+	new r = t - TASK_DICE - 1;
+	if (r < 0 || r > 2) return;
+	reel_flash(4, 120, 0.6);
+	new Float:c[3]; c = g_reelC[r];
+	for (new k = 0; k < 6; k++)
+	{
+		message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+		write_byte(TE_SPARKS);
+		engfunc(EngFunc_WriteCoord, c[0] + random_float(-24.0, 24.0)); engfunc(EngFunc_WriteCoord, c[1] + random_float(-24.0, 24.0)); engfunc(EngFunc_WriteCoord, c[2] + random_float(-20.0, 20.0));
+		message_end();
+	}
+}
+
+reel_shake(Float:amp, Float:secs)
+{
+	static msg; if (!msg) msg = get_user_msgid("ScreenShake");
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		message_begin(MSG_ONE, msg, _, id);
+		write_short(floatround(amp * 4096.0)); write_short(floatround(secs * 4096.0)); write_short(floatround(20.0 * 256.0));
+		message_end();
+	}
+}
+
+// a world light in the rarity colour that floods the street around the case
+reel_burst(const Float:c[3], rar, rad, life)
+{
+	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
+	write_byte(TE_DLIGHT);
+	engfunc(EngFunc_WriteCoord, c[0]); engfunc(EngFunc_WriteCoord, c[1]); engfunc(EngFunc_WriteCoord, c[2]);
+	write_byte(rad / 10);
+	write_byte(RAR_RGB[rar][0]); write_byte(RAR_RGB[rar][1]); write_byte(RAR_RGB[rar][2]);
+	write_byte(life); write_byte(rad / 25);   // radius, life and decay are all in tens
+	message_end();
 }
 
 public flow_dice_done()
