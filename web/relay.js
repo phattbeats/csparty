@@ -12,7 +12,8 @@
 // open, so an invite link is just https://your.host/?key=PARTYKEY. Use it on anything internet-facing:
 // gamedata.zip is Valve's content, packed from your install for your friends, not for the world.
 //
-// Env knobs: MAX_PEERS (32), MAX_PER_IP (6), IDLE_SECS (120: no game traffic either way -> close).
+// Env knobs: MAX_PEERS (32), MAX_PER_IP (6), IDLE_SECS (120: no game traffic either way -> close),
+// LOBBY_SECRET + RELAY_ID (also accept the lobby Worker's per-lobby keys; see lobbyKeyOk).
 import crypto from "node:crypto";
 import http from "node:http";
 import dgram from "node:dgram";
@@ -32,9 +33,20 @@ const IDLE_MS = +(process.env.IDLE_SECS || 120) * 1000;
 const BACKLOG_MAX = 512 * 1024;   // bytes queued to a slow browser before we start dropping server packets
 const KEY = arg("--key", process.env.PARTY_KEY || "");
 const PROTECTED_FILES = new Set([path.join(ROOT, "gamedata.zip")]);
+// Lobby party keys (ISSUE, lobby/): the lobby Worker gives each lobby it sends here CODE.EXPIRY.SIG, an
+// HMAC-SHA256 over this relay's RELAY_ID with the LOBBY_SECRET both sides share. Accepted next to --key.
+const LOBBY_SECRET = process.env.LOBBY_SECRET || "", RELAY_ID = process.env.RELAY_ID || "";
+const lobbyKeyOk = (k) => {
+  const m = LOBBY_SECRET && RELAY_ID && /^([A-Z2-9]{5})\.(\d{9,11})\.([\w-]{24})$/.exec(k);
+  if (!m || +m[2] < Date.now() / 1000) return false;
+  const want = Buffer.from(crypto.createHmac("sha256", LOBBY_SECRET).update(`csp-lobby|${RELAY_ID}|${m[1]}|${m[2]}`).digest().subarray(0, 18).toString("base64url"));
+  const got = Buffer.from(m[3]);
+  return got.length === want.length && crypto.timingSafeEqual(got, want);
+};
 const keyOk = (reqUrl) => {
   if (!KEY) return true;
   let q; try { q = new URL(reqUrl || "/", "http://x").searchParams.get("key") || ""; } catch { return false; }
+  if (lobbyKeyOk(q)) return true;
   const got = Buffer.from(q);
   const want = Buffer.from(KEY);
   return got.length === want.length && crypto.timingSafeEqual(got, want);
@@ -54,7 +66,10 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".so": "application/wasm", ".zip": "application/zip", ".pk3": "application/zip", ".css": "text/css",
   ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg", ".webmanifest": "application/manifest+json" };
 
-const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0 };
+const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0, downloads: 0 };
+// Last time anyone was here (a peer, or a game data download). The lobby Worker frees this server for the next
+// party only when it has been empty a while: a first visit spends minutes downloading with no peer open.
+let lastActive = Date.now();
 
 const server = http.createServer((req, res) => {
   let url;
@@ -62,7 +77,8 @@ const server = http.createServer((req, res) => {
   if (url.includes("\0")) { res.writeHead(400).end(); return; }   // fs.stat throws synchronously on a NUL: one request took the relay down
   if (url === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    res.end(JSON.stringify({ ok: true, ...stats, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
+    const idleSecs = stats.peers || stats.downloads ? 0 : Math.round((Date.now() - lastActive) / 1000);
+    res.end(JSON.stringify({ ok: true, ...stats, idleSecs, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
     return;
   }
   if (DEV && url === "/dev/blackhole") {
@@ -77,6 +93,7 @@ const server = http.createServer((req, res) => {
   // race map packs hold slices of Valve's WADs too
   const isProtected = PROTECTED_FILES.has(file) || file.startsWith(path.join(ROOT, "mappacks") + path.sep);
   if (isProtected && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
+  if (isProtected) lastActive = Date.now();   // a cached client only checks the ETag
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("not found"); return; }
     const ext = path.extname(file);
@@ -93,6 +110,10 @@ const server = http.createServer((req, res) => {
     if (req.method === "HEAD") { res.end(); return; }
     const stream = fs.createReadStream(file);
     stream.on("error", => res.destroy());
+    if (isProtected) {
+      stats.downloads++;
+      res.on("close", => { stats.downloads--; lastActive = Date.now(); });
+    }
     stream.pipe(res);
   });
 });
@@ -126,6 +147,7 @@ wss.on("connection", (ws, req) => {
     try { udp.close(); } catch {}
     if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.terminate();
     stats.peers--; perIp.set(who, perIp.get(who) - 1); if (!perIp.get(who)) perIp.delete(who);
+    lastActive = Date.now();
     log(`[${id}] closed: ${why} (${up} up / ${down} down${dropped ? ` / ${dropped} dropped` : ""})`);
   };
 
