@@ -288,6 +288,7 @@ public plugin_init()
 	register_srvcmd("csp_botname", "cmd_botname");
 	register_srvcmd("csp_stuff", "cmd_stuff");       // dev: csp_stuff <player> <command...> runs a command on that client   // dev: csp_botname <name> renames a bot (name-collision tests)
 	register_srvcmd("csp_test_remote", "cmd_test_remote");
+	register_srvcmd("csp_give", "cmd_give");   // dev: csp_give <seat> <item index> puts an item in that seat's inventory (0 Knife Out, 1 Bhop Script)
 	register_srvcmd("csp_board", "cmd_board_srv");          // csp_board <map>: switch to another board (between matches)   // dev: csp_force_mg <minigame index> for the next pick (-1 clears)   // dev: drop the director camera to compare   // dev: movement state of the active player     // dev: move every human to spectator (camera client, streams)
 	register_clcmd("say /party", "cmd_start_client");
 	register_clcmd("say /help", "cmd_help");
@@ -675,6 +676,8 @@ public cmd_probe()
 new g_forceMg = -1;
 new g_mgPlayed[MG_COUNT], g_mgLast = -1;   // pick_minigame's variety memory, kept across map changes
 public cmd_force_mg() { new a[8]; read_argv(1, a, charsmax(a)); g_forceMg = str_to_num(a); server_print("[CSP] next minigame forced to %d", g_forceMg); return PLUGIN_HANDLED; }
+
+public cmd_give() { new a[8], s, it; read_argv(1, a, charsmax(a)); s = str_to_num(a); read_argv(2, a, charsmax(a)); it = str_to_num(a); if (s < 0 || s >= SEATS || it < 0 || it >= IT_COUNT) return PLUGIN_HANDLED; server_print("[CSP] seat %d gets %s: %s", s, ITEM_NAME[it], give_item(s, it) ? "ok" : "inventory full"); return PLUGIN_HANDLED; }
 
 public cmd_nocam() { remove_task(TASK_CAM); release_cameras(); server_print("[CSP] camera released"); return PLUGIN_HANDLED; }
 
