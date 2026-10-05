@@ -18,3 +18,26 @@ Community surf maps evaluated for the surf pack but not shipped yet (ISSUE follo
 `surf_sahara`, `surf_vunnu_b1`, `surf_railway`, `surf_nipping` (kreedz stop-button surf maps from the public CS 1.6
 map archives). They build and fit the phone budget with `tools/race_map.py`, but their nav generation and browser
 race tests are not done. Credit their authors here, from their release readmes, when they ship.
+
+### Climb pack (ISSUE)
+
+Kreedz (KZ) climb maps, all rated **Easy** on [kreedz.com](https://kreedz.com/maps) (formerly xtreme-jumps.eu),
+downloaded from its map archive (`https://kreedz.com/api/map/<map>`). Built by `tools/climb_pack.py`; zone files in
+`maps/pool/<map>.ini`. The finish is each map's own stop-timer button. We ship only the zone .ini files; the .bsp
+files come from the mappers' releases, unchanged apart from the worldspawn/button keys noted below (the map CRC skips
+the entity lump).
+
+| Map | Author(s) | Released | Kreedz.com rating | Fix |
+|-----|-----------|----------|-------------------|-----|
+| kz_xj_mountez | FikoN | 2005-09-25 | Easy, Short | |
+| cobkz_minecraft | Cobrex | 2014-05-27 | Easy, Short | |
+| kz_ea_oldgraveyard | Guardix | 2005-07-27 | Easy, Short | |
+| kzbg_ytt_pyramid | ei-zmei | 2018-04-06 | Easy, Short | skyname thehell (not shipped) -> stock dusk |
+| skitz_bean_valley | skitz | 2007-08-17 | Easy, Short | |
+| kz_darkmine | dot, red | 2006-05-01 | Easy, Short | skyname drkg -> DrkG (stock, exact case) |
+| kz_kzse_towerblock | Draw | 2006-05-01 | Easy, Short | |
+| kz_j2s_summercliff_ez | s0liD | 2006-02-28 | Easy, Short | stop button master removed (works without the start button) |
+| kz_cliffez | aegget | 2005-11-08 | Easy, Short | stop button master removed (works without the start button) |
+| kz_xj_ezbrickjump | Chrizzy | 2005-12-24 | Easy, Short | |
+
+Thanks to the mappers, and to the Kreedz community for keeping these maps available for twenty years.

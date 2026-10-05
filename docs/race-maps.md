@@ -80,6 +80,27 @@ start, they don't surf, and the race ends when a human finishes or the 120 s buz
 (`progress x`). Test one course on an isolated server with `csp_test_remote 8 ffa csp_surf_night`; the scripted
 desktop/phone race rig is `tools/dev/surf_e2e.js`.
 
+## The climb pack (ISSUE)
+
+Ten beginner kreedz maps (all **Easy** on kreedz.com), credited in `maps/CREDITS.md`: `kz_xj_mountez`,
+`cobkz_minecraft`, `kz_ea_oldgraveyard`, `kzbg_ytt_pyramid`, `skitz_bean_valley`, `kz_darkmine`, `kz_kzse_towerblock`,
+`kz_j2s_summercliff_ez`, `kz_cliffez`, `kz_xj_ezbrickjump`. The repo keeps their zone .ini files in `maps/pool/`.
+Build the server files and browser packs (1.2-3.5 MB zipped) with
+
+```
+python3 tools/climb_pack.py --game <hlds dir> --dl build/climbdl --out build/racemaps
+```
+
+It downloads each map from the kreedz.com archive, fixes what the browser or the race can't take (a sky the map
+doesn't ship, a sky name in the wrong case, a stop button with a `master` that stays locked until the start button
+is pressed), runs `race_map.py build`, and writes a one-area nav stub at the start. zBots join and stand at the
+start. They can't climb, so a race no human finishes ends at the buzzer on `progress z` (highest racer wins). The
+.ini files also carry `time 180` / `bottime` for the longer kreedz runs. Plugins without those keys ignore them.
+
+Test rig: `tools/dev/climb_e2e.js` with the test-only `tools/dev/csp_kztest.sma` (`csp_kz_goto <name> [n]` puts a
+racer in front of the stop button). A desktop client and a phone client (touch Use button) press the real button,
+and the race must record both finishes.
+
 ## How browsers get the map
 
 Pool maps are not in `gamedata.zip`, so a new map doesn't make every player re-download 55 MB. The plugin echoes
