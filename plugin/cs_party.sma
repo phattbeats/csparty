@@ -4131,8 +4131,10 @@ hns_check_spawns()
 		new keep = 0, n = g_spN[a];
 		for (new i = 0; i < n; i++)
 		{
-			new Float:o[3], Float:none[2]; safe_spot(o, g_sp[a][i], none);
-			if (spot_clear(o) && hns_in_arena(a, o, 0.0)) g_sp[a][keep++] = g_sp[a][i];
+			new Float:o[3]; o = g_sp[a][i]; o[2] += 37.0;   // safe_spot's heights, without its log line per miss
+			new bool:ok = false;
+			for (new l = 0; l < 3 && !ok; l++) { ok = spot_clear(o) && hns_in_arena(a, o, 0.0); o[2] += 18.0; }
+			if (ok) g_sp[a][keep++] = g_sp[a][i];
 		}
 		g_spN[a] = keep;
 		if (keep < n) dbg("HNS arena %s: %d of %d spawns usable.", g_arName[a], keep, n);
