@@ -211,7 +211,7 @@ new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopNode, Float:g_hopStart, bool:g_ho
 #define HNS_HIDE  15.0     // seconds the seeker is blind and frozen
 new g_arN, g_arName[MAX_AR][32], g_boxN, Float:g_box[MAX_BOX][6], g_boxAr[MAX_BOX];
 new g_spN[MAX_AR], Float:g_sp[MAX_AR][MAX_SP][3];
-new g_hnsAr = -1, g_hnsPrev = -1, g_hnsForce = -1, bool:g_hnsSpUsed[MAX_SP];
+new g_hnsAr = -1, g_hnsPrev = -1, g_hnsForce = -1, bool:g_hnsSpUsed[MAX_SP], bool:g_hnsSpChecked;
 new g_hnsSeatSp[SEATS], Float:g_hnsLast[SEATS][3], Float:g_hnsWarn[SEATS], Float:g_hnsLog[SEATS], g_hnsPushes;
 new g_fenceN, Float:g_fence[MAX_FENCE][5];   // x1 y1 x2 y2 z
 new g_cam, g_hostageEnt, g_trapEnt[MAX_NODES], g_beamSpr;
@@ -354,7 +354,7 @@ load_board()
 	get_mapname(map, charsmax(map));
 	get_configsdir(cfg, charsmax(cfg));
 	formatex(path, charsmax(path), "%s/cs_party/boards/%s.ini", cfg, map);
-	g_nodeCount = 0; g_arN = 0; g_boxN = 0;
+	g_nodeCount = 0; g_arN = 0; g_boxN = 0; g_hnsSpChecked = false;
 	arrayset(g_spN, 0, sizeof g_spN);
 	new f = fopen(path, "rt");
 	if (!f) { log_amx("No board for %s (%s). Generate one with board_compiler.py.", map, path); return; }
@@ -4114,8 +4114,27 @@ public task_log_loadouts()
 }
 
 // ------------------------------------------------- Hide and Seek arenas --
+// drops the spawn points a standing player can't use (in a wall, no floor, outside the boxes); once per map, needs the world loaded
+hns_check_spawns()
+{
+	if (g_hnsSpChecked) return;
+	g_hnsSpChecked = true;
+	for (new a = 0; a < g_arN; a++)
+	{
+		new keep = 0, n = g_spN[a];
+		for (new i = 0; i < n; i++)
+		{
+			new Float:o[3], Float:none[2]; safe_spot(o, g_sp[a][i], none);
+			if (spot_clear(o) && hns_in_arena(a, o, 0.0)) g_sp[a][keep++] = g_sp[a][i];
+		}
+		g_spN[a] = keep;
+		if (keep < n) dbg("HNS arena %s: %d of %d spawns usable.", g_arName[a], keep, n);
+	}
+}
+
 hns_pick()
 {
+	hns_check_spawns();
 	g_hnsAr = -1;
 	new ok[MAX_AR], n = 0;
 	for (new a = 0; a < g_arN; a++)
@@ -4296,6 +4315,7 @@ public cmd_hns_arena()
 // dev: arenas, boxes and spawns, with a walkability check of every spawn
 public cmd_hns_probe()
 {
+	hns_check_spawns();
 	server_print("[CSP] hns arenas: %d, boxes: %d", g_arN, g_boxN);
 	for (new a = 0; a < g_arN; a++)
 	{
