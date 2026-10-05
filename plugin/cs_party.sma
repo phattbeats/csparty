@@ -212,9 +212,9 @@ new g_msgScoreInfo;
 #define REEL_SP    38.0
 #define REEL_LEN   40
 #define REEL_WIN   30
-#define REEL_TIME  2.3     // seconds for the first reel; the roll used to wait on a jump, usually 1-3 s
-#define REEL_STAG  0.35
-new g_diceEnt[3 * REEL_SLOTS], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2];
+#define REEL_TIME  1.9     // seconds for the first reel; menu pick to result is 0.2 + 1.9 + 0.9 = 3.0 s, inside the old jump roll (bots 2.4-3.1 s, humans 2-4 s)
+#define REEL_STAG  0.3
+new g_diceEnt[3 * REEL_SLOTS], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2];
 
 
 // cvars
@@ -2111,6 +2111,7 @@ public task_hud()
 	spare_names();
 	reclaim_ready();
 	turn_watchdog();
+	if (g_diceOpen) { table_off(); return; }
 	if (g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME) { hud_race(); return; }
 
 	// Shared part: header, bonus-star leaders, one short row per seat. Gear and items used to ride on these
@@ -2510,19 +2511,28 @@ new const RAR_SKIN[5][4][] = {
 };
 new g_reelSkin[3];
 
-// 0 blue .. 3 red by how many better values the character's die has; 4 (gold) is their top value
+// 4 (gold) is the character's top value; the rest spread up from 0 (blue) by rank among the die's distinct
+// values, so a die's low face always reads as a low pull (SEAL's 3 is Mil-Spec, not Covert)
 rarity_of(sk, val)
 {
-	new above = 0;
+	new below = 0, n = 0;
 	for (new f = 0; f < 6; f++)
 	{
-		new v = SKIN_DICE[sk][f];
-		if (v <= val) continue;
-		new bool:dup = false;
+		new v = SKIN_DICE[sk][f], bool:dup = false;
 		for (new g = 0; g < f; g++) if (SKIN_DICE[sk][g] == v) dup = true;
-		if (!dup) above++;
+		if (dup) continue;
+		n++;
+		if (v < val) below++;
 	}
-	return 4 - min(above, 4);
+	if (below >= n - 1) return 4;
+	return min(below * 4 / (n - 1), 3);
+}
+
+// the cards that fly past: weighted like a real case (mostly blue, gold about 1 in 50). Display only
+reel_filler()
+{
+	new p = random(100);
+	return p < 58 ? 0 : (p < 82 ? 1 : (p < 93 ? 2 : (p < 98 ? 3 : 4)));
 }
 
 Float:reel_time(r) { return REEL_TIME + float(r) * REEL_STAG; }
@@ -2556,11 +2566,12 @@ public flow_roll()
 		{
 			g_reelDone[r] = false;
 			g_reelC[r] = po; g_reelC[r][2] = po[2] + DICE_LIFT + (float(g_diceN - 1) / 2.0 - float(r)) * 44.0;
-			for (new i = 0; i < REEL_LEN; i++) g_reelR[r][i] = rarity_of(sk, SKIN_DICE[sk][random(6)]);
+			for (new i = 0; i < REEL_LEN; i++) g_reelR[r][i] = reel_filler();
 			g_diceVal[r] = SKIN_DICE[sk][random(6)];
 			if (r == 0 && g_rigged[s] > 0) { g_diceVal[r] = g_rigged[s]; g_rigged[s] = 0; }
 			g_reelR[r][REEL_WIN] = rarity_of(sk, g_diceVal[r]);
 			g_reelSkin[r] = random(4);
+			for (new q = 0; q < r; q++) if (g_reelR[q][REEL_WIN] == g_reelR[r][REEL_WIN] && g_reelSkin[q] == g_reelSkin[r]) { g_reelSkin[r] = (g_reelSkin[r] + 1) % 4; q = -1; }
 			// the near miss: often a knife sits right after the winner and creeps up as the reel stops. Display only, odds unchanged
 			if (g_reelR[r][REEL_WIN] < 4 && random(100) < 40) g_reelR[r][REEL_WIN + 1] = 4;
 		}
@@ -2576,8 +2587,9 @@ public flow_roll()
 			if (r < g_diceN) entity_set_origin(e, g_reelC[r]);
 		}
 	}
-	g_diceOpen = true;
-	cam_shot(CAM_DICE);
+	g_diceOpen = true; g_reelAnchor = false;
+	g_camSnap = true; cam_shot(CAM_DICE);   // cut, don't ease: the eased path flew the camera through the cards
+	table_off();                            // the table sits over the reel on phones; task_hud brings it back once the reels land
 	g_reelStart = get_gametime();
 	client_cmd(0, "play ^"csp/case_open.wav^"");
 	if (g_diceN > 1) subline("%s opens %d cases", g_seatName[s], g_diceN); else subline("%s opens a case", g_seatName[s]);
@@ -2587,6 +2599,7 @@ public flow_roll()
 
 public task_reel()
 {
+	if (!g_reelAnchor) { g_reelAnchor = true; reel_anchor(); }
 	new Float:el = get_gametime() - g_reelStart, bool:lead = true, bool:all = true;
 	for (new r = 0; r < g_diceN; r++)
 	{
@@ -2610,6 +2623,26 @@ public task_reel()
 		remove_task(TASK_DICE);
 		g_diceOpen = false;
 		set_task(spd(0.9), "flow_dice_done", TASK_FLOW);
+	}
+}
+
+// Hang the reels in front of the lens once the camera has cut to the case shot. Placed off the pawn, a cramped
+// space (dust2's tunnels) left the camera too close, and the reel sat above the frame and then filled it.
+reel_anchor()
+{
+	new Float:v[3]; xs_vec_sub_simple(g_camLook, g_camPos, v);
+	new Float:dist = vector_length(v), Float:hl = floatsqroot(v[0] * v[0] + v[1] * v[1]);
+	if (dist < 1.0 || hl < 0.01) return;   // no camera yet: keep the spot flow_roll picked
+	new Float:D = dist >= 150.0 ? 150.0 : floatmax(dist * 0.9, 80.0), Float:h[2];
+	h[0] = v[0] / hl; h[1] = v[1] / hl;
+	g_reelS[0] = h[1]; g_reelS[1] = -h[0];
+	new Float:back[3], Float:face[3]; back[0] = -h[0]; back[1] = -h[1]; back[2] = 0.0;
+	vector_to_angle(back, face); face[0] = 0.0; face[2] = 0.0;
+	for (new r = 0; r < g_diceN; r++)
+	{
+		for (new k = 0; k < 3; k++) g_reelC[r][k] = g_camPos[k] + v[k] / dist * D;
+		g_reelC[r][2] += ((float(g_diceN - 1) / 2.0 - float(r)) * 40.0 - 30.0) * D / 150.0;   // a little low: the subline (skin name) sits just above centre
+		for (new k = 0; k < REEL_SLOTS; k++) { new e = g_diceEnt[r * REEL_SLOTS + k]; if (is_valid_ent(e)) entity_set_vector(e, EV_VEC_angles, face); }
 	}
 }
 
@@ -2670,7 +2703,9 @@ reel_land(r)
 	for (new k = 0; k < REEL_SLOTS; k++)
 	{
 		new o = g_diceEnt[r * REEL_SLOTS + k];
-		if (is_valid_ent(o)) entity_set_vector(o, EV_VEC_velocity, Float:{ 0.0, 0.0, 0.0 });
+		if (!is_valid_ent(o)) continue;
+		entity_set_vector(o, EV_VEC_velocity, Float:{ 0.0, 0.0, 0.0 });
+		if (o != e) entity_set_float(o, EV_FL_renderamt, floatmin(entity_get_float(o, EV_FL_renderamt), 60.0));   // losers fade back, the winner pops
 	}
 	new Float:c[3]; c = g_reelC[r];
 	if (is_valid_ent(e)) { entity_set_origin(e, c); entity_set_float(e, EV_FL_renderamt, 255.0); }
@@ -2700,7 +2735,8 @@ reel_land(r)
 	else client_cmd(0, "play ^"csp/case_land.wav^"");
 	new nm[64]; formatex(nm, charsmax(nm), rar >= 4 ? "* %s *" : "%s", RAR_SKIN[rar][g_reelSkin[r]]);
 	if (g_diceN > 1) format(nm, charsmax(nm), "Case %d: %s", r + 1, nm);
-	hud_all(CH_SUB, RAR_RGB[rar][0], RAR_RGB[rar][1], RAR_RGB[rar][2], false, spd(2.0), 0.0, 0.3, nm);
+	new tc[3]; for (new k = 0; k < 3; k++) tc[k] = RAR_RGB[rar][k] + (255 - RAR_RGB[rar][k]) * 2 / 5;   // lifted toward white: Mil-Spec blue was unreadable on dark maps
+	hud_all(CH_SUB, tc[0], tc[1], tc[2], false, spd(2.0), 0.0, 0.3, nm);
 	dbg("%s case %d: %d (%s, %s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar], RAR_SKIN[rar][g_reelSkin[r]]);
 }
 
