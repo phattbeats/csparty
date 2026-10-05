@@ -16,7 +16,7 @@ up_server() {
     -e MAP=de_dust2 -e PORT=27016 -e SV_LAN=1 -e MAXPLAYERS=10 -e RCON_PASSWORD="$RCON_PASSWORD" \
     --health-cmd 'bash -c "exec 3<>/dev/udp/127.0.0.1/27016; printf \"\xff\xff\xff\xffTSource Engine Query\x00\" >&3; timeout 3 head -c 5 <&3 | grep -qa ."' \
     --health-interval 30s --health-timeout 8s --health-start-period 60s --health-retries 3 \
-    cs-party-server:0.5.24-vq
+    cs-party-server:0.5.25-vq
 }
 
 # MAX_PER_IP: the relay's default of 6 refused the 7th player from one household (everyone shares the public IP).

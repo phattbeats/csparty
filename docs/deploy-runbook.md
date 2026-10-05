@@ -374,3 +374,10 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Browser packs (`csp_surf_*.zip`, 0.15-0.96 MB each) copied into `appdata/cs-party/mappacks/`; the relay serves them from the existing read-only mount, no relay change.
 - Verified on the isolated stack (server :27070 from the same image, relay :8098): every course raced to the finish in a browser client on desktop and phone (`tools/dev/surf_e2e.js`, screenshots on ISSUE), pools list complete, no `left out` lines.
 - Gate: 0 humans on live, peers 0, live tag 0.5.23-vq. Rollback: container `cs-party-server-0.5.23-vqold`, `csparty-up.sh.pre-0524`.
+
+## ISSUE: Maze Run map pack (server 0.5.25-vq + mappacks)
+- Seven generated mazes (`maps/pool/csp_maze_{brick8,conc10,hedge,metal14,rust16,dark10,dark14}`) join the Maze Run pool (`csp_test_remote pools` shows 8 maze maps). No plugin change: 0.5.25-vq = 0.5.24-vq + `maps/` (.bsp + one-area .nav stubs), the seven WAD slices, `gfx/env` skies and the zone .ini files (`patch0525-ISSUE/`, `FROM cs-party-server:0.5.24-vq` + `COPY cstrike/ /hlds/cstrike/` + `COPY ini/ .../minigames/`). The .ini `bottime 50 100` lines wait for the ISSUE plugin (ignored until then).
+- Browser packs (`csp_maze_*.zip`, 0.4-1.0 MB each) copied into `appdata/cs-party/mappacks/`; served from the existing read-only mount, no relay change.
+- Verified on the isolated stack (server :27082, relay :8122): every maze raced to the finish in a browser client on desktop and phone (`tools/dev/maze_e2e.js` + `tools/dev/csp_mazewalk.sma`, screenshots on ISSUE), pools list complete on a throwaway container from the image, no `left out` lines.
+- Patch dirs and tags collide between runs (the surf pack took `patch0524/` and `0.5.24-vq` minutes after this pack had built them): suffix them with the issue and re-check `docker images` + the live tag right before deploying.
+- Gate: 0 humans on live, peers 0, live tag 0.5.24-vq (`deploy0525-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.24-vq-ISSUEold`, `csparty-up.sh.pre-0525-ISSUE`.
