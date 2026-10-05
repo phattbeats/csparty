@@ -60,6 +60,24 @@ map pack) and `build/racemaps/kz_foo.ini.draft`.
 The repo keeps only the .ini files. Third-party maps and the WAD slices (Valve textures) stay out of git:
 `build/racemaps/` and `web/public/mappacks/` are ignored.
 
+## The surf pack (ISSUE)
+
+Six original surf courses live in `maps/pool/`: `csp_surf_dust`, `csp_surf_aztec`, `csp_surf_snow`, `csp_surf_night`,
+`csp_surf_storm`, `csp_surf_space` (.bsp, .map, .nav and zone .ini each). `tools/gen_minigame_maps.py` builds them from
+`SURF_PACK`: one stage list per course (a stage is a V run or a one-sided ramp, then a landing platform), a theme
+(sky, stock WAD, ramp/floor/trim textures, light colour). Falling anywhere teleports you back to the start of that
+stage. The finish is a gate over the last pad, so flying past it counts. Regenerate with
+
+```
+python3 tools/gen_minigame_maps.py <sdhlt tools> <cstrike dir> <outdir> csp_surf_dust csp_surf_aztec ...
+```
+
+then `tools/race_map.py build <outdir>/csp_surf_<theme>.bsp --game <hlds>` for the WAD slice and browser pack
+(0.15-0.96 MB zipped). The .nav is the same 79-byte stub the other `csp_` maps use: zBots join and stand at the
+start, they don't surf, and the race ends when a human finishes or the 120 s buzzer picks the furthest racer
+(`progress x`). Test one course on an isolated server with `csp_test_remote 8 ffa csp_surf_night`; the scripted
+desktop/phone race rig is `tools/dev/surf_e2e.js`.
+
 ## How browsers get the map
 
 Pool maps are not in `gamedata.zip`, so a new map doesn't make every player re-download 55 MB. The plugin echoes
