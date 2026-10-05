@@ -136,7 +136,7 @@ if (process.env.SLOW) {
   A.send({ t: "start" });
   check(!!(await A.until((s) => s.state === "in_match")), "slow: match started");
   const t0 = Date.now();
-  check(!!(await A.until((s) => s.state === "open", 240000)), `slow: empty server released, lobby open again after ${Math.round((Date.now() - t0) / 1000)} s`);
+  check(!!(await A.until((s) => s.state === "open", 330000)), `slow: empty server released, lobby open again after ${Math.round((Date.now() - t0) / 1000)} s`);
 }
 
 for (const m of [A, B2, C]) m.ws.close();

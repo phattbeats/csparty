@@ -66,7 +66,10 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".so": "application/wasm", ".zip": "application/zip", ".pk3": "application/zip", ".css": "text/css",
   ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg", ".webmanifest": "application/manifest+json" };
 
-const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0 };
+const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0, downloads: 0 };
+// Last time anyone was here (a peer, or a game data download). The lobby Worker frees this server for the next
+// party only when it has been empty a while: a first visit spends minutes downloading with no peer open.
+let lastActive = Date.now();
 
 const server = http.createServer((req, res) => {
   let url;
@@ -74,7 +77,8 @@ const server = http.createServer((req, res) => {
   if (url.includes("\0")) { res.writeHead(400).end(); return; }   // fs.stat throws synchronously on a NUL: one request took the relay down
   if (url === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
-    res.end(JSON.stringify({ ok: true, ...stats, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
+    const idleSecs = stats.peers || stats.downloads ? 0 : Math.round((Date.now() - lastActive) / 1000);
+    res.end(JSON.stringify({ ok: true, ...stats, idleSecs, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
     return;
   }
   if (DEV && url === "/dev/blackhole") {
@@ -89,6 +93,7 @@ const server = http.createServer((req, res) => {
   // race map packs hold slices of Valve's WADs too
   const isProtected = PROTECTED_FILES.has(file) || file.startsWith(path.join(ROOT, "mappacks") + path.sep);
   if (isProtected && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
+  if (isProtected) lastActive = Date.now();   // a cached client only checks the ETag
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("not found"); return; }
     const ext = path.extname(file);
@@ -105,6 +110,10 @@ const server = http.createServer((req, res) => {
     if (req.method === "HEAD") { res.end(); return; }
     const stream = fs.createReadStream(file);
     stream.on("error", => res.destroy());
+    if (isProtected) {
+      stats.downloads++;
+      res.on("close", => { stats.downloads--; lastActive = Date.now(); });
+    }
     stream.pipe(res);
   });
 });
@@ -138,6 +147,7 @@ wss.on("connection", (ws, req) => {
     try { udp.close(); } catch {}
     if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.terminate();
     stats.peers--; perIp.set(who, perIp.get(who) - 1); if (!perIp.get(who)) perIp.delete(who);
+    lastActive = Date.now();
     log(`[${id}] closed: ${why} (${up} up / ${down} down${dropped ? ` / ${dropped} dropped` : ""})`);
   };
 

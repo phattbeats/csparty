@@ -38,15 +38,19 @@ export const lobbyToken = async (secret, slotId, code, exp) =>
   `${code}.${exp}.${b64url((await hmac(secret, `csp-lobby|${slotId}|${code}|${exp}`)).slice(0, 18))}`;
 const sha = async (s) => b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))).slice(0, 16);
 
-// Is this relay free? Its /healthz counts connected browser peers. Cache-busted: Cloudflare cached probes before.
-const relayPeers = async (url) => {
+// What a relay's /healthz says: connected browser peers, game data downloads in flight, seconds since either.
+// null if it doesn't answer. Cache-busted: Cloudflare cached probes before.
+const relayHealth = async (url) => {
   try {
     const r = await fetch(`${url.replace(/\/$/, "")}/healthz?t=${Date.now()}`, { cf: { cacheTtl: 0 }, signal: AbortSignal.timeout(4000) });
-    if (!r.ok) return -1;
+    if (!r.ok) return null;
     const h = await r.json();
-    return Number.isInteger(h.peers) ? h.peers : -1;
-  } catch { return -1; }
+    return Number.isInteger(h.peers) ? { peers: h.peers, downloads: h.downloads || 0, idleSecs: h.idleSecs ?? Infinity } : null;
+  } catch { return null; }
 };
+const isFree = (h) => !!h && h.peers === 0 && h.downloads === 0;
+// a first visit downloads for minutes with no peer open; the gaps between the download and joining are short
+const IDLE_RELEASE_SECS = 90;
 
 export default {
   async fetch(req, env) {
@@ -295,7 +299,8 @@ export class Lobby extends DurableObject {
 
 // ------------------------------------------------------------------------------------------- directory
 // One instance: which codes exist (for uniqueness and the public list), create rate limits, and which pool
-// server each lobby holds. Checks held servers every minute and hands them back once their relay is empty.
+// server each lobby holds. Checks held servers every minute and hands them back once their relay has
+// been empty (no peers, no downloads) for IDLE_RELEASE_SECS.
 export class Directory extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
@@ -342,7 +347,7 @@ export class Directory extends DurableObject {
     for (const srv of servers) {
       if (this.sql.exec("SELECT 1 FROM slots WHERE id = ?", srv.id).toArray().length) continue;
       this.sql.exec("INSERT INTO slots (id, code, since) VALUES (?, ?, ?)", srv.id, code, Date.now());
-      if (await relayPeers(srv.url) === 0) {
+      if (isFree(await relayHealth(srv.url))) {
         if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 60e3);
         return srv;
       }
@@ -361,8 +366,8 @@ export class Directory extends DurableObject {
       const srv = servers.find((s) => s.id === row.id);
       let release = !srv || now - row.since > MATCH_MAX_MS;
       if (!release && now - row.since > grace) {
-        const peers = await relayPeers(srv.url);
-        const empty = peers === 0 ? row.empty + 1 : 0;
+        const h = await relayHealth(srv.url);
+        const empty = isFree(h) && h.idleSecs >= IDLE_RELEASE_SECS ? row.empty + 1 : 0;
         this.sql.exec("UPDATE slots SET empty = ? WHERE id = ?", empty, row.id);
         release = empty >= 2;   // two checks a minute apart: a map change can blip the count
       }
