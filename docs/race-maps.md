@@ -30,7 +30,9 @@ spawn x y z yaw                     ; start spots, one per racer is best (up to 
 start x1 y1 z1 x2 y2 z2             ; csp_ maps: racers line up across it facing +x
 finish x1 y1 z1 x2 y2 z2            ; reach it to finish
 buttons 1                           ; kreedz: pressing the stop-timer button (counter_off, clockstopbutton...) finishes
-progress dist                       ; who got furthest at the 120 s buzzer: x|-x|y|-y|z|-z|dist (default x on csp_, else dist)
+progress dist                       ; who got furthest at the time-limit buzzer: x|-x|y|-y|z|-z|dist (default x on csp_, else dist)
+time 240                            ; optional race time limit in seconds (default 120, 30-1800)
+bottime 150 210                     ; optional window bots finish in, seconds (default: the race's own, 30-75 s)
 checkpoint ...                      ; for reference only; the map's own triggers do the respawning
 ```
 

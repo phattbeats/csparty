@@ -4672,9 +4672,12 @@ set_race_map(const map[])
 //   buttons 1                   kreedz: pressing the map's stop-timer button finishes (counter_off, ...)
 //   progress x|-x|y|-y|z|-z|dist   who got furthest when time runs out (default: x on csp_ maps, else dist to the finish)
 //   pool surf|bhop|climb|maze|none   which race's pool the map is in (default: by its name)
+//   time <seconds>              the race's time limit (default 120)
+//   bottime <lo> <hi>           the window bots finish in, seconds (default: the race's MG_BOT_TIME)
 // No start box and no spawn lines: racers start on the map's own spawn points.
 #define ZSPAWN_MAX 8
 new Float:g_zSpawn[ZSPAWN_MAX][4], g_zSpawnN, bool:g_zStartOk, bool:g_zFinishOk, Float:g_zGoal[3], g_zProg;
+new Float:g_zTime = 120.0, Float:g_zBotLo, Float:g_zBotHi;
 new bool:g_zButtons, g_btnStops, bool:g_btnHit[SEATS];
 new const KZ_STOP[][] = { "counter_off", "clockstopbutton", "clockstop", "but_stop", "counter_stop_button", "multi_stop", "stop_counter", "m_counter_end_emi" };
 
@@ -4688,7 +4691,7 @@ bool:kz_stop_target(ent)
 load_zones()
 {
 	new map[32], path[192]; get_mapname(map, charsmax(map)); zone_ini_path(map, path, charsmax(path));
-	g_zonesOk = false; g_zStartOk = false; g_zFinishOk = false; g_zSpawnN = 0; g_zButtons = false; g_btnStops = 0;
+	g_zonesOk = false; g_zStartOk = false; g_zFinishOk = false; g_zSpawnN = 0; g_zButtons = false; g_btnStops = 0; g_zTime = 120.0; g_zBotLo = 0.0; g_zBotHi = 0.0;
 	g_zProg = equal(map, "csp_", 4) ? 1 : 0;   // 0 dist, +-1/2/3 = axis x/y/z
 	new f = fopen(path, "rt"); if (!f) { log_amx("No zones for %s (%s).", map, path); return; }
 	new line[160], key[16], v[6][16];
@@ -4703,6 +4706,8 @@ load_zones()
 		else if (equal(key, "finish")) { g_zFinish[0] = lo; g_zFinish[1] = hi; g_zFinishOk = true; }
 		else if (equal(key, "spawn") && g_zSpawnN < ZSPAWN_MAX) { for (new k = 0; k < 4; k++) g_zSpawn[g_zSpawnN][k] = str_to_float(v[k]); g_zSpawnN++; }
 		else if (equal(key, "buttons")) g_zButtons = str_to_num(v[0]) != 0;
+		else if (equal(key, "time")) { new Float:t = str_to_float(v[0]); if (t >= 30.0) g_zTime = floatmin(t, 1800.0); }
+		else if (equal(key, "bottime")) { new Float:a = str_to_float(v[0]), Float:b = str_to_float(v[1]); if (a > 0.0 && b >= a) { g_zBotLo = a; g_zBotHi = b; } }
 		else if (equal(key, "progress"))
 		{
 			new sgn = v[0][0] == '-' ? -1 : 1, c = v[0][sgn < 0 ? 1 : 0];
@@ -4815,7 +4820,7 @@ public task_remote_wait()
 	for (new s = 0; s < SEATS; s++)
 	{
 		g_finished[s] = false; g_finishTime[s] = 0.0; g_btnHit[s] = false;
-		g_botFinish[s] = random_float(MG_BOT_TIME[g_mg][0], MG_BOT_TIME[g_mg][1]);
+		g_botFinish[s] = g_zBotHi > 0.0 ? random_float(g_zBotLo, g_zBotHi) : random_float(MG_BOT_TIME[g_mg][0], MG_BOT_TIME[g_mg][1]);
 		new id = g_seatPlayer[s];
 		if (!is_user_connected(id)) continue;
 		rg_set_user_team(id, (s % 2) ? TEAM_TERRORIST : TEAM_CT, MODEL_UNASSIGNED, true, false);
@@ -4904,7 +4909,7 @@ public task_race()
 	}
 	static Float:rebindAt;
 	if (get_gametime() - rebindAt >= 1.0 || get_gametime() < rebindAt) { rebindAt = get_gametime(); race_rebind(); }
-	if (t > 120.0 && g_mgWinnerN == 0 && !g_raceOver)
+	if (t > g_zTime && g_mgWinnerN == 0 && !g_raceOver)
 	{
 		g_raceOver = true;   // with nobody left to win it, this ran (and queued a changelevel) every tick
 		// nobody made it: furthest along the course wins (race_progress)
