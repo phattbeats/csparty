@@ -362,3 +362,9 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Map view entities sent: dust2 154, inferno 218, aztec 216, cbble 226 (cap 256).
 - Isolated GPU test: `tools/dev/mapview_e2e.js` (server :27030, relay :8096, Playwright on the Quadro).
 - Deploy: `patch3924/` (FROM 0.5.19-vq + amxx + the two sprites) and `patch-relay23/` (FROM 0.4.22: boot.js GAMEDATA_V 0.5.20, index.html boot.js?v=0.4.23). `gamedata.zip` = the previous one + the two sprites, rewritten in place (it's a single-file bind mount). Watcher `deploy0520-when-empty.sh`, live 2026-10-04 22:59Z. Rollback: containers `cs-party-server-0.5.19-vqold` and `cs-party-relay-0.4.22-ISSUEold`, `csparty-up.sh.pre-0520`, `gamedata.zip.pre-0520` (`cat` it over `gamedata.zip`).
+
+## ISSUE: surf map pack (server 0.5.22-vq + mappacks)
+- Six generated surf courses (`maps/pool/csp_surf_{dust,aztec,snow,night,storm,space}`) join the Surf Race pool (`csp_test_remote pools` shows 7 surf maps). No plugin change: 0.5.22-vq = 0.5.21-vq + `maps/`, the six WAD slices, `gfx/env` skies and the zone .ini files (`patch0522/`, `FROM cs-party-server:0.5.21-vq` + `COPY hlds/ /hlds/`).
+- Browser packs (`csp_surf_*.zip`, 0.15-0.96 MB each) copied into `appdata/cs-party/mappacks/`; the relay serves them from the existing read-only mount, no relay change.
+- Verified on the isolated stack (server :27070 from the same image, relay :8098): every course raced to the finish in a browser client on desktop and phone (`tools/dev/surf_e2e.js`, screenshots on ISSUE), pools list complete, no `left out` lines.
+- Gate: 0 humans on live, peers 0, live tag 0.5.21-vq. Rollback: container `cs-party-server-0.5.21-vqold`, `csparty-up.sh.pre-0522`.
