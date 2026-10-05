@@ -1,0 +1,14 @@
+{
+  "name": "csparty-lobby",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "art": "mkdir -p public/art && cp ../web/public/art/character-atlas.webp ../web/public/art/logo.webp ../web/public/art/favicon.svg public/art/",
+    "dev": "npm run art && wrangler dev",
+    "test": "node test/lobby_test.mjs",
+    "deploy": "npm run art && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.40.0"
+  }
+}

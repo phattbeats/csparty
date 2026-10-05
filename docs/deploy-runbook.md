@@ -369,3 +369,34 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Plugin: tips share the tutorial HUD channel (CH_TUT), bottom centre, only while no how-to card is up (`tips_tick(hud_tutorial())`). Shown for 14 s with the long hold and blanked with " " (no blink, see the HUD re-send notes). Rate limit per player: 45 s between ambient tips while waiting, 8 s for moment tips (your turn opens, landing on an item/shop/armory/camper/duel/VIP/negotiator/site space). The first turn of a match always says "pick Buy gear". Text wraps at 30 (PC) / 36 (phone) characters, so tips stay under 100 characters.
 - Test: `tools/dev/tips_e2e.js` (full board on the isolated stack, desktop and `PHONE=1`) and `tools/dev/tips_join.js` (boot and join cards only). 0.5.22-vq on the host is ISSUE's surf-map image, built before this and never live; whoever deploys it must rebuild FROM 0.5.23-vq.
 - Deploy: `patch0523/` (FROM 0.5.21-vq + cs_party.amxx), `patch-relay25/` (FROM 0.4.24: boot.js, index.html, tips.json), `deploy0523.sh` (gate: 0 peers, 0 humans, live tags). Rollback: containers `cs-party-server-0.5.21-vq-ISSUEold`, `cs-party-relay-0.4.24-ISSUEold`, `csparty-up.sh.pre-0523`.
+## ISSUE: surf map pack (server 0.5.24-vq + mappacks)
+- Six generated surf courses (`maps/pool/csp_surf_{dust,aztec,snow,night,storm,space}`) join the Surf Race pool (`csp_test_remote pools` shows 7 surf maps). No plugin change: 0.5.24-vq = 0.5.23-vq + `maps/`, the six WAD slices, `gfx/env` skies and the zone .ini files (`patch0524/`, `FROM cs-party-server:0.5.23-vq` + `COPY hlds/ /hlds/`).
+- Browser packs (`csp_surf_*.zip`, 0.15-0.96 MB each) copied into `appdata/cs-party/mappacks/`; the relay serves them from the existing read-only mount, no relay change.
+- Verified on the isolated stack (server :27070 from the same image, relay :8098): every course raced to the finish in a browser client on desktop and phone (`tools/dev/surf_e2e.js`, screenshots on ISSUE), pools list complete, no `left out` lines.
+- Gate: 0 humans on live, peers 0, live tag 0.5.23-vq. Rollback: container `cs-party-server-0.5.23-vqold`, `csparty-up.sh.pre-0524`.
+
+## ISSUE: Maze Run map pack (server 0.5.25-vq + mappacks)
+- Seven generated mazes (`maps/pool/csp_maze_{brick8,conc10,hedge,metal14,rust16,dark10,dark14}`) join the Maze Run pool (`csp_test_remote pools` shows 8 maze maps). No plugin change: 0.5.25-vq = 0.5.24-vq + `maps/` (.bsp + one-area .nav stubs), the seven WAD slices, `gfx/env` skies and the zone .ini files (`patch0525-ISSUE/`, `FROM cs-party-server:0.5.24-vq` + `COPY cstrike/ /hlds/cstrike/` + `COPY ini/ .../minigames/`). The .ini `bottime 50 100` lines wait for the ISSUE plugin (ignored until then).
+- Browser packs (`csp_maze_*.zip`, 0.4-1.0 MB each) copied into `appdata/cs-party/mappacks/`; served from the existing read-only mount, no relay change.
+- Verified on the isolated stack (server :27082, relay :8122): every maze raced to the finish in a browser client on desktop and phone (`tools/dev/maze_e2e.js` + `tools/dev/csp_mazewalk.sma`, screenshots on ISSUE), pools list complete on a throwaway container from the image, no `left out` lines.
+- Patch dirs and tags collide between runs (the surf pack took `patch0524/` and `0.5.24-vq` minutes after this pack had built them): suffix them with the issue and re-check `docker images` + the live tag right before deploying.
+- Gate: 0 humans on live, peers 0, live tag 0.5.24-vq (`deploy0525-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.24-vq-ISSUEold`, `csparty-up.sh.pre-0525-ISSUE`.
+
+## ISSUE: Climb map pack + race time keys (server 0.5.26-vq + mappacks)
+- Ten beginner kreedz maps (kreedz.com "Easy", credited in `maps/CREDITS.md`) join the Climb pool: `kz_xj_mountez`, `cobkz_minecraft`, `kz_ea_oldgraveyard`, `kzbg_ytt_pyramid`, `skitz_bean_valley`, `kz_darkmine`, `kz_kzse_towerblock`, `kz_j2s_summercliff_ez`, `kz_cliffez`, `kz_xj_ezbrickjump` (`csp_test_remote pools` shows 12 climb maps with `kz_triangles` and `csp_climb`). Built by `tools/climb_pack.py` (.bsp, WAD slices, models/sprites, nav stubs); zone .ini files from `maps/pool/`.
+- Plugin: ISSUE's `time` / `bottime` zone keys (branch `ISSUE-race-time`, merged here). Climb maps race for 180 s and bots finish late (e.g. `bottime 240 330`), so a human can win. The maze pack's `bottime 50 100` lines start working too. This also ships ISSUE.
+- 0.5.26-vq = 0.5.25-vq + `patch0526/hlds/` (maps, WADs, models, sprites, the inis and cs_party.amxx). Browser packs (1.2-3.5 MB each) copied into `appdata/cs-party/mappacks/`. No relay change.
+- Verified on the isolated stack (server :27060, relay :8100 on relay 0.4.25): every map raced to the real stop button in a browser client on desktop and phone (`tools/dev/climb_e2e.js` + test-only `tools/dev/csp_kztest.sma`; screenshots on ISSUE), no `left out` lines; with `PRESS_DELAY=75`, no bot finished in the first 75 s on the new plugin.
+- Gate: 0 humans on live, peers 0, live tag 0.5.25-vq (image 7a9d6485486e) (`deploy0526-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.25-vq-ISSUEold`, `csparty-up.sh.pre-0526-ISSUE`.
+
+## ISSUE: lobby Phase 1 (relay 0.4.26, 2026-10-05 02:3x UTC; Worker pending)
+
+- `lobby/`: Cloudflare Worker `csparty-lobby` (lobby + directory Durable Objects, lobby page). See `lobby/README.md`.
+- Relay 0.4.26 (`patch-relay26`, FROM 0.4.25 + relay.js/boot.js/index.html): accepts the Worker's per-lobby keys when
+  `LOBBY_SECRET` (in appdata `.env`, generated on the host) and `RELAY_ID=raid1` are set; `/healthz` adds `downloads` and
+  `idleSecs`. The static `PARTY_KEY` link works as before. Game page: `?lobby=` joins once on arrival and shows a link back.
+- Deployed behind the gate (rcon 0 humans, peers 0, live tag 0.4.25). Rollback: `cs-party-relay-0.4.25old` (stopped) and
+  `csparty-up.sh.pre-ISSUE`.
+- Worker deploy needs a Cloudflare token with Workers Scripts + Durable Objects edit (agents hold DNS-only):
+  `cd lobby && npm i && npx wrangler secret put LOBBY_SECRET` (value from appdata `.env`) `&& npm run deploy`.
+  `POOL` in `wrangler.toml` points at https://csparty.example.com.
