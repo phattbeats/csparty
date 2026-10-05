@@ -1532,7 +1532,7 @@ public hc_can_take_damage(const victim, const attacker)
 	if (g_state == ST_MINIGAME && g_mg == MG_HNS && is_user_connected(attacker))
 	{
 		new a = seat_of(attacker);
-		if (a >= 0 && g_mgSide[a] == SIDE_T) { SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }
+		if (a >= 0 && (g_mgSide[a] == SIDE_T || (entity_get_int(attacker, EV_INT_flags) & FL_FROZEN))) { SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }   // hiders can't hurt; a seeker can't knife until released
 	}
 	return HC_CONTINUE;
 }
@@ -4342,13 +4342,15 @@ public cmd_hns_probe()
 	return PLUGIN_HANDLED;
 }
 
-// dev: csp_hns_corners [seat]  during a Hide and Seek round, throw the seat (default 0) past every outer corner of the arena (and the middle of each outer
+// dev: csp_hns_corners [seat]  during a Hide and Seek round, throw the seat (default: the first one playing) past every outer corner of the arena (and the middle of each outer
 // edge) and report whether the boundary check brought them back
 new g_cornerStep, g_cornerFail, g_cornerSeat;
 public cmd_hns_corners()
 {
 	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] corners: no Hide and Seek round"); return PLUGIN_HANDLED; }
-	new a[8]; read_argv(1, a, charsmax(a)); g_cornerSeat = clamp(str_to_num(a), 0, SEATS - 1);
+	new a[8]; read_argv(1, a, charsmax(a)); g_cornerSeat = a[0] ? clamp(str_to_num(a), 0, SEATS - 1) : -1;
+	for (new k = 0; k < SEATS && g_cornerSeat < 0; k++) if (g_mgIn[k] && is_user_alive(g_seatPlayer[k])) g_cornerSeat = k;   // no seat: the first one playing
+	if (g_cornerSeat < 0) { server_print("[CSP] corners: nobody alive in the round"); return PLUGIN_HANDLED; }
 	remove_task(TASK_HNSB + 5); remove_task(TASK_HNSB + 6);   // a second request restarts the test instead of interleaving with it
 	g_cornerStep = 0; g_cornerFail = 0;
 	set_task(0.5, "task_hns_corner", TASK_HNSB + 5);
