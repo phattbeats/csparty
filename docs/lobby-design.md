@@ -168,9 +168,9 @@ Purpose: see health at a glance, see what players are doing, and have a few safe
 
 Each phase ships through the normal deploy gate (peers==0, no humans, merged onto newest main) with screenshots/logs on its issue. Child issues are created only after approval.
 
-## 12. Open questions for Alex
+## 12. Decisions (Alex, ISSUE, 2026-10-05)
 
-1. OK to pay $5/mo for Workers Paid if Analytics Engine needs it, or D1-only?
-2. Admin auth: Cloudflare Access (needs a Zero Trust org on the account) or bearer token?
-3. Appetite for renting capacity beyond RAID once lobbies exceed about 20?
-4. Is public distribution of Valve gamedata acceptable, or should the public build be invite-key only?
+1. **Analytics storage:** Workers Analytics Engine. Workers Paid at $5/mo is approved if AE needs it.
+2. **Admin auth:** bearer token in a Worker secret, with a rate limit on failures. No Cloudflare Access.
+3. **Capacity beyond RAID:** no rented hosts. Run the true P2P / wasm feasibility spike (option A) instead (P5, ISSUE).
+4. **Valve gamedata:** serving it publicly is OK. Per-lobby party keys still gate access to each game server.
