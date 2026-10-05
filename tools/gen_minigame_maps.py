@@ -333,7 +333,8 @@ def build_maze(name="csp_maze", n=12, cell=160, seed=3867, theme="brick", dark=F
     zones = {"start": ((-lobby, 0, 0), (0, W, 200)), "finish": ((W + 64, W - cell - 192, 0), (W + room - 64, W - 64, 200)),
              "checkpoints": []}
     if name != "csp_maze":   # the original keeps its .ini; variants carry their pool and start spots (the plugin's pool format)
-        zones.update(pool="maze", progress="x", spawns=[(-70 - (k // 2) * 60, 50 + (k % 2) * 60, 40, 0) for k in range(8)])
+        # bottime (ISSUE): bots finish between the shortest route (~40 s) and the wall follower (~88 s)
+        zones.update(pool="maze", progress="x", bottime=(50, 100), spawns=[(-70 - (k // 2) * 60, 50 + (k % 2) * 60, 40, 0) for k in range(8)])
     zones["metrics"] = maze_metrics(n, east, north)
     zones["cell"] = cell
     return m, zones
@@ -345,6 +346,7 @@ def write_zones(path, zones):
         f.write(f"start {fmt(zones['start'])}\nfinish {fmt(zones['finish'])}\n")
         for c in zones["checkpoints"]: f.write(f"checkpoint {fmt(c)}\n")
         if zones.get("pool"): f.write(f"pool {zones['pool']}\nprogress {zones['progress']}\n")
+        if zones.get("bottime"): f.write("bottime %g %g\n" % zones["bottime"])
         for sp in zones.get("spawns", []): f.write("spawn " + " ".join(f"{v:g}" for v in sp) + "\n")
 
 def write_nav_stub(bsp, start, path):

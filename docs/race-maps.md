@@ -102,10 +102,14 @@ Dark variants have the lights off, so players need the flashlight (F). Every .in
 
 **Bots.** zBots can't read a maze. Each variant ships a one-area nav stub over the start zone (`g.write_nav_stub`),
 so the pool accepts the map and bots join; they "finish" on the clock in `MG_BOT_TIME` (30-60 s for maze), as on
-every race map. The stub records the .bsp size, so it has to be written after `race_map.py build` (which rewrites the
+every race map. Each variant's .ini also has `bottime 50 100` (ISSUE key; older plugins ignore it): bots then
+finish after a player who reads the maze (~40 s) and around a lost one (~88 s), instead of 30-60 s, which beat most
+humans. The stub records the .bsp size, so it has to be written after `race_map.py build` (which rewrites the
 worldspawn wad key): `build_maze_pack.py` does that.
 
 **Testing.** `tools/dev/csp_mazewalk.sma` (dev only, never ships) walks the first human along the solution
-(`<out>/walk/<map>.walk`, written by the build) and logs `[WALK] reached the last waypoint after X s`.
+(`<out>/walk/<map>.walk`, written by the build) and logs `[WALK] reached the last waypoint after X s`. The race ends 5 s after the first finisher, so without
+`bottime` a bot on the 30-60 s clock can end it before the 250 u/s walker gets there; `csp_mazewalk_speed 400`
+(`SPEED=400` for the E2E) proves the route reaches the finish regardless.
 `tools/dev/maze_e2e.js` drives a browser client (`VIEW=desktop|phone`) through `csp_test_remote 11 ffa <map>`, starts
 the walker and screenshots the start, the run and the finish.

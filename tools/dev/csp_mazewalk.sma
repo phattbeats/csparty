@@ -1,6 +1,8 @@
 // ISSUE test helper (never ships): drives the first human along a maze's solution so a browser client can
 // finish a Maze Run race unattended. Waypoints: configs/cs_party/minigames/<map>.walk, one "x y" per line.
-// csp_mazewalk 1 turns it on; the walker moves at 250 u/s, so the race time it logs is the shortest-route time.
+// csp_mazewalk 1 turns it on; the walker moves at csp_mazewalk_speed u/s (250 = knife run speed, so the race time it logs
+// is the shortest-route time). The race ends 5 s after the first finisher and bots finish on a 30-60 s clock, so set
+// it higher (400) when the walker only has to prove the route reaches the finish.
 #include <amxmodx>
 #include <fakemeta>
 #include <engine>
@@ -12,6 +14,7 @@ public plugin_init()
 {
 	register_plugin("csp_mazewalk", "1", "phattbeats");
 	register_cvar("csp_mazewalk", "0");
+	register_cvar("csp_mazewalk_speed", "250");
 	register_forward(FM_PlayerPreThink, "fw_prethink");
 }
 
@@ -46,7 +49,8 @@ public fw_prethink(id)
 		return FMRES_IGNORED;
 	}
 	new Float:v[3]; pev(id, pev_velocity, v);
-	v[0] = dx / d * 250.0; v[1] = dy / d * 250.0;
+	new Float:spd = get_cvar_float("csp_mazewalk_speed");
+	v[0] = dx / d * spd; v[1] = dy / d * spd;
 	set_pev(id, pev_velocity, v);
 	new Float:a[3]; a[0] = 0.0; a[1] = floatatan2(dy, dx, radian) * 57.29578; a[2] = 0.0;
 	set_pev(id, pev_v_angle, a); set_pev(id, pev_angles, a); set_pev(id, pev_fixangle, 1);
