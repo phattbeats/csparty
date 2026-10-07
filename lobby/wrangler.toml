@@ -1,4 +1,4 @@
-# CS Party lobby API (ISSUE, design: docs/lobby-design.md).
+# CS Party lobby API (#3989, design: docs/lobby-design.md).
 # Local:  npm run dev   (wrangler dev; secrets from .dev.vars)
 # Live:   npx wrangler secret put LOBBY_SECRET   then   npm run deploy   (needs a Workers/DO-scoped API token)
 name = "csparty-lobby"

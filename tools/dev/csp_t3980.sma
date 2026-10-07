@@ -1,4 +1,4 @@
-// ISSUE test helper (isolated test stack only, never live): read and set the human player's position over rcon.
+// #3980 test helper (isolated test stack only, never live): read and set the human player's position over rcon.
 #include <amxmodx>
 #include <engine>
 #include <fun>

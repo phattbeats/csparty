@@ -1,4 +1,4 @@
-// ISSUE test helper, never shipped: puts a racer in front of a kreedz map's stop button, aimed at it,
+// #3981 test helper, never shipped: puts a racer in front of a kreedz map's stop button, aimed at it,
 // so a browser client can press +use and finish the race through the real button path.
 //   csp_kz_goto <name> [n]  teleport + aim, to the n-th free spot (two racers mustn't share one)
 //   csp_kz_info            list the start/stop buttons

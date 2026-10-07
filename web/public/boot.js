@@ -748,7 +748,7 @@
     }
   });
 
-  // ------------------------------------------------------------------ lobby hand-off (lobby/, ISSUE)
+  // ------------------------------------------------------------------ lobby hand-off (lobby/, #3989)
   // The lobby page sends everyone here with ?key= (that lobby's party key), ?name=, ?char= and ?lobby= (the
   // lobby page, to go back to). The first arrival joins at once: the server's countdown starts with the first
   // player in, so the party should land together. A reload (Leave) stays on this screen.

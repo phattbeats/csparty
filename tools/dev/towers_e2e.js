@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/towers_e2e.js): browser client on csp_towers with the AWP, then the leave guard and a mid-fight drop.
+// #3929 (tools/dev/towers_e2e.js): browser client on csp_towers with the AWP, then the leave guard and a mid-fight drop.
 // Runs in the Playwright image on game-host (GPU), against the isolated test stack (relay :8096, server :27030).
 const { chromium } = require("playwright");
 const dgram = require("dgram");

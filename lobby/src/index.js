@@ -1,4 +1,4 @@
-// CS Party lobby API (ISSUE): party codes, roster, ready-up, and handing a lobby a game server.
+// CS Party lobby API (#3989): party codes, roster, ready-up, and handing a lobby a game server.
 // Design: docs/lobby-design.md. Phase 1: the "capacity" is a static pool of game servers that are already
 // running (env POOL), each behind web/relay.js. Starting a match picks a free one and gives every member a
 // link to it carrying a per-lobby party key (an HMAC token the relay checks with the shared LOBBY_SECRET).

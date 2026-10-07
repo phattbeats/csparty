@@ -1,5 +1,5 @@
 #!/bin/bash
-# CS Party on game-host (ISSUE). Recreates both containers from the built images.
+# CS Party on game-host (#3864). Recreates both containers from the built images.
 # Unraid has no docker compose, so this stands in for deploy/docker-compose.yml with our ports:
 # HLDS on UDP 27016 (27015 is nvmp-coop), relay on TCP 8095 (8080 is sabnzbd). SWAG proxies
 # csparty.example.com -> HOST_IP:8095.

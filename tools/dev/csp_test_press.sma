@@ -1,4 +1,4 @@
-// Test only (ISSUE, tools/dev/racepool_e2e.js PRESS=<map>): "csp_press_stop" makes the first human press the
+// Test only (#3979, tools/dev/racepool_e2e.js PRESS=<map>): "csp_press_stop" makes the first human press the
 // map's kreedz stop-timer button, through the same Ham_Use the button gets when a player presses it in game.
 // Never load this on a live server.
 #include <amxmodx>

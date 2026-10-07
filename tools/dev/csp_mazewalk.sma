@@ -1,4 +1,4 @@
-// ISSUE test helper (never ships): drives the first human along a maze's solution so a browser client can
+// #3982 test helper (never ships): drives the first human along a maze's solution so a browser client can
 // finish a Maze Run race unattended. Waypoints: configs/cs_party/minigames/<map>.walk, one "x y" per line.
 // csp_mazewalk 1 turns it on; the walker moves at csp_mazewalk_speed u/s (250 = knife run speed, so the race time it logs
 // is the shortest-route time). The race ends 5 s after the first finisher and bots finish on a 30-60 s clock, so set

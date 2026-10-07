@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Builds the Maze Run variants (ISSUE) for the race map pool.
+"""Builds the Maze Run variants (#3982) for the race map pool.
 
   build_maze_pack.py <sdhlt_tools_dir> <game_dir with cstrike/ and valve/> [--out build/racemaps] [map ...]
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 # hns_sweep.sh <map>...  (ARENAS="2 8 9" limits which arenas run; HARNESS picks the harness dir)
-# harness sweep (ISSUE): per map, every Hide and Seek arena gets a bot round,
+# harness sweep (#3983): per map, every Hide and Seek arena gets a bot round,
 # the csp_hns_corners escape test, and a count of boundary pushes. Needs the ISSUE harness with the plugin and boards installed.
 W=${HARNESS:-/paperclip/workspace/vision-quest/ISSUE}; R="$W/srv.sh rcon"
 for M in "$@"; do

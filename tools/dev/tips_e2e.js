@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/tips_e2e.js): loading-screen tips and in-game HUD tips, desktop or phone viewport.
+// #3984 (tools/dev/tips_e2e.js): loading-screen tips and in-game HUD tips, desktop or phone viewport.
 // Runs in the Playwright image on game-host (GPU) against the isolated stack. Env: PORT (relay), GPORT (game), RPW, KEY, PHONE=1, SECS.
 const { chromium } = require("playwright");
 const dgram = require("dgram");

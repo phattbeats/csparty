@@ -8,7 +8,7 @@ case "$1" in
          cd $X && tmux kill-session -t xash 2>/dev/null
          tmux new-session -d -s xash "cd $X && DISPLAY=$D LIBGL_ALWAYS_SOFTWARE=1 ./xash3d -game cstrike -windowed -width 1280 -height 720 -dev 2 -log -nosound +connect 127.0.0.1:27015 gs 2>&1 | tee $X/client.log";;
   stop)  tmux kill-session -t xash 2>/dev/null; pkill -x xash3d; pkill -f "Xvfb $D";;
-  shot)  DISPLAY=$D import -window root "${2:-/tmp/claude-0/shot.png}";;
+  shot)  DISPLAY=$D import -window root "${2:-/tmp/csparty/shot.png}";;
   cmd)   shift; tmux send-keys -t xash "$*" Enter;;
   log)   tail -n ${2:-30} $X/client.log;;
 esac

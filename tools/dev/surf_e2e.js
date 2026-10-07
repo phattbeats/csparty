@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/surf_e2e.js): every surf pool map, raced to the finish in a browser client.
+// #3980 (tools/dev/surf_e2e.js): every surf pool map, raced to the finish in a browser client.
 // One player joins the board, then per map: csp_test_remote 8 ffa <map> -> the map pack arrives, the race starts,
 // and the player surfs each stage with real movement commands (+moveleft / +moveright / +forward through the
 // engine's command buffer, like held keys), steered by its position, which the test-only helper plugin csp_t3980 prints into the player's console

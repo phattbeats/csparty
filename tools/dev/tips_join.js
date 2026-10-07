@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/tips_join.js): the tip on the boot card and in the "Joining the party" card, desktop or phone.
+// #3984 (tools/dev/tips_join.js): the tip on the boot card and in the "Joining the party" card, desktop or phone.
 // Env: PORT (relay), KEY, PHONE=1. Writes /work/join[-phone]/*.png and prints the tip text at each step.
 const { chromium } = require("playwright");
 const fs = require("fs");

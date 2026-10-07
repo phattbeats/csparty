@@ -1,4 +1,4 @@
-// Lobby API end to end against `wrangler dev` and a real web/relay.js (ISSUE).
+// Lobby API end to end against `wrangler dev` and a real web/relay.js (#3989).
 //   relay:   PORT=18095 GAME=127.0.0.1:27999 PARTY_KEY=statickey LOBBY_SECRET=dev-secret-change-me RELAY_ID=raid1 node web/relay.js
 //   worker:  npx wrangler dev --port 8787 --var 'POOL:[{"id":"raid1","url":"http://127.0.0.1:18095"}]' --var AUTOSTART_SECS:3
 //   node test/lobby_test.mjs   [LOBBY=http://127.0.0.1:8787 RELAY=http://127.0.0.1:18095]

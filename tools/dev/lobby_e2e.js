@@ -1,4 +1,4 @@
-// Lobby end to end in real browsers (ISSUE): two players make and join a party on the lobby page, pick
+// Lobby end to end in real browsers (#3989): two players make and join a party on the lobby page, pick
 // characters, ready up, get sent to the game server with the party's key, and land in the game; then they
 // leave, and the lobby hands the server back and reopens.
 //

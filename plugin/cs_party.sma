@@ -77,7 +77,7 @@ new const ITEM_TIP[IT_COUNT][]   = { "2 crates", "3 crates", "pick a roll", "riv
 // its "already on screen" check always matches and a re-send only rewrites the text in place. So the table and
 // the tutorial get a long hold, changes show at once, and the table is re-sent just after its hold runs out.
 // (With a 4 s hold and a 2.5 s refresh, the table timed out 4 s after it first went up and stayed gone until
-// the next refresh: about 1 s in every 5, ISSUE.) Leaving the screen means blanking the text.
+// the next refresh: about 1 s in every 5, #3948.) Leaving the screen means blanking the text.
 #define HUD_HOLD  240.0
 new const SHOP_T[]  = { IT_KNIFE, IT_BHOP, IT_FAKE, IT_C4, IT_ROTATE, IT_RIGGED };
 new const SHOP_CT[] = { IT_KNIFE, IT_RIGGED, IT_SMOKE, IT_FAKE, IT_ROTATE, IT_INTEL };
@@ -1584,7 +1584,7 @@ public fw_startframe()
 // index makes the client move the light onto that entity every frame). A re-send with the same key replaces it.
 // EF_DIMLIGHT did this before (0.5.15) and looked like everyone had flashlights on: the client gives your own
 // player a real flashlight beam and everyone else a world light whose radius is re-rolled every frame, so it
-// flickered (ISSUE). Board states only (in a fight it would give away hiding players). Sent every 0.25 s
+// flickered (#3965). Board states only (in a fight it would give away hiding players). Sent every 0.25 s
 // with a 0.6 s life, so a lost packet doesn't blink it.
 pawn_lights()
 {

@@ -1,4 +1,4 @@
-// ISSUE: Maze Run pool maps with a browser client, desktop or phone (VIEW). For each map in MAPS, in a fresh browser:
+// #3982: Maze Run pool maps with a browser client, desktop or phone (VIEW). For each map in MAPS, in a fresh browser:
 // join the board, csp_test_remote 11 ffa <map>, then csp_mazewalk 1 (tools/dev/csp_mazewalk.sma walks the player along
 // the solution), screenshots at the start, mid-run and the finish, and the time to the finish. env: RELAY, KEY, RCON_PORT,
 // RPW, MAPS, VIEW, SPEED (walker u/s, default 250; bots finish on a 30-60 s clock and the race ends 5 s after the first

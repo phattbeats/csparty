@@ -48,7 +48,7 @@ Live at **https://csparty.example.com/?key=<PARTY_KEY>**. The key is in `/srv/cs
    - `gamedata.zip` with the key: 200, 46.6 MB, through Cloudflare.
    - `wss://csparty.example.com/relay?key=...` carried an A2S query to HLDS, which answered "CS Party / de_dust2". A wrong key gets 401.
    - Both containers report healthy.
-   - Not tested by me: a full WASM client join in a real browser. That's the game-night check (ISSUE).
+   - Not tested by me: a full WASM client join in a real browser. That's the game-night check (#3865).
 11. Invite link and RCON password: Nextcloud `cloud/csparty/INVITE-LINK.txt` (`.env` remains the source of truth).
 
 ## Operating it
@@ -127,7 +127,7 @@ Source: `src/cs-party/plugin/cs_party.sma`. Earlier builds are kept as `*.v0.4.1
 **Still open**
 - Black player models ("shadow people"): not reproduced.
 - Ruled out: missing models (all 8 player .mdl files are 2.3 MB with embedded textures), plugin render settings (none touch players), and engine planar shadows (`r_shadows` defaults to 0).
-- Two Towers DM minigame: ISSUE (which map is still to be picked).
+- Two Towers DM minigame: #3897 (which map is still to be picked).
 
 
 ## Relay v0.4.3 (2026-10-02): art drop, new join screen
@@ -135,7 +135,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 
 1. **Join screen** (`web/public/index.html`, `boot.js`; previous versions are `*.pre-artdrop`):
    - The design's markup sits inside `#gate`, and the design CSS is scoped under `#gate`, so the in-game overlays, pause menu and toast keep their own styles.
-   - The ISSUE pick logic stays as it was: `_csp_char` setinfo, the saved pick, arrow and controller grid moves.
+   - The #3898 pick logic stays as it was: `_csp_char` setinfo, the saved pick, arrow and controller grid moves.
    - The page keeps the IDs boot.js depends on: `form`, `name`, `go`, `status`, `bar`, `touch`, and `char` radios with values 0-7 or -1.
    - The download status and progress bar sit under the Join button.
 2. **Assets** in `web/public/art/`:
@@ -156,7 +156,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 
 
 ## v0.5.0 (2026-10-02 evening): forks merged, Cloudflare cache fix, game-night requests
-**Two forks.** ISSUE built v0.5 (new boards, Climb and Maze minigames) and later the GN-1 spawn fix in its own workspace, `/paperclip/workspace/vision-quest/ISSUE`, branched from v0.4. It was never deployed. The live server (0.4.5) carried every fix since the morning but none of v0.5. GN-1 was marked "fixed" on ISSUE, but it was not live.
+**Two forks.** #3867 built v0.5 (new boards, Climb and Maze minigames) and later the GN-1 spawn fix in its own workspace, `/paperclip/workspace/vision-quest/ISSUE`, branched from v0.4. It was never deployed. The live server (0.4.5) carried every fix since the morning but none of v0.5. GN-1 was marked "fixed" on #3865, but it was not live.
 
 1. **Plugin merge:** `git merge-file` three-way merge, ours = live 0.4.5, base = v0.4, theirs = ISSUE `src/plugin/cs_party.sma` (the workspace copy, newer than the v0.5 tarball).
    - One conflict, `cmd_start` vs the board picker: kept both.
@@ -185,7 +185,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
    - Run `csparty-up.sh all`.
 
 
-## v0.5.1 (2026-10-02 night): Two Towers minigame (ISSUE)
+## v0.5.1 (2026-10-02 night): Two Towers minigame (#3897)
 1. **Map:** `twotowers` ("The Two Towers - Sniping Heaven" by Murray), downloaded from ds-servers.com. The readme has no license or redistribution terms (old freeware community map).
    - Shipped as `csp_towers.bsp`. The `csp_` prefix is what makes the plugin treat a map as an own-map minigame.
    - Edited the worldspawn of the BSP (new entity lump appended; no other lump moved):
@@ -223,7 +223,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
    - Run `csparty-up.sh all`.
 
 
-## v0.5.2 (2026-10-03): theme song (ISSUE)
+## v0.5.2 (2026-10-03): theme song (#3912)
 1. **Audio:** Alex's `C-S-Party.wav` (Nextcloud cloud/csparty, 1:49) encoded to `public/audio/cs-party-theme.mp3` (160 kbps, 2.1 MB, 2.5 s fade at the end).
 2. **Page** (`index.html`, `boot.js`):
    - The join screen plays the theme on loop at **10% by default**. A mute button and a volume slider sit in the title bar (where "PLAYER SETUP" was). The Esc menu has a matching **Music** slider. Both are saved in localStorage `csp_music`.
@@ -249,7 +249,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 
 ## Server v0.5.3 (2026-10-03): movement tutorials, auto-bhop, source back in sync
 1. **The source tree had drifted from production.**
-   - Server 0.5.2 (ISSUE, the theme song) was built from a scratch copy, so `src/cs-party/plugin/cs_party.sma` was still 0.5.1.
+   - Server 0.5.2 (#3912, the theme song) was built from a scratch copy, so `src/cs-party/plugin/cs_party.sma` was still 0.5.1.
    - I diffed the decompressed strings of the 0.5.1 and 0.5.2 amxx. The only change was `client_cmd(0, "echo CSP_THEME_PLAY")` at the winner banner and `CSP_THEME_STOP` at match start, and I rebuilt that into the source.
    - Web: copied the live relay files (patch-relay5: boot.js, index.html, audio/, relay.js) into `src/cs-party/web`; the old copies are `*.pre-sync`.
    - **Rule: every deploy writes its sources back to `src/cs-party` first.**
@@ -263,7 +263,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
    - Not verified: how the card looks in a browser (headless joins time out under the current host load).
 
 
-## relay 0.4.9 (2026-10-03): theme waits 20 s on the join screen (ISSUE)
+## relay 0.4.9 (2026-10-03): theme waits 20 s on the join screen (#3912)
 - `boot.js` only, built on the live 0.4.8 copy (`patch-relay6/`, FROM cs-party-relay:0.4.8). The music no longer starts on page load. After 20 s on the join screen (`MENU_DELAY`), the theme fades in over 3 s.
   - Moving the volume slider or pressing unmute starts it straight away.
   - Joining before the 20 s are up cancels it.
@@ -282,7 +282,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Rollback: restore `csparty-up.sh.pre-font15` (relay 0.4.10), then run `csparty-up.sh relay` once peers is 0.
 
 
-## server 0.5.9-vq (2026-10-03 13:44 UTC): returning players could not move (ISSUE)
+## server 0.5.9-vq (2026-10-03 13:44 UTC): returning players could not move (#3897)
 - Bug: after a map change (Two Towers, races, back to the board), the returning human is seated from inside the team-panel VGUI hook. ReGameDLL's JoiningThink then sets `m_iJoiningState = PICKINGTEAM` / `m_iMenu = Menu_ChooseTeam` after the hook returns. The player stood alive and armed with maxspeed 1, which was Alex's "unable to move" on Two Towers. On the board, round respawns skipped them, so they sat dead in spectator. Races hid it because `race_unstick` resets maxspeed every 0.1 s.
 - Fix: `seat_settle(id)` sets JOINED / Menu_OFF and resets maxspeed for any seated human on T/CT. It runs 0.2 s after `seat_join`/`reclaim_seat`, in `mg_fight_start`, and on every `task_seat_watch` tick (minigames included). It logs "X was still joining (state 4, menu 1): settled."
 - Also: target menus (duel pick, fake call, swap, negotiator) now start the turn watchdog (`W_TARGET`). Before this, a human who ignored the duel pick stalled the party for good. The fallback is a duel against the richest opponent, a roll for item picks, and walking on for the negotiator. It compiles, but no test has hit the timeout yet.
@@ -293,7 +293,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 
 
 
-## server 0.5.11-vq + relay 0.4.13 (2026-10-03 15:21 UTC): Two Towers "crash" and drops ending fights (ISSUE)
+## server 0.5.11-vq + relay 0.4.13 (2026-10-03 15:21 UTC): Two Towers "crash" and drops ending fights (#3929)
 - **Alex's crash was the page unloading.** At 12:36:01 the client sent 'drop' and the relay saw `browser closed (1001)` in the same second. Only boot.js's `pagehide` handler sends 'drop', and 1001 means the page went away. A renderer crash closes with 1006 and sends no 'drop', and an engine Host_Error shows an alert and leaves the socket open. The most likely trigger is Ctrl+W: Ctrl is duck, W is forward, and Chrome closes the tab without asking the page.
 - relay 0.4.13 (`patch-relay13/`, FROM 0.4.12, `boot.js?v=0.4.13`):
   - A `beforeunload` prompt while in a match, so Ctrl+W, Ctrl+R and mouse-back ask "Leave site?" first. The Leave and Rejoin buttons skip it.
@@ -313,7 +313,7 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Rollback: `docker rm -f cs-party-server cs-party-relay && docker rename cs-party-server-0510old cs-party-server && docker rename cs-party-relay-0412old cs-party-relay && docker start cs-party-server cs-party-relay`.
 
 
-## server 0.5.16-vq (2026-10-04 16:52 UTC): score table and tutorial no longer blink out (ISSUE, ISSUE)
+## server 0.5.16-vq (2026-10-04 16:52 UTC): score table and tutorial no longer blink out (#3948, #3961)
 - The client never restarts a HUD message that's already up (one buffer per channel, so cs16-client's de-dup always matches a re-send). With a 4 s hold, the table timed out 4 s after it first went up and stayed gone until the next 2.5 s refresh.
 - Fix: the table and the minigame tutorial are held for 240 s (`HUD_HOLD`). The table is re-sent on text change, just after the hold runs out, and after each spawn (`ResetHUD`). Idle blanks the table. The tutorial is blanked when its window ends.
 - `patch0516/` (FROM cs-party-server:0.5.15-vq + amxx) -> `cs-party-server:0.5.16-vq`. `csparty-up.sh` backup: `csparty-up.sh.pre-ISSUE`. Deployed with the gate in one command: 0 humans in rcon status, peers 0, live tag 0.5.15-vq.
@@ -321,14 +321,14 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Known: a ~0.5 s blink once every 4 minutes at the hold handoff (no free HUD channel to overlap it).
 - Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0515old cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-ISSUE`.
 
-## server 0.5.16-vq-ISSUE + relay MAX_PER_IP=12 (2026-10-04 18:40 UTC): 7+ browser players kept across map changes (ISSUE)
+## server 0.5.16-vq-ISSUE + relay MAX_PER_IP=12 (2026-10-04 18:40 UTC): 7+ browser players kept across map changes (#3965)
 - 8-client soak (`tools/dev/stability_e2e.js`: 4 seated + 4 spectators, 35 min, 4 map changes) on an isolated copy. Every browser player reaches HLDS from 127.0.0.1 (the relay). A map change reconnects them all at once, and ReHLDS refused the 6th+ still-connecting client from one IP (`Too many connect packets from 127.0.0.1 (6>5)`), dropping them to "Lost the party".
 - Fix: `sv_rehlds_maxclients_from_single_ip 32` in server.cfg. Relay `MAX_PER_IP` 6 -> 12 (a party in one house shares one public IP).
 - `patch0516-cfg/` (FROM cs-party-server:0.5.16-vq + server.cfg) -> `cs-party-server:0.5.16-vq-ISSUE`. `csparty-up.sh` backup: `csparty-up.sh.pre-ISSUE`. Gate: 0 humans, peers 0, live tags 0.5.16-vq / 0.4.18.
 - Soak with the fix: 0 server crashes or restarts, 0 AMXX errors, ~120 MB, ~7% CPU; all 8 clients back after every map change.
 - Rollback: containers `cs-party-server-0.5.16-vqold` and `cs-party-relay-0.4.18old`.
 
-## server 0.5.17-vq (2026-10-04 20:43 UTC): pawn light is steady, no more "flashlights" (ISSUE)
+## server 0.5.17-vq (2026-10-04 20:43 UTC): pawn light is steady, no more "flashlights" (#3965)
 - Reported live: flickering lighting, "everyone has flashlights on". The 0.5.15 pawn light was `EF_DIMLIGHT`. Xash3D gives your own player a real flashlight beam for it (`CL_UpdateFlashlight`) and everyone else a world light with radius `200 + rand(0..31)` re-rolled every frame.
 - Stopgap 20:18 UTC: `csp_pawnlight 0` over rcon (no restart).
 - Fix: `TE_ELIGHT` per seated pawn, 90 units toward the director camera, radius 200, grey 110, 0.6 s life, re-sent every 0.25 s, key `4095 - id`. It lights models only. Studio models are lit only on faces turned toward a light, and a key equal to an entity index makes the client snap the light onto that entity's origin, so a light keyed to the pawn did almost nothing (+2 vs +6).
@@ -336,26 +336,26 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - `patch0517/` (FROM cs-party-server:0.5.16-vq-ISSUE + amxx) -> `cs-party-server:0.5.17-vq`. `csparty-up.sh` backup: `csparty-up.sh.pre-0517`. Gate: 0 humans, peers 0, live tag 0.5.16-vq-ISSUE. Verified: plugin running, `csp_pawnlight` 1, `sv_rehlds_maxclients_from_single_ip` 32, healthy.
 - Rollback: `docker rm -f cs-party-server && docker rename cs-party-server-0.5.16-vq-ISSUEold cs-party-server && docker start cs-party-server`, then restore `csparty-up.sh.pre-0517` (or keep 0.5.17 and set `csp_pawnlight 0`).
 
-## ISSUE: duck moved off Ctrl (relay 0.4.19)
+## #3865: duck moved off Ctrl (relay 0.4.19)
 - Browser client no longer binds Ctrl: boot.js writes `cstrike/csp_keys.cfg` (`unbind ctrl`, `bind c +duck`) and runs it with `+exec`, so Ctrl+W/Ctrl+R can't be hit mid-play. Duck is now C. Not verified in-engine; check `bind c` in the console if crouch fails.
 - Deploy: `patch-relay19/` (FROM cs-party-relay:0.4.18, boot.js + index.html), `csparty-up.sh.pre-ISSUE`. Rollback container: `cs-party-relay-0.4.18-ISSUEold`.
 
-## ISSUE: minigame how-to made visible (server 0.5.19-vq + relay 0.4.20)
+## #3865: minigame how-to made visible (server 0.5.19-vq + relay 0.4.20)
 - Plugin: how-to card now also for Maze, in yellow, shown from the minigame intro on the board (the changelevel wait is 6 s when a card exists), through the wait and countdown, and for 25 s of the race (was 12). Countdown ticks add a one-line tip under the banner (MG_TIP).
 - Browser: the plugin echoes `CSP_HOWTO_<mg index>` before changelevel; boot.js shows the card over the loading screen (`#loading-howto`) until the client is in game again. Native clients can't show it (no HUD while loading).
 - Deploy: `patch0519/`, `patch-relay20/`, watcher `deploy0519-when-empty.sh` (gate: 0 peers, 0 humans, 3 checks, rolls back on failure; status in `deploy0519.status`). Rollback containers: `cs-party-server-0.5.18-vqold`, `cs-party-relay-0.4.19-ISSUEold`; `csparty-up.sh.pre-0519`.
 
-## ISSUE/ISSUE: hostage stop, dice, minigame variety, footsteps (server 0.5.18-vq)
+## #3864/#3970: hostage stop, dice, minigame variety, footsteps (server 0.5.18-vq)
 - Plugin: everyone stops at the hostages, faster dice, minigame variety memory (g_mgPlayed/g_mgLast), footsteps for every turn.
 - Live 2026-10-04 21:37Z via watcher `deploy0518-when-empty.sh` (gate: 0 peers, 0 humans, 3 checks; rolls back on failure). `patch0518/` = FROM 0.5.17-vq + cs_party.amxx. Rollback container `cs-party-server-0.5.17-vqold`; `csparty-up.sh.pre-0518`. Tag `v0.5.18-vq` is the exact live source (7d83323 + this change), not main.
 - The first `patch0519/` build was compiled without this change and would have reverted it, so its watcher was stopped at 21:46Z. Rebuild 0.5.19 from main, which has both changes. Host-side compile: `docker run --rm -v <dir with scripting/ + cs_party.sma>:/s -w /s --entrypoint ./amxxpc cs-party-server:0.5.18-vq cs_party.sma` (scripting/ is in `build-tools/addons/amxmodx/`).
 
-## ISSUE: Ctrl is duck again (relay 0.4.22)
+## #3865: Ctrl is duck again (relay 0.4.22)
 - Alex wanted Ctrl to crouch by default, so `csp_keys.cfg` no longer unbinds Ctrl; it only adds `bind c +duck` as a spare. Ctrl+W still closes the tab in a normal window. `boot.js` now calls `navigator.keyboard.lock()` on `fullscreenchange` (Chrome/Edge capture Ctrl+W only while locked in fullscreen), and the existing `beforeunload` prompt is the fallback.
 - Deploy: `patch-relay22/` (`FROM cs-party-relay:0.4.20`), watcher `deploy-relay22-when-empty.sh` (gate: 0 peers, 3 checks; status in `deploy-relay22.status`). Rollback container `cs-party-relay-0.4.20-ISSUEold`; `csparty-up.sh.pre-relay22`.
 - Another run built `cs-party-relay:0.4.21` (GAMEDATA_V 0.5.20) plus `patch3924` on the host without deploying; whoever deploys that next must rebase its boot.js on this one (keep the fullscreenchange lock, `bind c +duck` only).
 
-## ISSUE: map overlay shows every space's type and character portraits (server 0.5.20-vq + relay 0.4.23 + gamedata 0.5.20)
+## #3924: map overlay shows every space's type and character portraits (server 0.5.20-vq + relay 0.4.23 + gamedata 0.5.20)
 - Plugin: every space gets an icon in the board tile's colours and labels (`sprites/csp_space.spr`, frame = NT_*). The pieces are the character-select portraits (`sprites/csp_face.spr`, frame = SK_*, ringed in the character's colour). The score table tags rows with the character name. Built by `tools/build_mapicons.py <outdir> <bold.ttf>`.
 - Spaces, pieces, turn ring and hostage icon sit on a plane halfway up to the overhead camera, each slid up its line of sight (`map_proj`), so roofs and wall tops can't hide them and their screen position and size don't change. The path's beams stay at the spaces: the client PVS-culls a beam box that touches no map leaf.
 - Render mode `kRenderTransColor`: Xash's TransAlpha sprites write no depth, and beams are drawn after every entity, so the arrows ran over the pieces. Normal/TransAlpha/TransTexture alpha-tested sprites also get a "lightmap" sampled below them, which is black above the world.
@@ -363,33 +363,33 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Isolated GPU test: `tools/dev/mapview_e2e.js` (server :27030, relay :8096, Playwright on the Quadro).
 - Deploy: `patch3924/` (FROM 0.5.19-vq + amxx + the two sprites) and `patch-relay23/` (FROM 0.4.22: boot.js GAMEDATA_V 0.5.20, index.html boot.js?v=0.4.23). `gamedata.zip` = the previous one + the two sprites, rewritten in place (it's a single-file bind mount). Watcher `deploy0520-when-empty.sh`, live 2026-10-04 22:59Z. Rollback: containers `cs-party-server-0.5.19-vqold` and `cs-party-relay-0.4.22-ISSUEold`, `csparty-up.sh.pre-0520`, `gamedata.zip.pre-0520` (`cat` it over `gamedata.zip`).
 
-## ISSUE: loading-screen tips and in-game HUD tips (server 0.5.23-vq + relay 0.4.25)
+## #3984: loading-screen tips and in-game HUD tips (server 0.5.23-vq + relay 0.4.25)
 - One catalog: `web/public/tips.json` (gear, items, spaces, stars and hostages, bonus stars, team colours, character dice, controls per device, `/board`, `/help`). `tools/gen_tips.py` regenerates `plugin/cs_party_tips.inc` from it; run it after every edit, then recompile.
 - Browser: boot.js fetches tips.json and rotates a tip every 7 s under the progress bar (`#boot-tip`), in the "Joining the party" card (`#ov-tip`, the card covers the loading screen on the first join) and on the map-change loading screen under the minigame how-to card (`#loading-tip`). Touch tips only on touch devices, keyboard tips only on desktop, controller tips only when a gamepad is connected.
 - Plugin: tips share the tutorial HUD channel (CH_TUT), bottom centre, only while no how-to card is up (`tips_tick(hud_tutorial())`). Shown for 14 s with the long hold and blanked with " " (no blink, see the HUD re-send notes). Rate limit per player: 45 s between ambient tips while waiting, 8 s for moment tips (your turn opens, landing on an item/shop/armory/camper/duel/VIP/negotiator/site space). The first turn of a match always says "pick Buy gear". Text wraps at 30 (PC) / 36 (phone) characters, so tips stay under 100 characters.
-- Test: `tools/dev/tips_e2e.js` (full board on the isolated stack, desktop and `PHONE=1`) and `tools/dev/tips_join.js` (boot and join cards only). 0.5.22-vq on the host is ISSUE's surf-map image, built before this and never live; whoever deploys it must rebuild FROM 0.5.23-vq.
+- Test: `tools/dev/tips_e2e.js` (full board on the isolated stack, desktop and `PHONE=1`) and `tools/dev/tips_join.js` (boot and join cards only). 0.5.22-vq on the host is #3980's surf-map image, built before this and never live; whoever deploys it must rebuild FROM 0.5.23-vq.
 - Deploy: `patch0523/` (FROM 0.5.21-vq + cs_party.amxx), `patch-relay25/` (FROM 0.4.24: boot.js, index.html, tips.json), `deploy0523.sh` (gate: 0 peers, 0 humans, live tags). Rollback: containers `cs-party-server-0.5.21-vq-ISSUEold`, `cs-party-relay-0.4.24-ISSUEold`, `csparty-up.sh.pre-0523`.
-## ISSUE: surf map pack (server 0.5.24-vq + mappacks)
+## #3980: surf map pack (server 0.5.24-vq + mappacks)
 - Six generated surf courses (`maps/pool/csp_surf_{dust,aztec,snow,night,storm,space}`) join the Surf Race pool (`csp_test_remote pools` shows 7 surf maps). No plugin change: 0.5.24-vq = 0.5.23-vq + `maps/`, the six WAD slices, `gfx/env` skies and the zone .ini files (`patch0524/`, `FROM cs-party-server:0.5.23-vq` + `COPY hlds/ /hlds/`).
 - Browser packs (`csp_surf_*.zip`, 0.15-0.96 MB each) copied into `appdata/cs-party/mappacks/`; the relay serves them from the existing read-only mount, no relay change.
-- Verified on the isolated stack (server :27070 from the same image, relay :8098): every course raced to the finish in a browser client on desktop and phone (`tools/dev/surf_e2e.js`, screenshots on ISSUE), pools list complete, no `left out` lines.
+- Verified on the isolated stack (server :27070 from the same image, relay :8098): every course raced to the finish in a browser client on desktop and phone (`tools/dev/surf_e2e.js`, screenshots on #3980), pools list complete, no `left out` lines.
 - Gate: 0 humans on live, peers 0, live tag 0.5.23-vq. Rollback: container `cs-party-server-0.5.23-vqold`, `csparty-up.sh.pre-0524`.
 
-## ISSUE: Maze Run map pack (server 0.5.25-vq + mappacks)
-- Seven generated mazes (`maps/pool/csp_maze_{brick8,conc10,hedge,metal14,rust16,dark10,dark14}`) join the Maze Run pool (`csp_test_remote pools` shows 8 maze maps). No plugin change: 0.5.25-vq = 0.5.24-vq + `maps/` (.bsp + one-area .nav stubs), the seven WAD slices, `gfx/env` skies and the zone .ini files (`patch0525-ISSUE/`, `FROM cs-party-server:0.5.24-vq` + `COPY cstrike/ /hlds/cstrike/` + `COPY ini/ .../minigames/`). The .ini `bottime 50 100` lines wait for the ISSUE plugin (ignored until then).
+## #3982: Maze Run map pack (server 0.5.25-vq + mappacks)
+- Seven generated mazes (`maps/pool/csp_maze_{brick8,conc10,hedge,metal14,rust16,dark10,dark14}`) join the Maze Run pool (`csp_test_remote pools` shows 8 maze maps). No plugin change: 0.5.25-vq = 0.5.24-vq + `maps/` (.bsp + one-area .nav stubs), the seven WAD slices, `gfx/env` skies and the zone .ini files (`patch0525-ISSUE/`, `FROM cs-party-server:0.5.24-vq` + `COPY cstrike/ /hlds/cstrike/` + `COPY ini/ .../minigames/`). The .ini `bottime 50 100` lines wait for the #3987 plugin (ignored until then).
 - Browser packs (`csp_maze_*.zip`, 0.4-1.0 MB each) copied into `appdata/cs-party/mappacks/`; served from the existing read-only mount, no relay change.
-- Verified on the isolated stack (server :27082, relay :8122): every maze raced to the finish in a browser client on desktop and phone (`tools/dev/maze_e2e.js` + `tools/dev/csp_mazewalk.sma`, screenshots on ISSUE), pools list complete on a throwaway container from the image, no `left out` lines.
+- Verified on the isolated stack (server :27082, relay :8122): every maze raced to the finish in a browser client on desktop and phone (`tools/dev/maze_e2e.js` + `tools/dev/csp_mazewalk.sma`, screenshots on #3982), pools list complete on a throwaway container from the image, no `left out` lines.
 - Patch dirs and tags collide between runs (the surf pack took `patch0524/` and `0.5.24-vq` minutes after this pack had built them): suffix them with the issue and re-check `docker images` + the live tag right before deploying.
 - Gate: 0 humans on live, peers 0, live tag 0.5.24-vq (`deploy0525-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.24-vq-ISSUEold`, `csparty-up.sh.pre-0525-ISSUE`.
 
-## ISSUE: Climb map pack + race time keys (server 0.5.26-vq + mappacks)
+## #3981: Climb map pack + race time keys (server 0.5.26-vq + mappacks)
 - Ten beginner kreedz maps (kreedz.com "Easy", credited in `maps/CREDITS.md`) join the Climb pool: `kz_xj_mountez`, `cobkz_minecraft`, `kz_ea_oldgraveyard`, `kzbg_ytt_pyramid`, `skitz_bean_valley`, `kz_darkmine`, `kz_kzse_towerblock`, `kz_j2s_summercliff_ez`, `kz_cliffez`, `kz_xj_ezbrickjump` (`csp_test_remote pools` shows 12 climb maps with `kz_triangles` and `csp_climb`). Built by `tools/climb_pack.py` (.bsp, WAD slices, models/sprites, nav stubs); zone .ini files from `maps/pool/`.
-- Plugin: ISSUE's `time` / `bottime` zone keys (branch `ISSUE-race-time`, merged here). Climb maps race for 180 s and bots finish late (e.g. `bottime 240 330`), so a human can win. The maze pack's `bottime 50 100` lines start working too. This also ships ISSUE.
+- Plugin: #3987's `time` / `bottime` zone keys (branch `ISSUE-race-time`, merged here). Climb maps race for 180 s and bots finish late (e.g. `bottime 240 330`), so a human can win. The maze pack's `bottime 50 100` lines start working too. This also ships #3988.
 - 0.5.26-vq = 0.5.25-vq + `patch0526/hlds/` (maps, WADs, models, sprites, the inis and cs_party.amxx). Browser packs (1.2-3.5 MB each) copied into `appdata/cs-party/mappacks/`. No relay change.
-- Verified on the isolated stack (server :27060, relay :8100 on relay 0.4.25): every map raced to the real stop button in a browser client on desktop and phone (`tools/dev/climb_e2e.js` + test-only `tools/dev/csp_kztest.sma`; screenshots on ISSUE), no `left out` lines; with `PRESS_DELAY=75`, no bot finished in the first 75 s on the new plugin.
+- Verified on the isolated stack (server :27060, relay :8100 on relay 0.4.25): every map raced to the real stop button in a browser client on desktop and phone (`tools/dev/climb_e2e.js` + test-only `tools/dev/csp_kztest.sma`; screenshots on #3981), no `left out` lines; with `PRESS_DELAY=75`, no bot finished in the first 75 s on the new plugin.
 - Gate: 0 humans on live, peers 0, live tag 0.5.25-vq (image 7a9d6485486e) (`deploy0526-ISSUE.sh`, rolls back if unhealthy). Rollback: container `cs-party-server-0.5.25-vq-ISSUEold`, `csparty-up.sh.pre-0526-ISSUE`.
 
-## ISSUE: lobby Phase 1 (relay 0.4.26, 2026-10-05 02:3x UTC; Worker pending)
+## #3989: lobby Phase 1 (relay 0.4.26, 2026-10-05 02:3x UTC; Worker pending)
 
 - `lobby/`: Cloudflare Worker `csparty-lobby` (lobby + directory Durable Objects, lobby page). See `lobby/README.md`.
 - Relay 0.4.26 (`patch-relay26`, FROM 0.4.25 + relay.js/boot.js/index.html): accepts the Worker's per-lobby keys when

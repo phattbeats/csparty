@@ -1,4 +1,4 @@
-// CS Party lobby page (ISSUE): create or join a party by code, pick a character, ready up. When the match
+// CS Party lobby page (#3989): create or join a party by code, pick a character, ready up. When the match
 // starts the lobby hands every member a link to the game server with the party's own key, and this page
 // takes them there.
 (() => {

@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/stability_e2e.js) stability test: 4 seated browser players + 4 browser spectators on an isolated copy of the live stack
+// #3965 (tools/dev/stability_e2e.js) stability test: 4 seated browser players + 4 browser spectators on an isolated copy of the live stack
 // (server cs-party-server:0.5.16-vq on :27030, relay 0.4.18 on :8096, MAXPLAYERS=10 like live).
 // Players join first and the lobby autostarts the match; spectators join mid-match (late spectators).
 // Forces a map-change minigame (Surf Race) first, then lets the match run. Mid-test churn: a player drops and

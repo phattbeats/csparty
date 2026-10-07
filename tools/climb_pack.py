@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The Climb race pack (ISSUE): ten beginner kreedz maps from kreedz.com, made ready for the race pool.
+"""The Climb race pack (#3981): ten beginner kreedz maps from kreedz.com, made ready for the race pool.
 
   climb_pack.py --game <dir with cstrike/ and valve/> [--dl build/climbdl] [--out build/racemaps]
 

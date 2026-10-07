@@ -1,6 +1,6 @@
-# CS Party lobby system, analytics and admin dashboard: design (ISSUE)
+# CS Party lobby system, analytics and admin dashboard: design (#3986)
 
-Status: proposal for approval (ISSUE). Nothing here is built. Prices and free-tier limits below are from memory of Cloudflare's published plans and **must be re-checked against current pricing before we commit**; items marked (verify) are the ones that matter.
+Status: proposal for approval (#3973). Nothing here is built. Prices and free-tier limits below are from memory of Cloudflare's published plans and **must be re-checked against current pricing before we commit**; items marked (verify) are the ones that matter.
 
 ## 1. Goal
 
@@ -168,9 +168,9 @@ Purpose: see health at a glance, see what players are doing, and have a few safe
 
 Each phase ships through the normal deploy gate (peers==0, no humans, merged onto newest main) with screenshots/logs on its issue. Child issues are created only after approval.
 
-## 12. Decisions (Alex, ISSUE, 2026-10-05)
+## 12. Decisions (Alex, #3986, 2026-10-05)
 
 1. **Analytics storage:** Workers Analytics Engine. Workers Paid at $5/mo is approved if AE needs it.
 2. **Admin auth:** bearer token in a Worker secret, with a rate limit on failures. No Cloudflare Access.
-3. **Capacity beyond RAID:** no rented hosts. Run the true P2P / wasm feasibility spike (option A) instead (P5, ISSUE).
+3. **Capacity beyond RAID:** no rented hosts. Run the true P2P / wasm feasibility spike (option A) instead (P5, #4004).
 4. **Valve gamedata:** serving it publicly is OK. Per-lobby party keys still gate access to each game server.

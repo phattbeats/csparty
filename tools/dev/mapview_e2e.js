@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/mapview_e2e.js): one browser player on the board, map overlay on, screenshots.
+// #3924 (tools/dev/mapview_e2e.js): one browser player on the board, map overlay on, screenshots.
 // Runs in the Playwright image on game-host (GPU), against the isolated test stack (relay :8096, server :27030).
 // env: KEY (relay PARTY_KEY), RPW (rcon password), TAG (screenshot prefix), MOVES (turns to fast-forward before the map)
 const { chromium } = require("playwright");

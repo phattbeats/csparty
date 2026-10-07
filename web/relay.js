@@ -33,7 +33,7 @@ const IDLE_MS = +(process.env.IDLE_SECS || 120) * 1000;
 const BACKLOG_MAX = 512 * 1024;   // bytes queued to a slow browser before we start dropping server packets
 const KEY = arg("--key", process.env.PARTY_KEY || "");
 const PROTECTED_FILES = new Set([path.join(ROOT, "gamedata.zip")]);
-// Lobby party keys (ISSUE, lobby/): the lobby Worker gives each lobby it sends here CODE.EXPIRY.SIG, an
+// Lobby party keys (#3989, lobby/): the lobby Worker gives each lobby it sends here CODE.EXPIRY.SIG, an
 // HMAC-SHA256 over this relay's RELAY_ID with the LOBBY_SECRET both sides share. Accepted next to --key.
 const LOBBY_SECRET = process.env.LOBBY_SECRET || "", RELAY_ID = process.env.RELAY_ID || "";
 const lobbyKeyOk = (k) => {

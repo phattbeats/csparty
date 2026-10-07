@@ -1,5 +1,5 @@
 {
- "_comment": "Single source of truth for CS Party tips (ISSUE). Edit here, then run tools/gen_tips.py to regenerate plugin/cs_party_tips.inc. when: turn = start of your turn, wait = while others play; on = space just landed on; dev = only for that input device. Keep text <= 100 chars: the HUD wraps at 30 (PC) / 36 (phone) characters.",
+ "_comment": "Single source of truth for CS Party tips (#3984). Edit here, then run tools/gen_tips.py to regenerate plugin/cs_party_tips.inc. when: turn = start of your turn, wait = while others play; on = space just landed on; dev = only for that input device. Keep text <= 100 chars: the HUD wraps at 30 (PC) / 36 (phone) characters.",
  "tips": [
   {
    "id": "gear-buy",

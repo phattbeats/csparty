@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/hns_e2e.js): Hide and Seek arenas with a browser client. One player joins the board, then for
+// #3983 (tools/dev/hns_e2e.js): Hide and Seek arenas with a browser client. One player joins the board, then for
 // every arena of every map in MAPS: force Hide and Seek in that arena, screenshot the intro card (arena name), the hide
 // phase (red fence), a walk, and the corner escape test run on the browser player's own seat (csp_hns_corners <seat>).
 // The server console has the results ("placed at", "corner test ... back inside/ESCAPED", "left the arena").

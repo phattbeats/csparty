@@ -1,6 +1,6 @@
 # Race map pools
 
-Surf Race, Bhop Course, Climb and Maze Run each draw their map from a pool (ISSUE). The draw happens at the
+Surf Race, Bhop Course, Climb and Maze Run each draw their map from a pool (#3979). The draw happens at the
 minigame's intro. A match never plays the same race map twice until that race's pool is used up.
 
 ## What puts a map in a pool
@@ -62,7 +62,7 @@ map pack) and `build/racemaps/kz_foo.ini.draft`.
 The repo keeps only the .ini files. Third-party maps and the WAD slices (Valve textures) stay out of git:
 `build/racemaps/` and `web/public/mappacks/` are ignored.
 
-## The surf pack (ISSUE)
+## The surf pack (#3980)
 
 Six original surf courses live in `maps/pool/`: `csp_surf_dust`, `csp_surf_aztec`, `csp_surf_snow`, `csp_surf_night`,
 `csp_surf_storm`, `csp_surf_space` (.bsp, .map, .nav and zone .ini each). `tools/gen_minigame_maps.py` builds them from
@@ -80,7 +80,7 @@ start, they don't surf, and the race ends when a human finishes or the 120 s buz
 (`progress x`). Test one course on an isolated server with `csp_test_remote 8 ffa csp_surf_night`; the scripted
 desktop/phone race rig is `tools/dev/surf_e2e.js`.
 
-## The climb pack (ISSUE)
+## The climb pack (#3981)
 
 Ten beginner kreedz maps (all **Easy** on kreedz.com), credited in `maps/CREDITS.md`: `kz_xj_mountez`,
 `cobkz_minecraft`, `kz_ea_oldgraveyard`, `kzbg_ytt_pyramid`, `skitz_bean_valley`, `kz_darkmine`, `kz_kzse_towerblock`,
@@ -119,7 +119,7 @@ slices are Valve's.
    `tools/package_server.sh` also does this from `maps/pool/` + `build/racemaps/server/`.
 3. Check the pools on the new server (`csp_test_remote pools`), and look for `left out` lines in the AMXX log.
 
-## Maze Run variants (ISSUE)
+## Maze Run variants (#3982)
 
 `csp_maze` plus seven generated variants fill the maze pool. `tools/gen_minigame_maps.py` has `MAZE_VARIANTS`
 (grid size, cell size, seed, theme, dark, extra loops); `tools/build_maze_pack.py <sdhlt_tools> <game_dir>` compiles
@@ -143,7 +143,7 @@ Dark variants have the lights off, so players need the flashlight (F). Every .in
 
 **Bots.** zBots can't read a maze. Each variant ships a one-area nav stub over the start zone (`g.write_nav_stub`),
 so the pool accepts the map and bots join; they "finish" on the clock in `MG_BOT_TIME` (30-60 s for maze), as on
-every race map. Each variant's .ini also has `bottime 50 100` (ISSUE key; older plugins ignore it): bots then
+every race map. Each variant's .ini also has `bottime 50 100` (#3987 key; older plugins ignore it): bots then
 finish after a player who reads the maze (~40 s) and around a lost one (~88 s), instead of 30-60 s, which beat most
 humans. The stub records the .bsp size, so it has to be written after `race_map.py build` (which rewrites the
 worldspawn wad key): `build_maze_pack.py` does that.

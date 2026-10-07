@@ -1,4 +1,4 @@
-// ISSUE check: menu music (default 10%, slider, mute, autoplay fallback) and the game-end theme.
+// #3912 check: menu music (default 10%, slider, mute, autoplay fallback) and the game-end theme.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const URL = `http://127.0.0.1:8095/?key=${process.env.KEY}&char=1&nosound`;

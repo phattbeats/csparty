@@ -1,4 +1,4 @@
-// ISSUE: every Climb pool map, with two browser clients in one party: a desktop page (keyboard) and a phone
+// #3981: every Climb pool map, with two browser clients in one party: a desktop page (keyboard) and a phone
 // page (touch layout, taps the on-screen Use button). Per map: csp_test_remote 10 ffa <map>, both clients load the
 // map pack and the map, then each is put in front of the map's stop-timer button (test plugin csp_kz_goto) and
 // presses +use; the race must record the finish. Runs in the Playwright image on game-host against the isolated

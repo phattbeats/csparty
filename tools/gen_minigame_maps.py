@@ -125,7 +125,7 @@ def build_surf():
              "checkpoints": [((-340, -260, -96), (-80, 260, 100))]}
     return m, zones
 
-# ---- surf pack (ISSUE): themed variants built from one stage list -----------------------------------
+# ---- surf pack (#3980): themed variants built from one stage list -----------------------------------
 # Every course runs along +x (race_place lines racers up facing +x; "furthest at the time limit" is the
 # largest x). A stage is one ramp run: "v" = two ramps with a gap between (csp_surf's shape), "l" / "r" = one
 # ramp on the left (+y) / right (-y) side. After each stage a landing platform, which is also the ledge you
@@ -328,7 +328,7 @@ def build_climb():
              "checkpoints": [((c[1], -192, c[3]), (c[2], 192, c[3] + 200)) for c in cps]}
     return m, zones
 
-# Maze Run variants (ISSUE). name -> build_maze kwargs. csp_maze is the original and stays byte-identical.
+# Maze Run variants (#3982). name -> build_maze kwargs. csp_maze is the original and stays byte-identical.
 MAZE_THEMES = {
     "brick":    dict(wall="CSTRIKE_WR4CCPN", floor="CSTRIKE_FT4APHT", sky="desert"),
     "concrete": dict(wall="CSTRIKE_WR7PLN",  floor="CSTRIKE_FP2MED",  sky="cliff"),
@@ -439,7 +439,7 @@ def build_maze(name="csp_maze", n=12, cell=160, seed=3867, theme="brick", dark=F
     zones = {"start": ((-lobby, 0, 0), (0, W, 200)), "finish": ((W + 64, W - cell - 192, 0), (W + room - 64, W - 64, 200)),
              "checkpoints": []}
     if name != "csp_maze":   # the original keeps its .ini; variants carry their pool and start spots (the plugin's pool format)
-        # bottime (ISSUE): bots finish between the shortest route (~40 s) and the wall follower (~88 s)
+        # bottime (#3987): bots finish between the shortest route (~40 s) and the wall follower (~88 s)
         zones.update(pool="maze", progress="x", bottime=(50, 100), spawns=[(-70 - (k // 2) * 60, 50 + (k % 2) * 60, 40, 0) for k in range(8)])
     zones["metrics"] = maze_metrics(n, east, north)
     zones["cell"] = cell
