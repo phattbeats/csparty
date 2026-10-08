@@ -458,10 +458,23 @@
   };
   for (const t of ["pointerdown", "keydown", "touchstart"]) addEventListener(t, musicKick, true);
   addEventListener("gamepadconnected", musicKick);
+  // Which controls the menu explains: the device used last (touch screen, controller, or keyboard and mouse).
+  let lastInput = TOUCH ? "touch" : "kbd";
+  const padNow = => [...(realPads?.() || [])].find(Boolean);
+  const seen = (d) => { if (d === lastInput) return; lastInput = d; if (!pause.hidden) showDevice(); };
+  addEventListener("pointerdown", (e) => seen(e.pointerType === "touch" ? "touch" : e.pointerType === "mouse" ? "kbd" : lastInput), true);
+  addEventListener("keydown", => seen("kbd"), true);
+  const padActive = (p) => p.buttons.some((x, i) => i !== 8 && i !== 9 && x.pressed) || p.axes.some((v) => Math.abs(v) > 0.6);
+  const showDevice = => {
+    const dev = lastInput;
+    pause.dataset.dev = dev;
+    for (const el of pause.querySelectorAll("[data-dev]")) el.hidden = !el.dataset.dev.split(" ").includes(dev);
+  };
   const inGame = => engine && watch.state === 4 && $("overlay").hidden && $("gate").hidden;
   const openPause = => {
     if (!pause.hidden || !inGame()) return;
-    pause.hidden = false; $("pz-resume").focus();
+    if (padNow()?.buttons.some((x, i) => (i === 8 || i === 9) && x.pressed)) lastInput = "pad";   // opened with Start/Back
+    showDevice(); pause.hidden = false; $("pz-resume").focus();
     pauseAt = performance.now(); padPrev = null; leaveArm(false); readSettings();
     if (document.pointerLockElement) document.exitPointerLock();
     padLoop();
@@ -525,7 +538,7 @@
   // (queued on map changes) that fires on the next mouseup anywhere, which would grab the mouse mid-menu.
   // Stopping propagation here leaves the menu's own clicks and slider drags alone (those are default actions).
   for (const t of ["mousedown", "mouseup"]) addEventListener(t, (e) => { if (!pause.hidden) e.stopPropagation(); }, true);
-  const focusables = => [...pause.querySelectorAll("button, input")];
+  const focusables = => [...pause.querySelectorAll("button, input")].filter((el) => !el.closest("[hidden]"));
   const moveFocus = (d) => {
     const f = focusables(), i = f.indexOf(document.activeElement);
     const el = f[Math.max(0, Math.min(f.length - 1, i + d))];   // no wrap: Up from the top must not land on Leave
@@ -561,6 +574,7 @@
   function padGame() {
     const pad = [...(realPads?.() || [])].find(Boolean);
     const down = !!pad && (!!pad.buttons[8]?.pressed || !!pad.buttons[9]?.pressed);
+    if (pad && padActive(pad)) seen("pad");
     if (down && !gamePrev && pause.hidden) openPause();
     gamePrev = down;   // tracked while the menu is open too, so the press that closes it can't reopen it
     requestAnimationFrame(padGame);
@@ -570,6 +584,7 @@
     const pad = [...(realPads?.() || [])].find(Boolean);
     if (pad) {
       const ax = pad.axes || [], btn = (i) => !!pad.buttons[i]?.pressed;
+      if (padActive(pad) || btn(8) || btn(9)) seen("pad");
       const now = { up: btn(12) || ax[1] < -0.6, down: btn(13) || ax[1] > 0.6, left: btn(14) || ax[0] < -0.6, right: btn(15) || ax[0] > 0.6,
         a: btn(0), b: btn(1) || btn(8) || btn(9) };
       // the press that opened the menu (or one still held from the game) doesn't count
@@ -685,14 +700,66 @@
     const m = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
     if (m) { e.preventDefault(); moveChar(...m); }
   });
-  // controller on the join screen: D-pad / stick picks, A joins
+  // ---- first-visit primer: 4 short cards before the download; remembered, skippable, and Join never waits on it
+  const primer = $("primer");
+  const JUMP = { kbd: "<b>Space</b>", pad: "<b>A</b>", touch: "the <b>Jump</b> button" };
+  const CARDS = [
+    ["Your turn", => `On your turn, ${JUMP[padOrTouch()]} picks "Jump at the crate", then again to roll your character's die. The crate floats over your head. That is the whole turn: two presses.`],
+    ["The spaces", => `Land on a <b>blue</b> space to earn money, a <b>red</b> one to lose some, a <b>?</b> for a random event. Black Markets sell board items. Duel spaces start a fight.`],
+    ["The minigames", => `After everyone has moved, a minigame decides it: a real Counter-Strike round (bomb, pistols, knives) or a race (surf, bhop, maze). Space colours pick the teams. Survive a gear round and you keep your gear.`],
+    ["Stars and money", => `Your money is your CS cash. Reach the hostages and pay <b>$5,000</b> for a <b>star</b>. The hostages move after every rescue. Most stars wins. ${padOrTouch() === "touch" ? "" : `<b>${lastPadSeen ? "Y" : "Tab"}</b> shows the stars.`}`],
+  ];
+  let lastPadSeen = false, prIdx = 0;
+  const padOrTouch = => lastPadSeen ? "pad" : TOUCH ? "touch" : "kbd";
+  const primerRender = => {
+    const [title, text] = CARDS[prIdx];
+    $("pr-num").textContent = `STEP ${prIdx + 1} OF ${CARDS.length}`; $("pr-count").textContent = `${prIdx + 1} / ${CARDS.length}`;
+    $("pr-title").textContent = title; $("pr-text").innerHTML = text();
+    $("pr-dots").replaceChildren(...CARDS.map((_, i) => { const d = document.createElement("i"); if (i === prIdx) d.className = "on"; return d; }));
+    $("pr-back").hidden = prIdx === 0;
+    $("pr-next").textContent = prIdx === CARDS.length - 1 ? "Got it" : "Next";
+    $("pr-skip").hidden = prIdx === CARDS.length - 1;
+    $("pr-hint").textContent = lastPadSeen ? "A next, B skip" : TOUCH ? "" : "Enter next, Esc skip. Shows once; reopen it from the link under the title.";
+  };
+  const primerOpen = (at) => {
+    prIdx = at | 0; primerRender(); primer.hidden = false; $("gate").inert = true; $("pr-next").focus();
+  };
+  const primerClose = => {
+    if (primer.hidden) return;
+    primer.hidden = true; $("gate").inert = false;
+    try { localStorage.setItem("csp_primer", "1"); } catch {}
+    ($("name").value ? $("go") : $("name")).focus({ preventScroll: true });
+  };
+  const primerStep = (d) => { if (prIdx + d >= CARDS.length) return primerClose(); prIdx = Math.max(0, prIdx + d); primerRender(); };
+  $("pr-next").addEventListener("click", => primerStep(1));
+  $("pr-back").addEventListener("click", => primerStep(-1));
+  $("pr-skip").addEventListener("click", primerClose);
+  primer.addEventListener("pointerdown", (e) => { if (e.target === primer) primerClose(); });
+  addEventListener("keydown", (e) => { if (!primer.hidden && e.key === "Escape") { e.preventDefault(); primerClose(); } }, true);
+  $("how-link").addEventListener("click", => primerOpen(0));
+  { let seenBefore = false; try { seenBefore = localStorage.getItem("csp_primer") === "1"; } catch {}
+    const q = params.get("primer");
+    if (q === "1" || (q !== "0" && !seenBefore)) primerOpen(0); }
+
+  // controller on the join screen: D-pad / stick picks, A joins (and drives the primer while it's up)
   let gPrev = {}, gRaf = 0;
+  const padHint = (on) => {
+    $("pad-hint").hidden = !on;
+    const k = document.querySelector("#go .join-key"); k.classList.toggle("pad", on); k.textContent = on ? "A" : "\u21b5";
+  };
   const padGate = => {
     if ($("gate").hidden) return;
     const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
     if (pad) {
       const b = (k) => !!pad.buttons[k]?.pressed, ax = pad.axes || [];
       const now = { l: b(14) || ax[0] < -0.6, r: b(15) || ax[0] > 0.6, u: b(12) || ax[1] < -0.6, d: b(13) || ax[1] > 0.6, a: b(0) };
+      if (!lastPadSeen) { lastPadSeen = true; padHint(true); if (!primer.hidden) primerRender(); }
+      if (!primer.hidden) {   // the primer owns the pad until it's closed
+        if (now.r && !gPrev.r || now.a && !gPrev.a) primerStep(1);
+        if (now.l && !gPrev.l) primerStep(-1);
+        if (pad.buttons[1]?.pressed && !gPrev.b) primerClose();
+        gPrev = { ...now, b: !!pad.buttons[1]?.pressed }; gRaf = requestAnimationFrame(padGate); return;
+      }
       if (now.l && !gPrev.l) moveChar(-1, 0);
       if (now.r && !gPrev.r) moveChar(1, 0);
       if (now.u && !gPrev.u) moveChar(0, -1);
@@ -703,10 +770,12 @@
     gRaf = requestAnimationFrame(padGate);
   };
   addEventListener("gamepadconnected", => { if (!gRaf) padGate(); });
+  if ([...(navigator.getGamepads?.() || [])].some(Boolean)) { lastPadSeen = true; padHint(true); if (!primer.hidden) primerRender(); if (!gRaf) padGate(); }
 
   // ------------------------------------------------------------------ start
   $("form").addEventListener("submit", async (e) => {
     e.preventDefault();
+    primerClose();   // Join never waits on the primer
     const name = $("name").value.trim().replace(/["\\;]/g, "").slice(0, 31) || "Player";
     const char = pickedChar();
     try { localStorage.setItem("csp_name", name); localStorage.setItem("csp_char", String(char)); } catch {}

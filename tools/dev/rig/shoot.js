@@ -39,6 +39,15 @@ function rcon(cmd) {
                                     : { viewport: { width: vw, height: vh } };
   const ctx = await browser.newContext(ctxOpts);
   const pg = await ctx.newPage();
+  // PAD=1: a fake standard-mapping controller; drive it with `eval window.__padSet([0], [])` (pressed buttons, axes)
+  if (process.env.PAD) await pg.addInitScript(() => {
+    const mk = => ({ id: "Fake Pad (STANDARD GAMEPAD)", index: 0, mapping: "standard", connected: true, timestamp: performance.now(), axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, => ({ pressed: false, touched: false, value: 0 })) });
+    let pad = mk(); window.__pad = pad;
+    window.__padSet = (btns, axes) => { pad = mk(); (btns || []).forEach((i) => { pad.buttons[i] = { pressed: true, touched: true, value: 1 }; }); (axes || []).forEach((v, i) => { pad.axes[i] = v; }); window.__pad = pad; return true; };
+    navigator.getGamepads = => [pad, null, null, null];
+    setTimeout(() => window.dispatchEvent(new Event("gamepadconnected")), 300);
+  });
   pg.on("console", (m) => { const t = m.text(); if (/\[watch\] state|Host_Error|Sys_Error|abort|disconnect|kicked/i.test(t)) note(`console: ${t.slice(0, 200)}`); });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
   await pg.goto(URL, { waitUntil: "domcontentloaded" });

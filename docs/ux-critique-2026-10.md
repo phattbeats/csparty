@@ -43,3 +43,7 @@ Severity: **P0** loses a stranger before they play, **P1** confuses a first matc
 | 4 | Finding 11 legend; 12-13 once ISSUE / ISSUE land | mixed |
 
 Each round: test stack, before/after screenshots, deploy only when relay peers = 0.
+
+## Round 2 status (ISSUE, relay 0.4.28)
+
+Shipped findings 6, 9 and 15. A 4-card primer (turn, spaces, minigames, stars and money) opens once on a first visit, is remembered in `localStorage.csp_primer`, and can be reopened from the "How a match works" link; Skip, Esc, a backdrop click and the Join button all close it, so it never gates Join (`?primer=0` / `?primer=1` override). The Esc menu shows only the controls for the device used last (keyboard and mouse, controller, touch): the mouse-sensitivity slider and W/S text are hidden on phone and controller. With a controller connected the join page shows "Press A to join" and an A badge on the button; A/B/D-pad drive the primer. Test rig: `tools/dev/rig` gained `PAD=1` (fake standard-mapping controller, driven with `eval window.__padSet([buttons],[axes])`).

@@ -290,6 +290,31 @@
     #gate .preview-stage, #gate .summary, #gate .die-heading, #gate .die-faces, #gate .detail .eyebrow, #gate #boot-tip{display:none}
     #gate .detail{top:6px} #gate .detail h2{margin-bottom:8px;font-size:22px;min-height:0} #gate .detail-copy{padding:10px 12px}
     #gate .detail-bar{padding:6px 12px} #gate .join-button{padding:9px 20px;font-size:20px;margin-top:9px} #gate .bar{margin-top:8px} }
+
+  /* ISSUE: first-visit primer, controller hint, device-aware Esc menu */
+  #primer{position:fixed;inset:0;z-index:6;display:grid;place-items:center;padding:14px;background:rgba(8,10,7,.88);backdrop-filter:blur(3px)}
+  #primer .pcard{width:min(520px,100%);box-sizing:border-box;background:#292e22;border:2px solid;border-color:#737863 #0c100a #0c100a #737863;box-shadow:9px 13px 0 #0005,0 22px 80px #000a;color:#efe5ca;font:16px/1.45 Tahoma,Arial,sans-serif}
+  #primer .pbar{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid #535a42;background:linear-gradient(90deg,#474e36,#2e3526);font:bold 12px/1.2 "Courier New",monospace;letter-spacing:1.6px;color:#e2e4ce}
+  #primer .pbody{padding:18px 20px 8px;min-height:150px}
+  #primer .pnum{font:bold 12px/1.3 "Courier New",monospace;letter-spacing:1.5px;color:#f4a331;margin:0 0 6px}
+  #primer h2{font:400 30px/1.05 Impact,"Arial Narrow",sans-serif;letter-spacing:.5px;text-transform:uppercase;color:#efe5ca;margin:0 0 10px}
+  #primer p.ptext{margin:0;color:#dce0ca;font-size:16px;line-height:1.5}
+  #primer p.ptext b{color:#ffe0a1}
+  #primer .pdots{display:flex;gap:8px;justify-content:center;padding:6px 0 4px}
+  #primer .pdots i{width:9px;height:9px;border-radius:50%;background:#4a5139}
+  #primer .pdots i.on{background:#f4a331}
+  #primer .pnav{display:flex;gap:8px;padding:10px 16px 16px}
+  #primer .pnav button{flex:1;padding:11px 10px;font:400 18px/1 Impact,"Arial Narrow",sans-serif;letter-spacing:1px;text-transform:uppercase;cursor:pointer;border:2px solid;border-color:#ffdf94 #98601e #98601e #ffdf94;background:linear-gradient(#ffc761,#f4a331);color:#272716}
+  #primer .pnav button.alt{flex:0 0 auto;background:#191e17;color:#dce0ca;border-color:#737863 #0c100a #0c100a #737863}
+  #primer .pnav button:focus-visible{outline:3px solid #fff2a8;outline-offset:3px}
+  #primer .phint{padding:0 20px 14px;font:12px/1.3 "Courier New",monospace;color:#9ca18b;text-align:center}
+  #gate .how-link{background:none;border:0;padding:0;margin:10px 0 0;color:var(--amber);font:13px/1.2 "Courier New",monospace;text-decoration:underline;cursor:pointer;display:block}
+  #pad-hint{display:flex;align-items:center;gap:9px;justify-content:center;margin:11px 0 0;font-size:13px;color:#ffe0a1}
+  #pad-hint b{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:#3f9d4a;color:#fff;border:2px solid #ffffff60;font:bold 13px/1 "Courier New",monospace}
+  #gate .join-key.pad{width:26px;height:26px;border-radius:50%;background:#3f9d4a;color:#fff;border:2px solid #ffffff60;font:bold 14px/22px "Courier New",monospace;text-align:center;right:12px}
+  @media (max-height:500px){
+    #primer{padding:6px} #primer .pbody{padding:10px 16px 2px;min-height:0} #primer h2{font-size:24px;margin-bottom:6px} #primer p.ptext{font-size:14px;line-height:1.35}
+    #primer .pnav{padding:6px 14px 10px} #primer .pnav button{padding:8px;font-size:16px} #primer .phint{display:none} #primer .pdots{padding:2px 0} }
   #rotate { display:none; z-index:5; background:var(--bg); text-align:center; }
   #rotate .phone { width:46px; height:78px; border:3px solid var(--hud); border-radius:9px; margin:0 auto 18px; animation:turn 1.6s ease-in-out infinite; }
   @keyframes turn { 0%, 30% { transform:rotate(0); } 60%, 100% { transform:rotate(-90deg); } }
@@ -307,7 +332,8 @@
     <img class="logo" src="art/logo.webp" alt="CS Party" width="720" height="360">
     <div class="intro"><p class="eyebrow">MARIO PARTY RULES. COUNTER-STRIKE EVERYTHING.</p><h1>Roll. Move. Win the minigames.</h1><p>A board game played inside Counter-Strike 1.6. Up to 4 players, free, and it runs right in this tab.</p>
       <ol class="steps" aria-label="How a match plays"><li><b>Roll</b> jump into the crate to roll your die</li><li><b>Move</b> land on spaces for money, items and stars</li><li><b>Fight</b> win the minigame after every round</li></ol>
-      <ul class="needs" aria-label="What you need"><li>Keyboard + mouse, phone or controller</li><li id="need-dl">47 MB download, first visit only</li><li>No account, nothing to install</li></ul></div>
+      <ul class="needs" aria-label="What you need"><li>Keyboard + mouse, phone or controller</li><li id="need-dl">47 MB download, first visit only</li><li>No account, nothing to install</li></ul>
+      <button type="button" class="how-link" id="how-link">How a match works (4 cards)</button></div>
   </header>
   <div class="note" id="touch" hidden><b>On a phone:</b> play in landscape. Left thumb moves, <b>Jump</b> picks and rolls. A Bluetooth controller works too. Add this page to your home screen for full screen.</div>
   <form id="form">
@@ -323,6 +349,7 @@
           <label class="name-label" for="name">YOUR NAME</label><input type="text" id="name" placeholder="Player name" required maxlength="31" autocomplete="nickname">
           <button class="join-button" id="go" type="submit">JOIN THE PARTY<span class="join-key" aria-hidden="true">&#8629;</span></button>
           <ol class="phases" id="phases" hidden aria-hidden="true"><li data-p="1">Download</li><li data-p="2">Unpack</li><li data-p="3">Start</li></ol>
+          <div id="pad-hint" hidden><b>A</b><span>Press A to join. D-pad picks a character.</span></div>
           <div class="bar"><i id="bar"></i></div>
           <div id="status" role="status" aria-live="polite">First visit downloads about 47 MB. After that, it's cached in your browser.</div>
           <div id="boot-tip" class="tip" hidden></div>
@@ -332,6 +359,16 @@
   </form>
   <footer class="footer"><p><span class="download-symbol" aria-hidden="true">&#8595;</span> First visit downloads about 47 MB. After that, it's cached in your browser.</p><details><summary>Controls &amp; how to play</summary><p>On your turn, <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or move up/down and <b>Jump</b> to pick, <b>Use</b> to go back. Keyboard: Space / W / S / E. Controller: stick or D-pad, A, B. Touch: on-screen stick. Type <b>/help</b> in chat for the rules. Click the game to capture the mouse; <b>Esc</b> opens the menu (<b>Start</b> on a controller, the <b>Menu</b> button on a phone).</p></details></footer>
 </main>
+</div>
+
+<div id="primer" hidden>
+  <div class="pcard" role="dialog" aria-modal="true" aria-labelledby="pr-title">
+    <div class="pbar"><span>HOW IT PLAYS</span><span id="pr-count">1 / 4</span></div>
+    <div class="pbody"><p class="pnum" id="pr-num"></p><h2 id="pr-title"></h2><p class="ptext" id="pr-text" aria-live="polite"></p></div>
+    <div class="pdots" id="pr-dots" aria-hidden="true"></div>
+    <div class="pnav"><button type="button" class="alt" id="pr-skip">Skip</button><button type="button" class="alt" id="pr-back">Back</button><button type="button" id="pr-next">Next</button></div>
+    <p class="phint" id="pr-hint"></p>
+  </div>
 </div>
 
 <div id="loading" class="screen" hidden aria-live="polite">
@@ -355,11 +392,13 @@
     <h2 id="pz-title">Menu</h2>
     <p>The party keeps going while this is open.</p>
     <button id="pz-resume" type="button">Back to the party</button>
-    <label for="pz-sens">Mouse sensitivity <output id="pz-sens-v"></output><input id="pz-sens" type="range" min="0.5" max="10" step="0.5"></label>
+    <label for="pz-sens" data-dev="kbd">Mouse sensitivity <output id="pz-sens-v"></output><input id="pz-sens" type="range" min="0.5" max="10" step="0.5"></label>
     <label for="pz-vol">Volume <output id="pz-vol-v"></output><input id="pz-vol" type="range" min="0" max="1" step="0.05"></label>
     <label for="pz-music">Music <output id="pz-music-v"></output><input id="pz-music" type="range" min="0" max="1" step="0.05"></label>
-    <button id="pz-fs"type="button" class="alt">Fullscreen</button>
-    <div class="keys"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
+    <button id="pz-fs" type="button" class="alt">Fullscreen</button>
+    <div class="keys" data-dev="kbd"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
+    <div class="keys" data-dev="pad" hidden><b>Your turn:</b> <b>A</b> picks "Jump at the crate", <b>A</b> again rolls. Menus: <b>D-pad</b> or stick to move, <b>A</b> to pick, <b>B</b> to go back. <b>Y</b> shows the stars. <b>Start</b> opens this menu.</div>
+    <div class="keys" data-dev="touch" hidden><b>Your turn:</b> tap <b>Jump</b> to pick "Jump at the crate", <b>Jump</b> again rolls. Menus: slide your left thumb up or down, <b>Jump</b> to pick, <b>Use</b> to go back. The <b>Menu</b> button at the top opens this.</div>
     <button id="pz-leave" type="button" class="alt">Leave the party</button>
   </div>
 </div>
@@ -372,6 +411,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.27"></script>
+<script src="boot.js?v=0.4.28"></script>
 </body>
 </html>
