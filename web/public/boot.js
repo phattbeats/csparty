@@ -4,6 +4,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const status = (t, err) => { $("status").textContent = t; $("status").className = err ? "err" : ""; console.log("[boot] " + t); };
+  // join-page steps: 1 Download, 2 Unpack, 3 Start (the connect step has the overlay's own spinner)
+  const phase = (n) => { const ol = $("phases"); ol.hidden = !n; for (const li of ol.children) { const k = +li.dataset.p; li.className = k < n ? "done" : k === n ? "on" : ""; } };
   const bar = (f) => { $("bar").style.width = Math.round(f * 100) + "%"; };
   const MB = (n) => (n / 1048576).toFixed(0);
 
@@ -144,6 +146,7 @@
   const overlay = (title, text, { rejoin = false, spin = false } = {}) => {
     $("ov-title").textContent = title; $("ov-text").textContent = text || "";
     $("ov-rejoin").hidden = !rejoin; $("ov-spin").hidden = !spin;
+    $("ov-note").hidden = true; $("ov-start").hidden = true; clearInterval(rejoinTimer);
     $("overlay").hidden = false; $("pause").hidden = true;
     if (rejoin && document.pointerLockElement) document.exitPointerLock();
   };
@@ -187,10 +190,34 @@
     const p = engine.stringToNewUTF8(c + "\n"); engine._Cbuf_AddText(p); engine._free(p);
     console.log("[watch] console: " + c);
   };
-  const lost = (why) => {
+  // What each way of losing the party means for the player, and whether the page can fix it by itself.
+  // auto: seconds until the page rejoins on its own (a reload that submits the join form; max 5 tries in a row).
+  const LOST = {
+    restart: { title: "Server restarting", help: "Your seat is held for a minute.", auto: 8 },
+    drop: { title: "Connection lost", help: "Your seat is held for a minute.", auto: 6 },
+    full: { title: "The party is full", help: "All four seats are taken. Spectating isn't open yet.", auto: 20 },
+    key: { title: "Invite link needed", help: "Ask whoever invited you for the full link.", auto: 0 },
+    cap: { title: "Too many tabs", help: "Close your other CS Party tabs, then rejoin.", auto: 0 },
+    "": { title: "Lost the party", help: "", auto: 8 },
+  };
+  let rejoinTimer = 0;
+  const lost = (why, kind = "") => {
     if (watch.gaveUp) return; watch.gaveUp = true;
     toast(""); $("loading").hidden = true;
-    overlay("Lost the party", why || "The connection to the game server stopped.", { rejoin: true });
+    const k = LOST[kind] || LOST[""];
+    let tries = 0; try { tries = +sessionStorage.getItem("csp_rj_n") || 0; } catch {}
+    const auto = tries < 5 ? k.auto : 0;
+    overlay(k.title, [why || "The connection to the game server stopped.", k.help].filter(Boolean).join(" "), { rejoin: true, spin: !!auto });
+    $("ov-rejoin").textContent = auto ? "Rejoin now" : "Rejoin";
+    $("ov-start").hidden = false;
+    if (auto) {
+      let left = auto; const note = $("ov-note"); note.hidden = false;
+      const tick = => {
+        note.textContent = `Rejoining in ${left} s…`;
+        if (left-- <= 0) { clearInterval(rejoinTimer); try { sessionStorage.setItem("csp_rj_n", String(tries + 1)); } catch {} leave(true); }
+      };
+      tick(); rejoinTimer = setInterval(tick, 1000);
+    }
   };
   // Minigame index (the plugin's MG_*) -> how-to card, shown over the loading screen while the map loads
   const HOWTO = {
@@ -230,10 +257,13 @@
     console.log(`[watch] state ${prev} -> ${st}`);
     // the engine draws its console full screen while it connects and loads; the loading screen covers it
     $("loading").hidden = !(st >= 1 && st <= 3) || watch.gaveUp;
+    // after a stall-retry the wait is for the server, not the next map: say so
+    $("loading-text").textContent = watch.retried > 0 && st < 4 ? "Reconnecting to the party… your seat is held." : "Loading the next map…";
     const hc = $("loading-howto"); hc.textContent = howto; hc.hidden = !howto;
     // the first join shows the "Joining the party" card over the loading screen, so the tip goes in the card then
     if (!$("loading").hidden) tipStart($($("overlay").hidden ? "loading-tip" : "ov-tip")); else if (tipEl === $("loading-tip") || tipEl === $("ov-tip")) tipStop();
     if (st === 4) howto = "";
+    if (st === 4) { try { sessionStorage.removeItem("csp_rj_n"); } catch {} }
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
@@ -245,14 +275,15 @@
       $("ov-text").textContent = st === 1 ? "Connecting to the server…" : st >= 2 ? "Loading the map…" : "Starting…";
       return;
     }
-    if (st === 0) lost(watch.reason || "Disconnected from the game server.");
+    if (st === 0) lost(watch.reason || "Disconnected from the game server.", /kick|ban/i.test(watch.reason) ? "" : "drop");
   };
   // Any message in, on any of the engine's sockets, counts as the server being there.
   const REFUSED = {
-    4001: "The party key was refused. Use the full invite link.",
-    4003: "The party is full right now. Try again in a minute.",
-    4029: "Too many players are already connected from your network. Close another CS Party tab and rejoin.",
+    4001: "The party key was refused.",
+    4003: "No free seats right now.",
+    4029: "Too many players are already connected from your network.",
   };
+  const REFUSED_KIND = { 4001: "key", 4003: "full", 4029: "cap" };
   const NativeWS = window.WebSocket;
   class WatchedWS extends NativeWS {
     constructor(...a) {
@@ -264,10 +295,10 @@
         console.log(`[watch] relay socket closed (${e.code} ${e.reason || ""})`);
         // the relay turns a refused connection into a close code, so the reason can be told apart
         // fatal while joining, or when it was the last socket; an extra socket refused mid-game isn't the party ending
-        if (REFUSED[e.code] && (!watch.joined || watch.sockets.size === 0)) lost(REFUSED[e.code]);
+        if (REFUSED[e.code] && (!watch.joined || watch.sockets.size === 0)) lost(REFUSED[e.code], REFUSED_KIND[e.code]);
         else if (e.code === 1006 && !watch.joined && performance.now() - watch.since < 3000) {
-          lost(keyQuery ? "The party key was refused, or the relay is full." : "The relay refused the connection. The link may need a party key.");
-        } else if (watch.sockets.size === 0 && watch.state !== 0) lost(e.code === 1001 ? "The party server is restarting. Rejoin in a few seconds." : "The connection to the party server dropped.");
+          lost(keyQuery ? "The party key was refused, or the relay is full." : "The relay refused the connection. The link may need a party key.", keyQuery ? "full" : "key");
+        } else if (watch.sockets.size === 0 && watch.state !== 0) e.code === 1001 ? lost("The party server is restarting.", "restart") : lost("The connection to the party server dropped.", "drop");
       });
     }
   }
@@ -282,7 +313,7 @@
     }   // a frozen main thread is the engine loading, not a stall
     if (watch.gaveUp) return;
     if (!watch.joined) {
-      if (watch.firstJoinDeadline && now > watch.firstJoinDeadline) lost("Couldn't join the game server. It may be down or full.");
+      if (watch.firstJoinDeadline && now > watch.firstJoinDeadline) lost("Couldn't join the game server. It may be down or full.", "full");
       return;
     }
     const quiet = (now - watch.lastRx) / 1000, inState = (now - watch.since) / 1000;
@@ -296,7 +327,7 @@
       toast("Reconnecting…");
       consoleCmd("retry");
     } else if (watch.retried >= 2 && (now - watch.retriedAt) / 1000 > 30 && (stalledInGame || stalledLoading)) {
-      lost("The game server stopped answering.");
+      lost("The game server stopped answering.", "drop");
     }
   }, 1000);
 
@@ -567,8 +598,13 @@
     if (leaving || !engine || watch.state < 1 || watch.gaveUp) return;
     e.preventDefault(); e.returnValue = "";
   });
-  const leave = => { leaving = true; location.reload(); };
-  $("ov-rejoin").addEventListener("click", leave);
+  const leave = (rejoin) => {
+    leaving = true; clearInterval(rejoinTimer);
+    try { rejoin === true ? sessionStorage.setItem("csp_rejoin", "1") : sessionStorage.removeItem("csp_rejoin"); } catch {}
+    location.reload();
+  };
+  $("ov-rejoin").addEventListener("click", => leave(true));
+  $("ov-start").addEventListener("click", => { try { sessionStorage.removeItem("csp_rj_n"); } catch {} leave(false); });
   // Leave takes two presses, so a stray A/Enter/Space in the menu can't end your party
   let leaveTimer = 0;
   const leaveBtn = $("pz-leave"), leaveText = leaveBtn.textContent;
@@ -577,7 +613,7 @@
     leaveBtn.textContent = on ? "Press again to leave" : leaveText;
     if (on) leaveTimer = setTimeout(() => leaveArm(false), 3000);
   }
-  leaveBtn.addEventListener("click", => { leaveBtn.dataset.armed ? leave() : leaveArm(true); });   // pagehide disconnects properly
+  leaveBtn.addEventListener("click", => { leaveBtn.dataset.armed ? leave(false) : leaveArm(true); });   // pagehide disconnects properly
   leaveBtn.addEventListener("blur", => leaveArm(false));
 
 
@@ -677,12 +713,12 @@
     $("go").disabled = true;
     musicStop(2500);
     try {
-      status("Checking game data…");
+      phase(1); status("Checking game data…");
       const zip = await gameData();
-      status("Unpacking…");
+      phase(2); status("Unpacking…");
       const files = await unzipInWorker(zip);
       bar(0.85);
-      status("Loading engine…");
+      phase(3); status("Loading engine…");
       const libs = {};
       await Promise.all(Object.entries(LIBS).map(async ([dest, src]) => {
         const r = await fetch(src + "?v=" + ENGINE_V); if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
@@ -742,11 +778,19 @@
         ...GFX_ARGS, ...TOUCH_ARGS, ...HUD_ARGS, "+exec", "csp_keys.cfg", "+name", name, ...(char >= 0 ? ["+setinfo", "_csp_char", String(char)] : []), "+connect", server, "gs"]);
     } catch (err) {
       console.error(err);
-      $("gate").hidden = false; hideOverlay(); musicPlay(false);
+      $("gate").hidden = false; hideOverlay(); musicPlay(false); phase(0);
       status(String(err.message || err), true);
       $("go").disabled = false;
     }
   });
+
+  // A reload that came from the lost-party card rejoins on its own (the saved name and character are already filled in).
+  try {
+    if (sessionStorage.getItem("csp_rejoin")) {
+      sessionStorage.removeItem("csp_rejoin");
+      status("Rejoining the party…"); $("form").requestSubmit();
+    }
+  } catch {}
 
   // ------------------------------------------------------------------ lobby hand-off (lobby/, #3989)
   // The lobby page sends everyone here with ?key= (that lobby's party key), ?name=, ?char= and ?lobby= (the
