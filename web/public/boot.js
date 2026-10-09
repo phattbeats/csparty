@@ -59,7 +59,7 @@
 
   // ------------------------------------------------------------------ game data (cached in the browser)
   const CACHE = "csp-gamedata-v1";
-  const GAMEDATA_V = "0.5.20";   // bump with every new gamedata.zip
+  const GAMEDATA_V = "0.5.28";   // bump with every new gamedata.zip
   async function gameData() {
     // v= changes the URL whenever the game data changes, so no cache in between can hand out an old copy
     const url = "gamedata.zip" + (keyQuery ? keyQuery + "&" : "?") + "v=" + GAMEDATA_V;
