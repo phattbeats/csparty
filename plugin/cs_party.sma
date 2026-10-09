@@ -214,7 +214,8 @@ new g_msgScoreInfo;
 #define REEL_WIN   30
 #define REEL_TIME  1.9     // seconds for the first reel; menu pick to result is 0.2 + 1.9 + 0.9 = 3.0 s, inside the old jump roll (bots 2.4-3.1 s, humans 2-4 s)
 #define REEL_STAG  0.3
-new g_diceEnt[3 * REEL_SLOTS], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2];
+#define REEL_WINDOW (3 * REEL_SLOTS)   // after the cards: per reel a smoked backing strip, the gold centre marker and the winner's glow
+new g_diceEnt[3 * REEL_SLOTS + 9], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelV[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2], Float:g_reelT[3];
 
 
 // cvars
@@ -500,6 +501,12 @@ spawn_board_entities()
 		entity_set_int(e, EV_INT_movetype, MOVETYPE_NOCLIP);
 		entity_set_int(e, EV_INT_rendermode, kRenderTransTexture);
 		entity_set_int(e, EV_INT_effects, EF_NODRAW);
+		if (k >= REEL_WINDOW) switch ((k - REEL_WINDOW) % 3)   // csp_case.mdl bodies: 1 strip, 2 marker, 3-7 glow by rarity
+		{
+			case 0: { entity_set_int(e, EV_INT_body, 1); entity_set_float(e, EV_FL_renderamt, 225.0); }
+			case 1: { entity_set_int(e, EV_INT_body, 2); entity_set_int(e, EV_INT_rendermode, kRenderNormal); }
+			case 2: { entity_set_int(e, EV_INT_body, 3); entity_set_int(e, EV_INT_rendermode, kRenderTransAdd); }
+		}
 		g_diceEnt[k] = e;
 	}
 	map_overlay_spawn();
@@ -2509,7 +2516,7 @@ new const RAR_SKIN[5][4][] = {
 	{ "AWP | Dragon Lore", "AK-47 | Fire Serpent", "M4A4 | Howl", "Desert Eagle | Blaze" },
 	{ "Karambit | Fade", "Butterfly Knife | Doppler", "M9 Bayonet | Crimson Web", "Bayonet | Tiger Tooth" }
 };
-new g_reelSkin[3];
+new g_reelSkin[3], g_reelNm[3][48];
 
 // 4 (gold) is the character's top value; the rest spread up from 0 (blue) by rank among the die's distinct
 // values, so a die's low face always reads as a low pull (SEAL's 3 is Mil-Spec, not Covert)
@@ -2537,6 +2544,27 @@ reel_filler()
 
 Float:reel_time(r) { return REEL_TIME + float(r) * REEL_STAG; }
 
+// csp_case.mdl card skins: 1-16 the named skins (rarity * 4 + RAR_SKIN index), 17 the gold "Rare Special Item" card a
+// knife hides behind until it lands, 18-21 the knives themselves
+card_skin(rar, v, bool:shown) { return rar < 4 ? 1 + rar * 4 + v : (shown ? 18 + v : 17); }
+win_ent(r, part) { return g_diceEnt[REEL_WINDOW + r * 3 + part]; }   // 0 strip, 1 marker, 2 glow
+
+// Case text sits clear of the reel: the title above it, the pulls below the lowest reel (the reel itself hangs
+// a little under the middle of the frame, see reel_anchor)
+case_text(ch, r, g, b, bool:below, Float:hold, const msg[])
+{
+	new w[256];
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		new bool:touch = is_touch(id);
+		wrap_text(msg, w, charsmax(w), touch ? WRAP_TOUCH : WRAP_PC);
+		new Float:y = below ? (touch ? 0.78 : 0.75) - (g_diceN > 1 ? 0.05 : 0.0) : (touch ? 0.22 : 0.26) - 0.045 * float(g_diceN - 1);
+		set_hudmessage(r, g, b, -1.0, y, 0, 0.0, hold, 0.05, 0.3, ch);
+		show_hudmessage(id, "%s", w);
+	}
+}
+
 public flow_roll()
 {
 	new s = g_cur, id = g_seatPlayer[s], sk = g_seatSkin[s];
@@ -2557,6 +2585,7 @@ public flow_roll()
 		if (l < 0.01) { F[0] = 1.0; F[1] = 0.0; } else { F[0] = g_camFwd[0] / l; F[1] = g_camFwd[1] / l; }
 	}
 	g_reelS[0] = -F[1]; g_reelS[1] = F[0];                   // screen-right for the dice camera shot, which sits out front looking back
+	g_reelT[0] = F[0]; g_reelT[1] = F[1]; g_reelT[2] = 0.0;  // toward that camera (reel_anchor squares both up once the camera is placed)
 	new Float:face[3], Float:fwd[3]; fwd[0] = F[0]; fwd[1] = F[1]; vector_to_angle(fwd, face); face[0] = 0.0; face[2] = 0.0;
 	if (alive) { if (g_navThawed[id]) nav_end(id); freeze(id); }
 	for (new r = 0; r < 3; r++)
@@ -2566,7 +2595,7 @@ public flow_roll()
 		{
 			g_reelDone[r] = false;
 			g_reelC[r] = po; g_reelC[r][2] = po[2] + DICE_LIFT + (float(g_diceN - 1) / 2.0 - float(r)) * 44.0;
-			for (new i = 0; i < REEL_LEN; i++) g_reelR[r][i] = reel_filler();
+			for (new i = 0; i < REEL_LEN; i++) { g_reelR[r][i] = reel_filler(); g_reelV[r][i] = random(4); }
 			g_diceVal[r] = SKIN_DICE[sk][random(6)];
 			if (r == 0 && g_rigged[s] > 0) { g_diceVal[r] = g_rigged[s]; g_rigged[s] = 0; }
 			g_reelR[r][REEL_WIN] = rarity_of(sk, g_diceVal[r]);
@@ -2574,7 +2603,9 @@ public flow_roll()
 			for (new q = 0; q < r; q++) if (g_reelR[q][REEL_WIN] == g_reelR[r][REEL_WIN] && g_reelSkin[q] == g_reelSkin[r]) { g_reelSkin[r] = (g_reelSkin[r] + 1) % 4; q = -1; }
 			// the near miss: often a knife sits right after the winner and creeps up as the reel stops. Display only, odds unchanged
 			if (g_reelR[r][REEL_WIN] < 4 && random(100) < 40) g_reelR[r][REEL_WIN + 1] = 4;
+			g_reelV[r][REEL_WIN] = g_reelSkin[r];   // the card that lands is the item named on the reveal
 		}
+		for (new p = 0; p < 3; p++) if (is_valid_ent(win_ent(r, p))) entity_set_int(win_ent(r, p), EV_INT_effects, EF_NODRAW);   // up once the camera has cut
 		for (new k = 0; k < REEL_SLOTS; k++)
 		{
 			new e = g_diceEnt[r * REEL_SLOTS + k];
@@ -2589,10 +2620,12 @@ public flow_roll()
 	}
 	g_diceOpen = true; g_reelAnchor = false;
 	g_camSnap = true; cam_shot(CAM_DICE);   // cut, don't ease: the eased path flew the camera through the cards
-	table_off();                            // the table sits over the reel on phones; task_hud brings it back once the reels land
+	table_off();                            // the table sits over the reel on phones; task_hud brings it back after the reveal
 	g_reelStart = get_gametime();
 	client_cmd(0, "play ^"csp/case_open.wav^"");
-	if (g_diceN > 1) subline("%s opens %d cases", g_seatName[s], g_diceN); else subline("%s opens a case", g_seatName[s]);
+	new t[96]; if (g_diceN > 1) formatex(t, charsmax(t), "%s opens %d cases", g_seatName[s], g_diceN); else formatex(t, charsmax(t), "%s opens a case", g_seatName[s]);
+	case_text(CH_BANNER, 235, 232, 222, false, spd(2.6), t);
+	for (new r = 0; r < 3; r++) g_reelNm[r][0] = 0;
 	remove_task(TASK_DICE);
 	set_task(0.04, "task_reel", TASK_DICE, _, _, "b");
 }
@@ -2620,29 +2653,40 @@ public task_reel()
 	}
 	if (all)
 	{
-		remove_task(TASK_DICE);
-		g_diceOpen = false;
+		remove_task(TASK_DICE);   // g_diceOpen stays up until flow_dice_done: on phones the table came back over the reveal
 		set_task(spd(0.9), "flow_dice_done", TASK_FLOW);
 	}
 }
 
 // Hang the reels in front of the lens once the camera has cut to the case shot. Placed off the pawn, a cramped
 // space (dust2's tunnels) left the camera too close, and the reel sat above the frame and then filled it.
+// They face the lens square on, pitch included (a low camera looking up turned them into trapezoids), and
+// 2 or 3 reels stack tight along the camera's own up axis (the strips overlap a little), still in front of the pawn.
 reel_anchor()
 {
 	new Float:v[3]; xs_vec_sub_simple(g_camLook, g_camPos, v);
 	new Float:dist = vector_length(v), Float:hl = floatsqroot(v[0] * v[0] + v[1] * v[1]);
 	if (dist < 1.0 || hl < 0.01) return;   // no camera yet: keep the spot flow_roll picked
-	new Float:D = dist >= 150.0 ? 150.0 : floatmax(dist * 0.9, 80.0), Float:h[2];
-	h[0] = v[0] / hl; h[1] = v[1] / hl;
-	g_reelS[0] = h[1]; g_reelS[1] = -h[0];
-	new Float:back[3], Float:face[3]; back[0] = -h[0]; back[1] = -h[1]; back[2] = 0.0;
-	vector_to_angle(back, face); face[0] = 0.0; face[2] = 0.0;
+	new Float:D = dist >= 150.0 ? 150.0 : floatmax(dist * 0.9, 80.0), Float:f[3], Float:u[3];
+	for (new k = 0; k < 3; k++) { f[k] = v[k] / dist; g_reelT[k] = -f[k]; }
+	g_reelS[0] = v[1] / hl; g_reelS[1] = -v[0] / hl;
+	u[0] = g_reelS[1] * f[2]; u[1] = -g_reelS[0] * f[2]; u[2] = g_reelS[0] * f[1] - g_reelS[1] * f[0];   // up = right x forward
+	new Float:face[3]; vector_to_angle(g_reelT, face); face[2] = 0.0;
+	new Float:sc = floatmax(D / 150.0, 0.88);   // squeezed into a tight spot: tighten the stack with the shorter throw (cards are 27 tall)
 	for (new r = 0; r < g_diceN; r++)
 	{
-		for (new k = 0; k < 3; k++) g_reelC[r][k] = g_camPos[k] + v[k] / dist * D;
-		g_reelC[r][2] += ((float(g_diceN - 1) / 2.0 - float(r)) * 40.0 - 30.0) * D / 150.0;   // a little low: the subline (skin name) sits just above centre
+		new Float:off = ((float(g_diceN - 1) / 2.0 - float(r)) * 31.0 - (g_diceN == 1 ? 26.0 : (g_diceN == 2 ? 10.0 : 0.0))) * sc;   // a little low: the title sits above, the pull's name below
+		for (new k = 0; k < 3; k++) g_reelC[r][k] = g_camPos[k] + f[k] * D + u[k] * off;
 		for (new k = 0; k < REEL_SLOTS; k++) { new e = g_diceEnt[r * REEL_SLOTS + k]; if (is_valid_ent(e)) entity_set_vector(e, EV_VEC_angles, face); }
+		// the case window: smoked strip just behind the cards, the gold marker just in front
+		for (new p = 0; p < 2; p++)
+		{
+			new e = win_ent(r, p); if (!is_valid_ent(e)) continue;
+			new Float:o[3], Float:d = p == 0 ? -2.0 : 2.5;
+			for (new k = 0; k < 3; k++) o[k] = g_reelC[r][k] + g_reelT[k] * d;
+			entity_set_origin(e, o); entity_set_vector(e, EV_VEC_angles, face); entity_set_int(e, EV_INT_effects, 0);
+		}
+		if (is_valid_ent(win_ent(r, 2))) entity_set_vector(win_ent(r, 2), EV_VEC_angles, face);
 	}
 }
 
@@ -2657,16 +2701,17 @@ reel_place(r, Float:x, Float:xv, ic)
 		v[0] = -g_reelS[0] * xv; v[1] = -g_reelS[1] * xv; v[2] = 0.0;
 		entity_set_origin(e, o);
 		entity_set_vector(e, EV_VEC_velocity, v);
-		new Float:a = floatabs(off);
-		entity_set_float(e, EV_FL_renderamt, a < 100.0 ? 255.0 : (a > 152.0 ? 0.0 : 255.0 * (152.0 - a) / 52.0));
-		entity_set_int(e, EV_INT_skin, (i >= 0 && i < REEL_LEN) ? 1 + g_reelR[r][i] : 1);
+		new Float:a = floatabs(off), Float:amt = a < 96.0 ? 255.0 : (a > 134.0 ? 0.0 : 255.0 * (134.0 - a) / 38.0);   // gone by the strip's ends (276 wide)
+		entity_set_int(e, EV_INT_rendermode, amt >= 255.0 ? kRenderNormal : kRenderTransTexture);   // solid cards, see-through only as they leave the window
+		entity_set_float(e, EV_FL_renderamt, amt);
+		entity_set_int(e, EV_INT_skin, (i >= 0 && i < REEL_LEN) ? card_skin(g_reelR[r][i], g_reelV[r][i], false) : 1);
 	}
 }
 
 reel_light(r, rar, rad, life)
 {
 	new Float:o[3]; o = g_reelC[r];
-	o[0] += g_reelS[1] * 40.0; o[1] -= g_reelS[0] * 40.0;       // toward the camera
+	for (new k = 0; k < 3; k++) o[k] += g_reelT[k] * 40.0;   // toward the camera
 	message_begin(MSG_BROADCAST, SVC_TEMPENTITY);
 	write_byte(TE_ELIGHT);
 	write_short(4070 - r);
@@ -2705,10 +2750,21 @@ reel_land(r)
 		new o = g_diceEnt[r * REEL_SLOTS + k];
 		if (!is_valid_ent(o)) continue;
 		entity_set_vector(o, EV_VEC_velocity, Float:{ 0.0, 0.0, 0.0 });
-		if (o != e) entity_set_float(o, EV_FL_renderamt, floatmin(entity_get_float(o, EV_FL_renderamt), 60.0));   // losers fade back, the winner pops
+		if (o != e) { entity_set_int(o, EV_INT_rendermode, kRenderTransTexture); entity_set_float(o, EV_FL_renderamt, floatmin(entity_get_float(o, EV_FL_renderamt), 100.0)); }   // losers sink into the strip, still readable
 	}
 	new Float:c[3]; c = g_reelC[r];
-	if (is_valid_ent(e)) { entity_set_origin(e, c); entity_set_float(e, EV_FL_renderamt, 255.0); }
+	if (is_valid_ent(e))   // the winner lifts out of the strip toward the lens and its rarity glow comes up behind it
+	{
+		new Float:p[3]; for (new k = 0; k < 3; k++) p[k] = c[k] + g_reelT[k] * 24.0;
+		entity_set_origin(e, p); entity_set_int(e, EV_INT_rendermode, kRenderNormal); entity_set_float(e, EV_FL_renderamt, 255.0);
+	}
+	new gl = win_ent(r, 2);
+	if (is_valid_ent(gl))
+	{
+		new Float:p[3]; for (new k = 0; k < 3; k++) p[k] = c[k] + g_reelT[k];   // over the strip and the dimmed losers, under the lifted winner
+		entity_set_origin(gl, p); entity_set_int(gl, EV_INT_body, 3 + rar); entity_set_float(gl, EV_FL_renderamt, rar >= 4 ? 255.0 : 190.0 + 15.0 * float(rar));
+		entity_set_int(gl, EV_INT_effects, 0);
+	}
 	reel_light(r, rar, 100 + 70 * rar, 10 + 4 * rar);
 	new sparks = rar >= 4 ? 4 : (rar >= 1 ? 1 : 0);
 	for (new k = 0; k < sparks; k++)
@@ -2721,31 +2777,47 @@ reel_land(r)
 	if (rar >= 4)
 	{
 		client_cmd(0, "play ^"csp/knife_sting.wav^"");
-		reel_flash(rar, 210, 1.2);
+		reel_flash(rar, 90, 0.35);   // a hit, not a wash: the reveal has to stay readable
 		reel_shake(12.0, 1.0);
-		reel_burst(c, rar, 220, 25);
-		set_task(0.35, "task_knife_pulse", TASK_DICE + 1 + r);
+		reel_burst(c, rar, 150, 8);   // a gold kick on the street, gone before the result banner
+		set_task(0.22, "task_knife_pulse", TASK_DICE + 1 + r);   // the gold card turns into the knife
 	}
 	else if (rar >= 2)
 	{
 		client_cmd(0, "play ^"csp/case_rare.wav^"");
-		reel_flash(rar, rar >= 3 ? 120 : 80, 0.5);
-		if (rar >= 3) { reel_shake(4.0, 0.5); reel_burst(c, rar, 120, 10); }
+		reel_flash(rar, rar >= 3 ? 60 : 40, 0.3);
+		if (rar >= 3) { reel_shake(4.0, 0.5); reel_burst(c, rar, 110, 5); }
 	}
 	else client_cmd(0, "play ^"csp/case_land.wav^"");
-	new nm[64]; formatex(nm, charsmax(nm), rar >= 4 ? "* %s *" : "%s", RAR_SKIN[rar][g_reelSkin[r]]);
-	if (g_diceN > 1) format(nm, charsmax(nm), "Case %d: %s", r + 1, nm);
-	new tc[3]; for (new k = 0; k < 3; k++) tc[k] = RAR_RGB[rar][k] + (255 - RAR_RGB[rar][k]) * 2 / 5;   // lifted toward white: Mil-Spec blue was unreadable on dark maps
-	hud_all(CH_SUB, tc[0], tc[1], tc[2], false, spd(2.0), 0.0, 0.3, nm);
+	reel_name(r, rar, rar >= 4 ? "* Rare Special Item *" : RAR_SKIN[rar][g_reelSkin[r]]);
 	dbg("%s case %d: %d (%s, %s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar], RAR_SKIN[rar][g_reelSkin[r]]);
 }
 
-// second gold hit after a knife: the flash comes back and the sparks fly again
+// the pulls so far, one line per case, under the reels; tinted by the latest (lifted toward white: Mil-Spec blue
+// was unreadable on dark maps)
+reel_name(r, rar, const nm[])
+{
+	copy(g_reelNm[r], charsmax(g_reelNm[]), nm);
+	new msg[192]; msg[0] = 0;
+	for (new k = 0; k < g_diceN; k++)
+	{
+		if (!g_reelDone[k] || !g_reelNm[k][0]) continue;
+		if (g_diceN > 1) format(msg, charsmax(msg), "%s%s%d. %s", msg, msg[0] ? "^n" : "", k + 1, g_reelNm[k]);   // short: a wrapped knife name ran off the bottom
+		else copy(msg, charsmax(msg), g_reelNm[k]);
+	}
+	new tc[3]; for (new k = 0; k < 3; k++) tc[k] = RAR_RGB[rar][k] + (255 - RAR_RGB[rar][k]) * 2 / 5;
+	case_text(CH_SUB, tc[0], tc[1], tc[2], true, spd(2.0), msg);
+}
+
+// second gold hit after a knife: the gold card turns into the knife, the flash comes back and the sparks fly again
 public task_knife_pulse(t)
 {
 	new r = t - TASK_DICE - 1;
 	if (r < 0 || r > 2) return;
-	reel_flash(4, 120, 0.6);
+	new e = g_diceEnt[r * REEL_SLOTS + REEL_WIN % REEL_SLOTS];
+	if (is_valid_ent(e)) entity_set_int(e, EV_INT_skin, card_skin(4, g_reelSkin[r], true));
+	new nm[48]; formatex(nm, charsmax(nm), "* %s *", RAR_SKIN[4][g_reelSkin[r]]); reel_name(r, 4, nm);
+	reel_flash(4, 70, 0.3);
 	new Float:c[3]; c = g_reelC[r];
 	for (new k = 0; k < 6; k++)
 	{
@@ -2784,6 +2856,7 @@ public flow_dice_done()
 {
 	new s = g_cur, id = g_seatPlayer[s];
 	remove_task(TASK_DICE);
+	g_diceOpen = false;
 	for (new k = 0; k < sizeof g_diceEnt; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
 	if (is_user_alive(id)) { place_pawn(s); freeze(id); }
 	new r = 0, best = 0; for (new k = 0; k < g_diceN; k++) { r += g_diceVal[k]; best = max(best, g_reelR[k][REEL_WIN]); }
