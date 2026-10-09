@@ -2144,11 +2144,12 @@ public task_hud()
 	for (new s = 0; s < SEATS; s++)
 		len += formatex(buf[len], charsmax(buf) - len, "%s%-14.14s $%5d  *%d  W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? "  " : "", mapTags ? CHAR_SHORT[g_seatSkin[s]] : "");
 
-	// Compact version for touch screens: no bonus-star block, it has to fit the top-centre column
+	// Compact, quiet version for touch screens: it sits over the middle of a small screen, so one short header,
+	// one short row per seat (money and stars; minigame wins are on the desktop table and the end screen)
 	new small[320], sl;
-	sl = formatex(small, charsmax(small), "CS PARTY  turn %d/%d%s  |  hostages: %s^n", g_turn, g_maxTurns, overtime() ? " OT" : "", g_nodeArea[g_hostage]);
+	sl = formatex(small, charsmax(small), "Turn %d/%d%s - hostages: %s^n", g_turn, g_maxTurns, overtime() ? " OT" : "", g_nodeArea[g_hostage]);
 	for (new s = 0; s < SEATS; s++)
-		sl += formatex(small[sl], charsmax(small) - sl, "%s%-12.12s $%5d *%d W%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], g_mgWins[s], mapTags ? " " : "", mapTags ? CHAR_SHORT[g_seatSkin[s]] : "");
+		sl += formatex(small[sl], charsmax(small) - sl, "%s%-10.10s $%d *%d%s%s^n", (s == g_cur && g_state == ST_BOARD) ? "+ " : "  ", g_seatName[s], g_money[s], g_stars[s], mapTags ? " " : "", mapTags ? CHAR_SHORT[g_seatSkin[s]] : "");
 
 	// Personal part: your own gear and items, under the table.
 	for (new id = 1; id <= MaxClients; id++)
@@ -2159,7 +2160,8 @@ public task_hud()
 		// Dead or spectating, the spectator bar covers the top fifth of the screen: start under it, and leave
 		// out the gear block (nothing to use it on) so the table still ends above the bottom bar.
 		// held for minutes, re-sent when the text changes (see HUD_HOLD)
-		if (touch) set_hudmessage(242, 163, 58, 0.37, spec ? 0.22 : 0.15, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
+		// phones: a dimmer tan (HUD text draws additively, so darker also reads as see-through) and a little higher
+		if (touch) set_hudmessage(176, 150, 108, 0.37, spec ? 0.22 : 0.12, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
 		else set_hudmessage(242, 163, 58, 0.70, spec ? 0.22 : 0.12, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
 		new mine = seat_of(id), mineTxt[200] = "";
 		if (mine >= 0 && !spec)
@@ -2175,8 +2177,10 @@ public task_hud()
 				il += formatex(it[il], charsmax(it) - il, "%s%s", il ? ", " : "", ITEM_NAME[g_items[mine][k]]);
 				if (n > 1) il += formatex(it[il], charsmax(it) - il, " x%d", n);
 			}
-			new raw[200]; formatex(raw, charsmax(raw), "Gear: %s^nItems: %s", gs[0] ? gs : "none", il ? it : "none");
-			mineTxt[0] = '^n'; wrap_text(raw, mineTxt[1], charsmax(mineTxt) - 1, touch ? 40 : WRAP_TABLE);
+			new raw[200];
+			if (!touch) formatex(raw, charsmax(raw), "Gear: %s^nItems: %s", gs[0] ? gs : "none", il ? it : "none");
+			else if (gs[0] || il) formatex(raw, charsmax(raw), "%s%s%s", gs, gs[0] && il ? " | " : "", it);   // phones: only when there's something, on one line
+			if (raw[0]) { mineTxt[0] = '^n'; wrap_text(raw, mineTxt[1], charsmax(mineTxt) - 1, touch ? 40 : WRAP_TABLE); }
 		}
 		// (no "touch ? small : buf": Pawn's ?: between arrays of different sizes isn't safe)
 		new out[640];
@@ -2262,7 +2266,8 @@ hud_race()
 	{
 		if (!is_user_connected(id) || is_user_bot(id)) continue;
 		new bool:spec = hud_spec(id);
-		set_hudmessage(242, 163, 58, is_touch(id) ? 0.50 : 0.70, spec ? 0.22 : (is_touch(id) ? 0.15 : 0.12), 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
+		new bool:t = is_touch(id);   // phones get the same quiet tan as the board table
+		set_hudmessage(t ? 176 : 242, t ? 150 : 163, t ? 108 : 58, t ? 0.50 : 0.70, spec ? 0.22 : (t ? 0.15 : 0.12), 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TABLE);
 		if (hud_changed(id, buf, _:spec)) show_hudmessage(id, "%s", buf);
 	}
 }
