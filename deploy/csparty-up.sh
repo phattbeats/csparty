@@ -1,5 +1,5 @@
 #!/bin/bash
-# CS Party on game-host (#3864). Recreates both containers from the built images.
+# CS Party on game-host (ISSUE). Recreates both containers from the built images.
 # Unraid has no docker compose, so this stands in for deploy/docker-compose.yml with our ports:
 # HLDS on UDP 27016 (27015 is nvmp-coop), relay on TCP 8095 (8080 is sabnzbd). SWAG proxies
 # csparty.example.com -> HOST_IP:8095.
@@ -8,7 +8,7 @@
 #   ./csparty-up.sh relay      recreate only the relay
 set -euo pipefail
 D=/srv/cs-party
-. "$D/.env"   # PARTY_KEY, RCON_PASSWORD, LOBBY_SECRET (same value as the lobby Worker's secret, #3989)
+. "$D/.env"   # PARTY_KEY, RCON_PASSWORD, LOBBY_SECRET (same value as the lobby Worker's secret, ISSUE)
 
 up_server() {
   docker rm -f cs-party-server >/dev/null 2>&1 || true
@@ -16,7 +16,7 @@ up_server() {
     -e MAP=de_dust2 -e PORT=27016 -e SV_LAN=1 -e MAXPLAYERS=10 -e RCON_PASSWORD="$RCON_PASSWORD" \
     --health-cmd 'bash -c "exec 3<>/dev/udp/127.0.0.1/27016; printf \"\xff\xff\xff\xffTSource Engine Query\x00\" >&3; timeout 3 head -c 5 <&3 | grep -qa ."' \
     --health-interval 30s --health-timeout 8s --health-start-period 60s --health-retries 3 \
-    cs-party-server:0.5.26-vq
+    cs-party-server:0.5.29-vq
 }
 
 # MAX_PER_IP: the relay's default of 6 refused the 7th player from one household (everyone shares the public IP).
@@ -30,7 +30,7 @@ up_relay() {
     -v "$D/mappacks:/app/public/mappacks:ro" \
     --health-cmd "node -e \"fetch('http://127.0.0.1:8095/healthz').then((r) => process.exit(r.ok ? 0 : 1), => process.exit(1))\"" \
     --health-interval 30s --health-timeout 5s --health-retries 3 \
-    cs-party-relay:0.4.26
+    cs-party-relay:0.4.29
 }
 
 case "${1:-all}" in

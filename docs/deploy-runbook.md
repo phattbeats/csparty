@@ -400,3 +400,19 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
 - Worker deploy needs a Cloudflare token with Workers Scripts + Durable Objects edit (agents hold DNS-only):
   `cd lobby && npm i && npx wrangler secret put LOBBY_SECRET` (value from appdata `.env`) `&& npm run deploy`.
   `POOL` in `wrangler.toml` points at https://csparty.example.com.
+
+## #3985: case opening replaces the dice roll (server 0.5.29-vq + relay 0.4.29 + gamedata 0.5.28, 2026-10-09 ~02:05 UTC)
+- "Open a case" on the turn menu (no jumping) runs a CS:GO-style reel: 20 named skin cards plus the gold "Rare Special
+  Item" card that turns into the knife on landing, a smoked case window with a gold marker, rarity glow, 2-3 stacked
+  reels for Knife Out / Bhop Script. Odds are still each character's die (top face = knife). Model + art:
+  `tools/build_case.py` (studiomdl; see the docstring), sounds: `tools/build_case_sounds.py`.
+- Phone score table is compact and dim (header, money and stars per seat, gear line only when set); the table and
+  any tip stay hidden from the case opening until the result banner.
+- 0.5.28-vq = 0.5.27-vq + `patch0528-ISSUE/hlds/` (cs_party.amxx, models/csp_case.mdl, sound/csp/*.wav, motd.txt);
+  0.5.29-vq = 0.5.28-vq + the tip fix (`patch0529-ISSUE/`). Relay 0.4.29 = 0.4.28 + boot.js (`GAMEDATA_V` 0.5.28)
+  and index.html (`boot.js?v=0.4.29`) (`patch-relay0429-ISSUE/`). gamedata.zip = the live zip + csp_case.mdl and the
+  five sounds (`gamedata.zip.0528`, written with `cat >`; backup `gamedata.zip.pre-0528`).
+- Verified on the local harness (desktop + phone, headless swiftshader) and on live with a GPU phone client
+  (`appdata/cs-party/spot3985/spot.js`: skips the first-visit primer, opens one case, screenshots).
+- Gate each time: rcon 0 humans, peers 0, expected live tags. Rollback: containers `cs-party-server-0.5.27-vqold`,
+  `cs-party-server-0.5.28-vqold`, `cs-party-relay-0.4.28old`; `csparty-up.sh.pre-0528-ISSUE`, `.pre-0529-ISSUE`.
