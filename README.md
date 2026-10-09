@@ -135,7 +135,8 @@ browser tab ──https──> relay (static files + /relay WebSocket) ──udp
 tools/package_server.sh <your working server dir>     # -> deploy/cs-party-server-overlay.tar.gz
 web/build_web.sh                                      # -> web/public
 python3 web/pack_gamedata.py <CS 1.6 dir> deploy/gamedata.zip
-cd deploy && PARTY_KEY=... RCON_PASSWORD=... docker compose up -d --build
+cp .env.example deploy/.env  # then edit the values
+cd deploy && docker compose up -d --build
 ```
 
 - `deploy/Dockerfile.server`: Ubuntu 24.04 (the overlay binaries need glibc 2.38+), stock HLDS from SteamCMD, then the overlay: ReHLDS, ReGameDLL_CS, Metamod-R, AMX Mod X + ReAPI, the plugin, boards, minigame maps. No Valve files in the overlay.

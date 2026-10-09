@@ -5,3 +5,4 @@ maps/*.wa_
 __pycache__/
 build/racemaps/
 web/public/mappacks/
+.env
