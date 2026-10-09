@@ -2257,7 +2257,7 @@ tips_tick(bool:tutBusy)
 		if (g_tipUp[id])
 		{
 			if (tutBusy) g_tipUp[id] = false;   // the how-to card took the channel
-			else if (now >= g_tipOff[id] || g_state != ST_BOARD) tip_blank(id);
+			else if (now >= g_tipOff[id] || g_state != ST_BOARD || g_diceOpen) tip_blank(id);   // a case opening owns the bottom of a phone screen
 			continue;
 		}
 		if (tutBusy || g_state != ST_BOARD || now - g_tipAt[id] < TIP_GAP) continue;
@@ -2785,6 +2785,7 @@ public flow_roll()
 	g_diceOpen = true; g_reelAnchor = false;
 	g_camSnap = true; cam_shot(CAM_DICE);   // cut, don't ease: the eased path flew the camera through the cards
 	table_off();                            // the table sits over the reel on phones; task_hud brings it back after the reveal
+	for (new id = 1; id <= MaxClients; id++) if (g_tipUp[id]) tip_blank(id);   // on phones a tip sat right where the pull's name lands
 	g_reelStart = get_gametime();
 	client_cmd(0, "play ^"csp/case_open.wav^"");
 	new t[96]; if (g_diceN > 1) formatex(t, charsmax(t), "%s opens %d cases", g_seatName[s], g_diceN); else formatex(t, charsmax(t), "%s opens a case", g_seatName[s]);
