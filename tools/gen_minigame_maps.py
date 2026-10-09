@@ -5,8 +5,9 @@
   csp_bhop  caution-striped blocks over lava, gaps grow, checkpoints, finish platform
   csp_climb ascending course over a pit: step jumps, a ladder wall, narrow beams, big steps, checkpoints
   csp_maze  a seeded 12x12 maze between a start lobby and a finish room, walls too tall to jump
+  csp_surf_<theme>  surf pack: dust, aztec, snow, night, storm, space (see SURF_PACK)
 
-Textures come only from cstrike.wad (every CS client has it); tool textures (sky, trigger)
+Textures come only from stock CS WADs (every CS client has them); tool textures (sky, trigger)
 are embedded from sdhlt.wad. Also writes <map>.ini with start/finish/checkpoint boxes for the plugin.
 
 usage: gen_minigame_maps.py <sdhlt_tools_dir> <cstrike_dir> <outdir> [map ...]   (default: all)
@@ -62,11 +63,12 @@ def ramp(x0, x1, inner_y, outer_y, z_bot0, z_top0, drop, tex):
     return Brush(v, f, tex)
 
 class Map:
-    def __init__(self, name): self.name, self.world, self.ents, self.rad = name, [], [], []   # rad: extra sdHLRAD args
+    def __init__(self, name, sky="desert", wads=()):   # rad: extra sdHLRAD args; wads: stock WADs beyond cstrike.wad
+        self.name, self.world, self.ents, self.rad, self.sky, self.wads = name, [], [], [], sky, list(wads)
     def solid(self, b): self.world.append(b)
     def ent(self, cls, brushes=None, **kv): self.ents.append((cls, kv, brushes or []))
     def text(self, wads):
-        out = ['{', '"classname" "worldspawn"', '"mapversion" "220"', f'"wad" "{";".join(wads)}"', '"skyname" "desert"',
+        out = ['{', '"classname" "worldspawn"', '"mapversion" "220"', f'"wad" "{";".join(wads)}"', f'"skyname" "{self.sky}"',
                '"message" "CS Party minigame (original map, generated)"']
         out += [b.text() for b in self.world] + ['}']
         for cls, kv, brushes in self.ents:
@@ -122,6 +124,110 @@ def build_surf():
     zones = {"start": ((-2500, -260, 672), (-2150, 260, 900)), "finish": ((1950, -300, -968), (2500, 300, -700)),
              "checkpoints": [((-340, -260, -96), (-80, 260, 100))]}
     return m, zones
+
+# ---- surf pack (#3980): themed variants built from one stage list -----------------------------------
+# Every course runs along +x (race_place lines racers up facing +x; "furthest at the time limit" is the
+# largest x). A stage is one ramp run: "v" = two ramps with a gap between (csp_surf's shape), "l" / "r" = one
+# ramp on the left (+y) / right (-y) side. After each stage a landing platform, which is also the ledge you
+# drop off into the next stage. Fall anywhere = back to the start of the stage you fell from.
+SURF_THEMES = {
+    #  name     sky        extra wads         ramp               floor              trim (edges, finish)  light colour
+    "dust":   ("desert",   ["cs_dust.wad"],   "csSandWall2",     "SandRoad",        "SandTrim",        "255 226 180"),
+    "aztec":  ("grnplsnt", ["de_aztec.wad"],  "-0AzMoss",        "AzGrnd",          "AzTrim",          "230 255 220"),
+    "snow":   ("snow",     ["cs_office.wad"], "snow",            "snow_rockcliff4", "CSTRIKE_ME7CAUT", "220 235 255"),
+    "night":  ("night",    [],                "CSTRIKE_WR4CCPN", "CSTRIKE_FT4APHT", "CSTRIKE_ME7CAUT", "190 200 255"),
+    "storm":  ("de_storm", ["de_storm.wad"],  "WDPLANKS256D",    "DRKCRETE",        "MATT_STNWALL",    "210 220 230"),
+    "space":  ("space",    [],                "CSTRIKE_ME4RADR", "CSTRIKE_ME1GRAT", "CSTRIKE_ME7CAUT", "200 220 255"),
+}
+
+def build_surf_course(name, theme, stages, title, sun=(-55, 135, 240)):
+    """stages: list of (kind, length, drop, centre_y[, rise, width]). rise/width default 300/260 (49 deg, like
+    csp_surf); a face is only surfable (not walkable) above ~45.6 deg, so keep rise/width > 1.03."""
+    sky, wads, RAMP, FLOOR, TRIM, lcol = SURF_THEMES[theme]
+    m = Map(name, sky=sky, wads=wads)
+    GAP, PLAT, START, FIN = 48, 288, 400, 1000          # the finish pad is long: you leave the last ramp fast
+    total = START + sum(st[1] + 16 + PLAT for st in stages[:-1]) + stages[-1][1] + 16 + FIN
+    x = -total // 2                                     # centre the course on x = 0
+    def span(st):                                       # y extent of a stage's ramps
+        kind, c, w = st[0], st[3], (st[5] if len(st) > 5 else 260)
+        return {"v": (c - GAP - w, c + GAP + w), "l": (c, c + w), "r": (c - w, c)}[kind]
+    def ramps(kind, x0, x1, c, zt, rise, w, drop):
+        if kind in ("v", "l"):
+            o = GAP if kind == "v" else 0
+            m.solid(ramp(x0, x1, c + o, c + o + w, zt - rise, zt, drop, RAMP))
+        if kind in ("v", "r"):
+            o = GAP if kind == "v" else 0
+            m.solid(ramp(x0, x1, c - o, c - o - w, zt - rise, zt, drop, RAMP))
+    zone_cp, lights, lo_y, hi_y, route = [], [], 1e9, -1e9, []   # route: per stage, for scripted test runs
+    # start ledge
+    y0, y1 = span(stages[0]); y0, y1 = min(y0, -260), max(y1, 260)
+    z = 3200; zt = z - 64
+    m.solid(box((x, y0, z - 32), (x + START, y1, z), FLOOR, TRIM))
+    c0 = stages[0][3]
+    spawns(m, x + 120, c0 - 50, z + 40)
+    zone_start = ((x, y0, z), (x + START, y1, z + 228))
+    m.ent("info_teleport_destination", targetname="stage1", origin=f"{x + 120} {c0} {z + 40}", angles="0 0 0")
+    lights.append((x + START // 2, c0, z + 200)); lo_y, hi_y = min(lo_y, y0), max(hi_y, y1)
+    x += START; zmin = z
+    for i, st in enumerate(stages):
+        kind, L, drop, c = st[:4]; rise = st[4] if len(st) > 4 else 300; w = st[5] if len(st) > 5 else 260
+        x0, x1 = x, x + L
+        ramps(kind, x0, x1, c, zt, rise, w, drop)
+        side = "r" if kind == "r" else "l"
+        route.append({"x0": x0, "x1": x1, "side": side, "y": c + (GAP if kind == "v" else 0) * (1 if side == "l" else -1) + (w * 0.5 if side == "l" else -w * 0.5)})
+        inner_end = zt - rise - drop
+        last = i == len(stages) - 1
+        pz = inner_end - (96 if last else 48)           # landing top: below the lowest ramp edge, so you fly onto it
+        px0, px1 = x1 + 16, x1 + 16 + (FIN if last else PLAT)
+        a, b = span(st)
+        if not last: a2, b2 = span(stages[i + 1]); a, b = min(a, a2), max(b, b2)
+        if last: a, b = min(a, c - 300), max(b, c + 300)
+        m.solid(box((px0, a, pz - 32), (px1, b, pz), FLOOR, TRIM if last else None))
+        lo_y, hi_y = min(lo_y, a), max(hi_y, b)
+        # fall catcher under the stage and its landing platform: back to this stage's start
+        ya, yb = span(st)
+        teleport_zone(m, (x0 - (START if i == 0 else PLAT), min(ya, a) - 400, -3900), (px1, max(yb, b) + 400, pz - 64), f"stage{i + 1}")
+        lights.append((px0 + 140, (a + b) // 2, pz + 180))
+        zmin = min(zmin, pz)
+        route[-1].update(px0=px0, px1=px1, pz=pz)
+        if last:
+            # a gate, not a floor: flying over the pad counts. A back wall catches anyone who'd fly past it.
+            top = zt - drop + 300
+            zone_finish = ((px0, a, pz), (px1, b, top))
+            m.solid(box((px1, a - 32, pz - 32), (px1 + 32, b + 32, top + 200), TRIM))
+            for yy in (a + 24, b - 24):                 # finish posts at the gate
+                m.solid(box((px0, yy - 24, pz), (px0 + 48, yy + 24, top), TRIM))
+        else:
+            nc = stages[i + 1][3]
+            m.ent("info_teleport_destination", targetname=f"stage{i + 2}", origin=f"{px0 + 80} {nc} {pz + 40}", angles="0 0 0")
+            zone_cp.append(((px0, a, pz), (px1, b, pz + 228)))
+            zt = pz - 64; x = px1
+    xa, xb = -total // 2, -total // 2 + total + 32
+    assert -3950 < xa and xb < 3950 and -3950 < zmin - 900, (name, xa, xb, zmin)
+    shell(m, (xa - 64, lo_y - 600, -3968), (xb + 64, hi_y + 600, 3700))
+    sp, sy, sl = sun
+    m.ent("light_environment", origin="0 0 3500", pitch=str(sp), angles=f"0 {sy} 0", _light=f"{lcol} {sl}", _diffuse_light="160 170 200 70")
+    for lx, ly, lz in lights: m.ent("light", origin=f"{lx} {ly} {lz}", _light=f"{lcol} 230")
+    m.rad = FILL_RAD
+    zones = {"start": zone_start, "finish": zone_finish, "checkpoints": zone_cp, "pool": "surf", "name": title, "route": route}
+    return m, zones
+
+SURF_PACK = {
+    # gentle start: three V runs, one dogleg
+    "csp_surf_dust":  ("dust",  [("v", 1500, 300, 0), ("v", 1700, 400, 320), ("v", 1800, 500, 0)], "Surf: Dust"),
+    # one-sided ramps: left, right, then a V to finish
+    "csp_surf_aztec": ("aztec", [("l", 1600, 350, -130), ("r", 1700, 400, 130), ("v", 1800, 500, 0)], "Surf: Aztec"),
+    # four short runs that step sideways
+    "csp_surf_snow":  ("snow",  [("v", 1250, 300, 0), ("v", 1300, 350, 280), ("v", 1350, 400, -280), ("v", 1400, 450, 0)], "Surf: Snow"),
+    # long middle run on the left wall, wider ramps
+    "csp_surf_night": ("night", [("v", 1500, 350, 0, 300, 300), ("l", 2000, 550, -150, 300, 300), ("v", 1800, 550, 0, 300, 300)], "Surf: Night"),
+    # zig-zag: every run starts on the other side
+    "csp_surf_storm": ("storm", [("v", 1300, 300, -300), ("v", 1300, 350, 300), ("v", 1350, 400, -300), ("v", 1400, 450, 300)], "Surf: Storm"),
+    # steep and fast (56 deg), big drops
+    "csp_surf_space": ("space", [("v", 1700, 550, 0, 360, 240), ("v", 1900, 650, 220, 360, 240), ("v", 2000, 750, 0, 360, 240)], "Surf: Space"),
+}
+for _n, (_t, _st, _title) in SURF_PACK.items():
+    globals()["build_" + _n] = (lambda n=_n, t=_t, st=_st, ti=_title: build_surf_course(n, t, st, ti))
 
 def build_bhop():
     m = Map("csp_bhop")
@@ -222,15 +328,29 @@ def build_climb():
              "checkpoints": [((c[1], -192, c[3]), (c[2], 192, c[3] + 200)) for c in cps]}
     return m, zones
 
-def build_maze(n=12, cell=160, seed=3867):
-    m = Map("csp_maze")
-    W, H, T = n * cell, 192, 16          # walls 192 high: no jumping over them, not even crouch-jumping
-    lobby, room = 448, 448
-    shell(m, (-lobby - 64, -64, -64), (W + room + 64, W + 64, 400))
-    WALL, FLOOR, CAUT = "CSTRIKE_WR4CCPN", "CSTRIKE_FT4APHT", "CSTRIKE_ME7CAUT"
-    m.solid(box((-lobby, 0, -32), (W + room, W, 0), FLOOR))
-    rng = random.Random(seed)
-    # depth-first carve; walls[(cx,cy,'E'|'N')] present until removed
+# Maze Run variants (#3982). name -> build_maze kwargs. csp_maze is the original and stays byte-identical.
+MAZE_THEMES = {
+    "brick":    dict(wall="CSTRIKE_WR4CCPN", floor="CSTRIKE_FT4APHT", sky="desert"),
+    "concrete": dict(wall="CSTRIKE_WR7PLN",  floor="CSTRIKE_FP2MED",  sky="cliff"),
+    "metal":    dict(wall="CSTRIKE_ME4METL", floor="CSTRIKE_FP2LGHT", sky="city"),
+    "hedge":    dict(wall="CSTRIKE_MJ3SHRU", floor="CSTRIKE_FT3GRAS", sky="morning"),
+    "rust":     dict(wall="CSTRIKE_ME2RSTW", floor="CSTRIKE_FT2DIRT", sky="dusk"),
+    "night":    dict(wall="CSTRIKE_WR4CCVT", floor="CSTRIKE_FP2DARK", sky="night"),
+}
+# seeds picked by a search: shortest route >= 28 s and a left-hand wall follower ~85 s at 250 u/s
+MAZE_VARIANTS = {
+    "csp_maze":         dict(),
+    "csp_maze_brick8":  dict(n=8,  cell=256, seed=35,   theme="brick", loops=0),
+    "csp_maze_conc10":  dict(n=10, cell=192, seed=36,   theme="concrete", loops=2),
+    "csp_maze_hedge":   dict(n=12, cell=160, seed=147,  theme="hedge", loops=3),
+    "csp_maze_metal14": dict(n=14, cell=144, seed=12,   theme="metal", loops=3),
+    "csp_maze_rust16":  dict(n=16, cell=128, seed=67,   theme="rust", loops=4),
+    "csp_maze_dark10":  dict(n=10, cell=192, seed=1075, theme="night", dark=True, loops=2),
+    "csp_maze_dark14":  dict(n=14, cell=144, seed=2006, theme="night", dark=True, loops=3),
+}
+
+def maze_carve(n, rng, loops):
+    """Depth-first carve. east[cx][cy] / north[cx][cy]: wall present on that side of the cell."""
     east = [[True] * n for _ in range(n)]; north = [[True] * n for _ in range(n)]
     seen = [[False] * n for _ in range(n)]; stack = [(0, 0)]; seen[0][0] = True
     while stack:
@@ -244,11 +364,51 @@ def build_maze(n=12, cell=160, seed=3867):
         elif dy == 1: north[cx][cy] = False
         else: north[nx][ny] = False
         seen[nx][ny] = True; stack.append((nx, ny))
-    # a few extra openings so there's more than one way through
-    for _ in range(n):
+    for _ in range(loops):   # a few extra openings so there's more than one way through
         cx, cy = rng.randrange(n - 1), rng.randrange(n - 1)
         if rng.random() < 0.5: east[cx][cy] = False
         else: north[cx][cy] = False
+    return east, north
+
+def maze_open(n, east, north, cx, cy, dx, dy):
+    if dx == 1: return cx < n - 1 and not east[cx][cy]
+    if dx == -1: return cx > 0 and not east[cx - 1][cy]
+    if dy == 1: return cy < n - 1 and not north[cx][cy]
+    return cy > 0 and not north[cx][cy - 1]
+
+def maze_metrics(n, east, north):
+    """Cells walked entrance (0,0) to exit (n-1,n-1): shortest route, a left-hand wall follower, and the route itself.
+    Someone exploring without a map lands between the two."""
+    from collections import deque
+    D = ((1, 0), (0, 1), (-1, 0), (0, -1))
+    dist = {(0, 0): 0}; q = deque([(0, 0)]); prev = {}
+    while q:
+        c = q.popleft()
+        for dx, dy in D:
+            if maze_open(n, east, north, c[0], c[1], dx, dy):
+                nb = (c[0] + dx, c[1] + dy)
+                if nb not in dist: dist[nb] = dist[c] + 1; prev[nb] = c; q.append(nb)
+    path = [(n - 1, n - 1)]
+    while path[-1] != (0, 0): path.append(prev[path[-1]])
+    path.reverse()
+    x, y, h, steps = 0, 0, 0, 0     # entered heading east
+    while (x, y) != (n - 1, n - 1) and steps < 40 * n * n:
+        for t in (1, 0, -1, 2):     # left, straight, right, back
+            nh = (h + t) % 4; dx, dy = D[nh]
+            if maze_open(n, east, north, x, y, dx, dy): h = nh; x += dx; y += dy; steps += 1; break
+    return dist[(n - 1, n - 1)], steps, path
+
+def build_maze(name="csp_maze", n=12, cell=160, seed=3867, theme="brick", dark=False, loops=None):
+    m = Map(name)
+    th = MAZE_THEMES[theme]
+    W, H, T = n * cell, 192, 16          # walls 192 high: no jumping over them, not even crouch-jumping
+    lobby, room = 448, 448
+    shell(m, (-lobby - 64, -64, -64), (W + room + 64, W + 64, 400))
+    WALL, FLOOR, CAUT = th["wall"], th["floor"], "CSTRIKE_ME7CAUT"
+    m.sky = th["sky"]
+    m.solid(box((-lobby, 0, -32), (W + room, W, 0), FLOOR))
+    rng = random.Random(seed)
+    east, north = maze_carve(n, rng, n if loops is None else loops)
     def wall(x0, y0, x1, y1): m.solid(box((x0, y0, 0), (x1, y1, H), WALL))
     # outer walls, with the entrance (west of cell 0,0) and exit (east of cell n-1,n-1) left open
     wall(-T, cell, 0, W + T)                                   # west, gap at row 0
@@ -264,18 +424,36 @@ def build_maze(n=12, cell=160, seed=3867):
     m.solid(box((W + room, 0, 0), (W + room + 16, W, H), WALL))
     m.solid(box((W + 64, W - cell - 192, -2), (W + room - 64, W - 64, 0), CAUT))   # finish pad marking
     spawns(m, -lobby // 2, cell // 2, 40)
-    m.ent("light_environment", origin="0 0 300", pitch="-70", angles="0 30 0", _light="255 236 210 230", _diffuse_light="160 170 200 160")
-    m.rad = FILL_RAD
+    if not dark:
+        m.ent("light_environment", origin="0 0 300", pitch="-70", angles="0 30 0", _light="255 236 210 230", _diffuse_light="160 170 200 160")
+        m.rad = FILL_RAD
+    else:
+        # night: a dim moon, no ambient floor; a warm lamp every third cell and bright lobby and finish rooms.
+        # Players carry a flashlight (F) for the dark stretches.
+        m.ent("light_environment", origin="0 0 300", pitch="-60", angles="0 30 0", _light="90 110 170 40", _diffuse_light="60 70 120 30")
+        for lx in (-lobby // 2, W + room // 2): m.ent("light", origin=f"{lx} {W // 2} 160", _light="255 220 170 300")
+        for cx in range(1, n, 3):
+            for cy in range(1, n, 3):
+                m.ent("light", origin=f"{cx * cell + cell // 2} {cy * cell + cell // 2} 150", _light="255 200 130 110")
+        m.rad = ["-ambient", "0.01", "0.01", "0.02"]
     zones = {"start": ((-lobby, 0, 0), (0, W, 200)), "finish": ((W + 64, W - cell - 192, 0), (W + room - 64, W - 64, 200)),
              "checkpoints": []}
+    if name != "csp_maze":   # the original keeps its .ini; variants carry their pool and start spots (the plugin's pool format)
+        # bottime (#3987): bots finish between the shortest route (~40 s) and the wall follower (~88 s)
+        zones.update(pool="maze", progress="x", bottime=(50, 100), spawns=[(-70 - (k // 2) * 60, 50 + (k % 2) * 60, 40, 0) for k in range(8)])
+    zones["metrics"] = maze_metrics(n, east, north)
+    zones["cell"] = cell
     return m, zones
 
 def write_zones(path, zones):
     def fmt(b): return " ".join(f"{v:g}" for p in b for v in p)
     with open(path, "w") as f:
-        f.write("; CS Party minigame zones (generated)\n")
+        f.write(f"; CS Party minigame zones (generated){': ' + zones['name'] if zones.get('name') else ''}\n")
         f.write(f"start {fmt(zones['start'])}\nfinish {fmt(zones['finish'])}\n")
         for c in zones["checkpoints"]: f.write(f"checkpoint {fmt(c)}\n")
+        if zones.get("pool"): f.write(f"pool {zones['pool']}\nprogress {zones.get('progress', 'x')}\n")
+        if zones.get("bottime"): f.write("bottime %g %g\n" % zones["bottime"])
+        for sp in zones.get("spawns", []): f.write("spawn " + " ".join(f"{v:g}" for v in sp) + "\n")
 
 def write_nav_stub(bsp, start, path):
     """One-area zBot nav over the start zone. Bots on race maps only stand at the start (they finish on a clock),
@@ -302,12 +480,17 @@ def compile_map(tools, cstrike, outdir, name, rad=()):
 if __name__ == "__main__":
     tools, cstrike, outdir = sys.argv[1], sys.argv[2], sys.argv[3]
     os.makedirs(outdir, exist_ok=True)
-    wads = [os.path.join(cstrike, "cstrike.wad"), os.path.join(tools, "sdhlt.wad")]
-    builders = {"csp_surf": build_surf, "csp_bhop": build_bhop, "csp_climb": build_climb, "csp_maze": build_maze}
+    builders = {"csp_surf": build_surf, "csp_bhop": build_bhop, "csp_climb": build_climb}
+    builders.update({n: globals()["build_" + n] for n in SURF_PACK})
+    for _n, _kw in MAZE_VARIANTS.items(): builders[_n] = (lambda n=_n, kw=_kw: build_maze(n, **kw))
     for name in sys.argv[4:] or list(builders):
         m, zones = builders[name]()
+        wads = [os.path.join(cstrike, w) for w in ["cstrike.wad"] + m.wads] + [os.path.join(tools, "sdhlt.wad")]
         open(os.path.join(outdir, m.name + ".map"), "w").write(m.text(wads))
         write_zones(os.path.join(outdir, m.name + ".ini"), zones)
         ok = compile_map(tools, cstrike, outdir, m.name, m.rad)
         if ok: write_nav_stub(os.path.join(outdir, m.name + ".bsp"), zones["start"], os.path.join(outdir, m.name + ".nav"))
         print(m.name, "compiled" if ok else "FAILED")
+        if "metrics" in zones:
+            sp, fol, _ = zones["metrics"]; c = zones["cell"]
+            print(f"  {m.name}: shortest {sp} cells ({sp * c / 250:.0f}s), wall-follower {fol} cells ({fol * c / 250:.0f}s) at 250 u/s")

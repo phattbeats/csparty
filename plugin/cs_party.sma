@@ -24,6 +24,7 @@
 #include <hamsandwich>
 #include <reapi>
 #include <json>
+#include "cs_party_tips.inc"   // generated from web/public/tips.json by tools/gen_tips.py
 
 #define PLUGIN  "CS Party"
 #define VERSION "0.2.0"
@@ -44,6 +45,8 @@
 #define TASK_LOBBY  48000
 #define TASK_SEATWATCH 50000
 #define TASK_VOICE  51000
+#define TASK_HNSB   52000      // Hide and Seek boundary check (repeating)
+#define TASK_HNSF   52001      // Hide and Seek fence redraw (repeating)
 
 // ---------------------------------------------------------------- data --
 enum { NT_BLUE = 0, NT_RED, NT_EVENT, NT_SITE, NT_START, NT_SHOP, NT_CAMPER, NT_ARMORY, NT_VIP, NT_DUEL, NT_NEGOT };
@@ -74,7 +77,7 @@ new const ITEM_TIP[IT_COUNT][]   = { "2 cases", "3 cases", "pick a roll", "rival
 // its "already on screen" check always matches and a re-send only rewrites the text in place. So the table and
 // the tutorial get a long hold, changes show at once, and the table is re-sent just after its hold runs out.
 // (With a 4 s hold and a 2.5 s refresh, the table timed out 4 s after it first went up and stayed gone until
-// the next refresh: about 1 s in every 5, ISSUE.) Leaving the screen means blanking the text.
+// the next refresh: about 1 s in every 5, #3948.) Leaving the screen means blanking the text.
 #define HUD_HOLD  240.0
 new const SHOP_T[]  = { IT_KNIFE, IT_BHOP, IT_FAKE, IT_C4, IT_ROTATE, IT_RIGGED };
 new const SHOP_CT[] = { IT_KNIFE, IT_RIGGED, IT_SMOKE, IT_FAKE, IT_ROTATE, IT_INTEL };
@@ -121,7 +124,7 @@ new const MG_DESC[MG_COUNT][] = {
 	"35 HP. Knives only.",
 	"Scouts and knives, low gravity.",
 	"Unlimited HE grenades. Nothing else.",
-	"CT seeks with a knife after 20 seconds in the dark. T hides. Any hider alive at the buzzer wins.",
+	"CT seeks with a knife after 15 seconds in the dark. T hides. Stay inside the red fence. Any hider alive at the buzzer wins.",
 	"First to the end of the surf course. Fall and you go back to the stage start.",
 	"First across the bhop course. Lava sends you back to the last checkpoint.",
 	"First to the top. Jumps, a ladder, beams. Fall in the pit and you go back to the last checkpoint.",
@@ -200,6 +203,17 @@ new g_tileEnt[MAX_NODES], bool:g_boardHidden, Float:g_ringsAt, Float:g_introEnd;
 new g_mgPrim[16], g_mgSec[16], g_mgGren[16];
 #define HOP_TIME 0.3
 new Float:g_hopFrom[3], Float:g_hopTo[3], g_hopNode, Float:g_hopStart, bool:g_hopActive;
+// Hide and Seek arenas (board .ini [hns]): one is picked per round, everyone spawns in it and may not leave
+#define MAX_AR    12
+#define MAX_BOX   24
+#define MAX_SP    48
+#define MAX_FENCE 64
+#define HNS_HIDE  15.0     // seconds the seeker is blind and frozen
+new g_arN, g_arName[MAX_AR][32], g_boxN, Float:g_box[MAX_BOX][6], g_boxAr[MAX_BOX];
+new g_spN[MAX_AR], Float:g_sp[MAX_AR][MAX_SP][3];
+new g_hnsAr = -1, g_hnsPrev = -1, g_hnsForce = -1, bool:g_hnsSpUsed[MAX_SP], bool:g_hnsSpChecked;
+new g_hnsSeatSp[SEATS], Float:g_hnsLast[SEATS][3], Float:g_hnsWarn[SEATS], Float:g_hnsLog[SEATS], g_hnsPushes;
+new g_fenceN, Float:g_fence[MAX_FENCE][5];   // x1 y1 x2 y2 z
 new g_cam, g_hostageEnt, g_trapEnt[MAX_NODES], g_beamSpr;
 // map overlay (toggle_map_view): its entities, the per-space draw height and the planned overhead shot
 new g_mapEnt[MAX_NODES * 8], g_mapEntN, bool:g_mapEntFlag[2048], bool:g_mapHide[2048], g_mapMark[SEATS + 2], g_mapSpace[MAX_NODES], Float:g_nodeDrawZ[MAX_NODES];
@@ -282,6 +296,10 @@ public plugin_init()
 	register_srvcmd("csp_state", "cmd_state");
 	register_srvcmd("csp_spec", "cmd_spec");
 	register_srvcmd("csp_probe", "cmd_probe");
+	register_srvcmd("csp_hns_arena", "cmd_hns_arena");
+	register_srvcmd("csp_hns_probe", "cmd_hns_probe");
+	register_srvcmd("csp_hns_corners", "cmd_hns_corners");
+	register_srvcmd("csp_hns_fenceview", "cmd_hns_fenceview");
 	register_srvcmd("csp_hudprobe", "cmd_hudprobe");   // dev: HUD-hide bits, suit and observer state per player
 	register_srvcmd("csp_nocam", "cmd_nocam");
 	register_srvcmd("csp_mapview", "cmd_mapview");   // dev: toggle the map overlay without a turn menu; "csp_mapview v" lists what's sent
@@ -346,7 +364,8 @@ load_board()
 	get_mapname(map, charsmax(map));
 	get_configsdir(cfg, charsmax(cfg));
 	formatex(path, charsmax(path), "%s/cs_party/boards/%s.ini", cfg, map);
-	g_nodeCount = 0;
+	g_nodeCount = 0; g_arN = 0; g_boxN = 0; g_hnsSpChecked = false;
+	arrayset(g_spN, 0, sizeof g_spN);
 	new f = fopen(path, "rt");
 	if (!f) { log_amx("No board for %s (%s). Generate one with board_compiler.py.", map, path); return; }
 
@@ -357,7 +376,12 @@ load_board()
 		fgets(f, line, charsmax(line)); trim(line);
 		if (!line[0] || line[0] == ';') continue;
 		if (line[0] == '[') { inNodes = bool:equal(line, "[nodes]"); continue; }
-		if (!inNodes) { if (equal(line, "start=", 6)) g_startNode = str_to_num(line[6]); continue; }
+		if (!inNodes)
+		{
+			if (equal(line, "start=", 6)) g_startNode = str_to_num(line[6]);
+			else if (equal(line, "hns_arena ", 10) || equal(line, "hns_spawn ", 10)) load_hns_line(line);
+			continue;
+		}
 		parse(line, sid, charsmax(sid), stype, charsmax(stype), sx, charsmax(sx), sy, charsmax(sy), sz, charsmax(sz), snext, charsmax(snext), sarea, charsmax(sarea));
 		new id = str_to_num(sid);
 		if (id < 0 || id >= MAX_NODES) continue;
@@ -407,6 +431,36 @@ load_board()
 		if (g_nodeType[i] == NT_BLUE && g_dist[g_startNode][i] >= 4 && g_nodeNextN[i] == 1)
 			g_candidates[g_candCount++] = i;
 	dbg("Board %s loaded: %d spaces, %d hostage spots.", map, g_nodeCount, g_candCount);
+}
+
+hns_arena_index(const name[], bool:create)
+{
+	for (new a = 0; a < g_arN; a++) if (equal(g_arName[a], name)) return a;
+	if (!create || g_arN >= MAX_AR) return -1;
+	copy(g_arName[g_arN], charsmax(g_arName[]), name);
+	return g_arN++;
+}
+
+// hns_arena "name" x1 y1 z1 x2 y2 z2   |   hns_spawn "name" x y z
+load_hns_line(const line[])
+{
+	new kind[12], name[32], v[6][16];
+	parse(line, kind, charsmax(kind), name, charsmax(name), v[0], 15, v[1], 15, v[2], 15, v[3], 15, v[4], 15, v[5], 15);
+	new bool:isBox = kind[4] == 'a';
+	new a = hns_arena_index(name, isBox);
+	if (a < 0) return;
+	if (isBox)
+	{
+		if (g_boxN >= MAX_BOX) return;
+		for (new k = 0; k < 6; k++) g_box[g_boxN][k] = str_to_float(v[k]);
+		for (new k = 0; k < 3; k++) if (g_box[g_boxN][k] > g_box[g_boxN][k + 3]) { new Float:t = g_box[g_boxN][k]; g_box[g_boxN][k] = g_box[g_boxN][k + 3]; g_box[g_boxN][k + 3] = t; }
+		g_boxAr[g_boxN++] = a;
+	}
+	else if (g_spN[a] < MAX_SP)
+	{
+		for (new k = 0; k < 3; k++) g_sp[a][g_spN[a]][k] = str_to_float(v[k]);
+		g_spN[a]++;
+	}
 }
 
 spawn_board_entities()
@@ -886,6 +940,7 @@ new Float:g_seatLeftAt[SEATS], bool:g_seatAway[SEATS];
 // new humans skip the team and class menus: a party server just seats you
 public client_putinserver(id)
 {
+	tip_reset(id);
 	g_xhHidden[id] = false;
 	if (is_user_bot(id)) return;
 	set_task(0.5, "task_name_fix", id + TASK_RACE + 140);
@@ -1496,7 +1551,7 @@ public hc_can_take_damage(const victim, const attacker)
 	if (g_state == ST_MINIGAME && g_mg == MG_HNS && is_user_connected(attacker))
 	{
 		new a = seat_of(attacker);
-		if (a >= 0 && g_mgSide[a] == SIDE_T) { SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }
+		if (a >= 0 && (g_mgSide[a] == SIDE_T || (entity_get_int(attacker, EV_INT_flags) & FL_FROZEN))) { SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }   // hiders can't hurt; a seeker can't knife until released
 	}
 	return HC_CONTINUE;
 }
@@ -1548,7 +1603,7 @@ public fw_startframe()
 // index makes the client move the light onto that entity every frame). A re-send with the same key replaces it.
 // EF_DIMLIGHT did this before (0.5.15) and looked like everyone had flashlights on: the client gives your own
 // player a real flashlight beam and everyone else a world light whose radius is re-rolled every frame, so it
-// flickered (ISSUE). Board states only (in a fight it would give away hiding players). Sent every 0.25 s
+// flickered (#3965). Board states only (in a fight it would give away hiding players). Sent every 0.25 s
 // with a 0.6 s life, so a lost packet doesn't blink it.
 pawn_lights()
 {
@@ -2066,7 +2121,7 @@ crosshair_sync()
 
 new g_tblHash[33], Float:g_tblAt[33], Float:g_tblUp[33];   // the table as this player last got it; g_tblUp: when it went up (0: not up)
 
-public ev_resethud(id) g_tblUp[id] = 0.0;
+public ev_resethud(id) { g_tblUp[id] = 0.0; tip_hud_wiped(id); }
 
 // true when this player's table text differs from what they last got, it's due for a refresh (a lost packet),
 // or it isn't up (just joined or spawned, or the hold ran out). "" blanks it while it may still be up.
@@ -2095,23 +2150,127 @@ table_off()
 }
 
 // minigame tutorial, top left: while everyone waits, from the intro on the board, while everyone waits, and the first 25 s of the race
-hud_tutorial()
+bool:hud_tutorial()
 {
 	static Float:tutAt, offLeft;
 	new Float:now = get_gametime(), Float:t = (g_state == ST_REMOTE_RACE) ? now - g_raceStart : 0.0;
 	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 25.0) || (g_state == ST_MG_INTRO && MG_MAP[g_mg][0]));
-	if (!on && !offLeft) return;
-	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return;
+	if (!on && !offLeft) return false;
+	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return true;
 	tutAt = now;
 	offLeft = on ? 3 : offLeft - 1;   // blank it three times over (lost packets): it's held for minutes
 	set_hudmessage(255, 232, 90, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
 	show_hudmessage(0, "%s", on ? MG_TUT[g_mg] : " ");
+	return true;
+}
+
+// ---------------------------------------------------------------- tips --
+// Tips come from web/public/tips.json (the page's loading screen reads the same file). In game they go to the
+// tutorial's HUD channel (CH_TUT), bottom centre, only while no minigame how-to card is using it. Held for
+// minutes and blanked with " " after TIP_SHOW seconds (see HUD_HOLD), so a tip never blinks. Rate limits:
+// an ambient tip at most every TIP_GAP seconds per player, a tip tied to the moment (your turn, landing on a
+// space) at most every TIP_GAP_CTX.
+#define TIP_SHOW     14.0
+#define TIP_GAP      45.0
+#define TIP_GAP_CTX  8.0
+new bool:g_tutBusy;
+new bool:g_tipUp[33], Float:g_tipAt[33], Float:g_tipOff[33], bool:g_tipSeen[33][TIP_N], g_tipTurns[33];
+
+tip_reset(id) { g_tipUp[id] = false; g_tipAt[id] = 0.0; g_tipTurns[id] = 0; for (new i = 0; i < TIP_N; i++) g_tipSeen[id][i] = false; }
+
+tip_hud_wiped(id) { g_tipUp[id] = false; }   // a spawn clears the client's HUD list
+
+tip_blank(id)
+{
+	g_tipUp[id] = false;
+	if (!is_user_connected(id)) return;
+	set_hudmessage(255, 232, 90, -1.0, 0.8, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	show_hudmessage(id, " ");
+}
+
+// picks an unseen tip for this moment: on = space just landed on (1-8, see tools/gen_tips.py), when = 1 turn, 2 wait
+tip_pick(id, on, when)
+{
+	new pool[TIP_N], n = 0, bool:touch = is_touch(id);
+	for (new pass = 0; pass < 2 && !n; pass++)
+	{
+		for (new i = 0; i < TIP_N; i++)
+		{
+			if (on ? TIP_ON[i] != on : (TIP_ON[i] || !(TIP_WHEN[i] & when))) continue;
+			if (TIP_DEV[i] == 1 && touch) continue;
+			if (TIP_DEV[i] == 2 && !touch) continue;
+			if (TIP_DEV[i] == 3) continue;   // controllers can't be told from the server
+			if (pass == 0 && g_tipSeen[id][i]) continue;
+			pool[n++] = i;
+		}
+		if (!n) for (new i = 0; i < TIP_N; i++) g_tipSeen[id][i] = false;   // all seen: start over
+	}
+	return n ? pool[random(n)] : -1;
+}
+
+tip_show(id, i)
+{
+	if (i < 0 || !is_user_connected(id) || is_user_bot(id) || hud_spec(id)) return;
+	new w[200], msg[220]; formatex(msg, charsmax(msg), "TIP: %s", TIP_TEXT[i]);
+	wrap_text(msg, w, charsmax(w), is_touch(id) ? WRAP_TOUCH : WRAP_PC);
+	set_hudmessage(255, 232, 90, -1.0, is_touch(id) ? 0.84 : 0.8, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
+	show_hudmessage(id, "%s", w);
+	new Float:now = get_gametime();
+	g_tipUp[id] = true; g_tipAt[id] = now; g_tipOff[id] = now + TIP_SHOW; g_tipSeen[id][i] = true;
+}
+
+// a tip tied to a moment: your turn starts (when 1) or you landed on a space (on)
+tip_moment(id, on, when)
+{
+	if (g_tutBusy || !is_user_connected(id) || is_user_bot(id) || get_gametime() - g_tipAt[id] < TIP_GAP_CTX) return;
+	new i = -1;
+	if (when == 1 && !on && g_tipTurns[id]++ == 0) i = TIP_FIRST_TURN;   // the first turn of a match always says you can buy gear
+	if (i < 0) i = tip_pick(id, on, when);
+	tip_show(id, i);
+}
+
+tip_on_land(s, node)
+{
+	new on = 0;
+	switch (g_nodeType[node])
+	{
+		case NT_EVENT: on = 1;
+		case NT_SHOP: on = 2;
+		case NT_ARMORY: on = 3;
+		case NT_CAMPER: on = 4;
+		case NT_DUEL: on = 5;
+		case NT_VIP: on = 6;
+		case NT_NEGOT: on = 7;
+		case NT_SITE: on = 8;
+	}
+	if (on && !seat_is_bot(s)) tip_moment(g_seatPlayer[s], on, 0);
+}
+
+// every tick: take tips down when their time is up or the board is over, and offer one to anyone waiting
+tips_tick(bool:tutBusy)
+{
+	g_tutBusy = tutBusy;
+	new Float:now = get_gametime();
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		if (g_tipUp[id])
+		{
+			if (tutBusy) g_tipUp[id] = false;   // the how-to card took the channel
+			else if (now >= g_tipOff[id] || g_state != ST_BOARD) tip_blank(id);
+			continue;
+		}
+		if (tutBusy || g_state != ST_BOARD || now - g_tipAt[id] < TIP_GAP) continue;
+		new s = seat_of(id);
+		if (s < 0 || s == g_cur || g_diceOpen) continue;   // your own turn gets its tip when the menu opens
+		tip_show(id, tip_pick(id, 0, 2));
+	}
 }
 
 public task_hud()
 {
 	crosshair_sync();
-	hud_tutorial();
+	tips_tick(hud_tutorial());
 	if (g_state == ST_IDLE) { table_off(); return; }
 	update_crosshair();
 	if (g_state == ST_BOARD || g_state == ST_END || g_state == ST_MINIGAME || g_state == ST_MG_INTRO) refill_seats();
@@ -2974,12 +3133,14 @@ step_arrive(s, node)
 	{
 		g_shopSide = g_nodeShopSide[node];
 		banner("%s Black Market", g_shopSide == SIDE_T ? "T" : "CT");
+		tip_on_land(s, node);
 		if (seat_is_bot(s)) { ai_shop(s, g_shopSide); pause += spd(1.4); }
 		else { cam_shot(CAM_LAND); wait_for(s, W_SHOP); show_shop_menu(s); return; }
 	}
 	else if (g_nodeType[node] == NT_NEGOT)
 	{
 		banner("The Negotiator");
+		tip_on_land(s, node);
 		if (seat_is_bot(s)) { ai_negotiate(s); pause += spd(1.6); }
 		else { wait_for(s, W_NEGOT); show_negotiator_menu(s); return; }
 	}
@@ -3003,6 +3164,7 @@ land(s)
 {
 	cam_shot(CAM_LAND);
 	new n = g_pos[s], mult = overtime() ? 2 : 1;
+	tip_on_land(s, n);
 	new owner = g_traps[n];
 	if (owner >= 0 && owner != s)
 	{
@@ -3436,6 +3598,7 @@ show_turn_menu(s)
 	new id = g_seatPlayer[s];
 	if (!is_user_connected(id)) { g_seatBot[s] = true; flow_bot_buy(); return; }
 	wait_for(s, W_TURN);
+	tip_moment(id, 0, 1);
 	// short lines: the browser client cuts menus at about a third of the screen (gear is on the right-hand table)
 	new title[96]; formatex(title, charsmax(title), "\yYour turn  \w$%d^n\dHostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	new m = menu_create(title, "mh_turn"), line[64], info[4];
@@ -3747,6 +3910,12 @@ start_round_minigame()
 	}
 	g_mgFmt = (ct == 0 || t == 0) ? FMT_FFA : (ct == 2 ? FMT_2V2 : FMT_1V3);
 	g_mg = pick_minigame(g_mgFmt);
+	if (g_mg == MG_HNS && !(MG_FORMATS[g_mg] & g_mgFmt))   // forced (csp_force_mg) onto an all-one-colour round: one seeker
+	{
+		new k = random(SEATS);
+		for (new s = 0; s < SEATS; s++) g_mgSide[s] = s == k ? SIDE_CT : SIDE_T;
+		g_mgFmt = FMT_1V3;
+	}
 	g_cont = CONT_NEXT_TURN; g_mgWager = 0;
 	begin_minigame();
 }
@@ -3924,7 +4093,9 @@ begin_minigame()
 	board_music(false);
 	cam_shot(CAM_WIDE);
 	new fn[16]; fmt_name(g_mgFmt, fn, charsmax(fn));
-	banner("%s  |  %s", MG_NAME[g_mg], fn);
+	if (g_mg == MG_HNS) hns_pick();
+	if (g_mg == MG_HNS && g_hnsAr >= 0) banner("%s  |  %s  |  %s", MG_NAME[g_mg], fn, g_arName[g_hnsAr]);
+	else banner("%s  |  %s", MG_NAME[g_mg], fn);
 	new sides[160], len;
 	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3)
 	{
@@ -3933,10 +4104,12 @@ begin_minigame()
 		len += formatex(sides[len], charsmax(sides) - len, "   vs   T:");
 		for (new s = 0; s < SEATS; s++) if (g_mgSide[s] == SIDE_T) len += formatex(sides[len], charsmax(sides) - len, " %s", g_seatName[s]);
 	}
+	else if (g_mg == MG_HNS && g_hnsAr >= 0) formatex(sides, charsmax(sides), "%s", MG_DESC[g_mg]);
 	else copy(sides, charsmax(sides), MG_DESC[g_mg]);
 	subline("%s", sides);
 	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3) dbg("Sides: %s", sides);
-	announce("Minigame: %s (%s). %s", MG_NAME[g_mg], fn, MG_DESC[g_mg]);
+	if (g_mg == MG_HNS && g_hnsAr >= 0) announce("Minigame: %s (%s) in %s. %s", MG_NAME[g_mg], fn, g_arName[g_hnsAr], MG_DESC[g_mg]);
+	else announce("Minigame: %s (%s). %s", MG_NAME[g_mg], fn, MG_DESC[g_mg]);
 	g_introEnd = get_gametime() + spd(4.0);   // ring dashes drawn now end with the intro
 	set_task(spd(4.0), "flow_minigame_go", TASK_FLOW);
 }
@@ -3961,7 +4134,7 @@ mg_rules()
 	set_cvar_string("mp_buytime", "0");
 	set_cvar_string("sv_gravity", g_mg == MG_SCOUTZ ? "300" : "800");
 	set_cvar_string("mp_give_player_c4", mg_objective() ? "1" : "0");
-	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "2.25" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS ? "2.0" : "1.5")));
+	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "1.75" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS ? "2.0" : "1.5")));
 	new prim[16], sec[16], gren[16];
 	switch (g_mg)
 	{
@@ -3995,9 +4168,20 @@ mg_fight_start()
 	if (g_nodeCount) board_show(false);
 	// on a freshly loaded own map the game hasn't "commenced": the first kill would fire Game_Commencing and end the round as a draw
 	set_member_game(m_bGameStarted, true);
+	if (g_mg == MG_HNS)
+	{
+		arrayset(g_hnsSpUsed, false, sizeof g_hnsSpUsed); g_hnsPushes = 0;
+		for (new k = 0; k < SEATS; k++) { g_hnsSeatSp[k] = -1; g_hnsLast[k][2] = -99999.0; }
+	}
 	rg_restart_round();
 	dbg("Minigame %s started (fmt %d).", MG_NAME[g_mg], g_mgFmt);
 	set_task(2.0, "task_log_loadouts", TASK_FLOW + 7);
+	remove_task(TASK_HNSB); remove_task(TASK_HNSF);
+	if (g_mg == MG_HNS && g_hnsAr >= 0)
+	{
+		set_task(0.2, "task_hns_bounds", TASK_HNSB, _, _, "b");
+		set_task(1.0, "task_hns_fence", TASK_HNSF, _, _, "b");
+	}
 }
 
 // Standing-hull spot that is inside the map and not embedded in brushes: tries the wanted origin, then smaller
@@ -4053,18 +4237,19 @@ apply_loadout(s)
 	if (g_mg == MG_HNS)
 	{
 		rg_remove_all_items(id);
+		if (g_hnsAr >= 0) hns_place(s);
 		if (g_mgSide[s] == SIDE_CT)
 		{
 			rg_give_item(id, "weapon_knife");
-			freeze(id); set_task(20.0, "task_hns_release", TASK_RACE + 40 + s);
+			freeze(id); set_task(HNS_HIDE, "task_hns_release", TASK_RACE + 40 + s);
 			static msg; if (!msg) msg = get_user_msgid("ScreenFade");
-			if (!is_user_bot(id)) { message_begin(MSG_ONE, msg, _, id); write_short(4096); write_short(floatround(19.0 * 4096.0)); write_short(0x0001 | 0x0004); write_byte(0); write_byte(0); write_byte(0); write_byte(255); message_end(); }
-			center_print(id,"You're seeking. Lights on in 20 seconds.");
+			if (!is_user_bot(id)) { message_begin(MSG_ONE, msg, _, id); write_short(4096); write_short(floatround((HNS_HIDE - 1.0) * 4096.0)); write_short(0x0001 | 0x0004); write_byte(0); write_byte(0); write_byte(0); write_byte(255); message_end(); }
+			center_print(id,"You're seeking. Lights on in %d seconds.", floatround(HNS_HIDE));
 		}
 		else
 		{
 			rg_give_item(id, "weapon_flashbang"); rg_give_item(id, "weapon_smokegrenade");
-			center_print(id,"Hide! The seeker opens their eyes in 20 seconds.");
+			center_print(id,"Hide inside the red fence! The seeker opens their eyes in %d seconds.", floatround(HNS_HIDE));
 		}
 		return;
 	}
@@ -4177,6 +4362,314 @@ public task_log_loadouts()
 		if (!n) len += formatex(line[len], charsmax(line) - len, " nothing");
 		dbg("Loadout %s", line);
 	}
+}
+
+// ------------------------------------------------- Hide and Seek arenas --
+// drops the spawn points a standing player can't use (in a wall, no floor, outside the boxes); once per map, needs the world loaded
+hns_check_spawns()
+{
+	if (g_hnsSpChecked) return;
+	g_hnsSpChecked = true;
+	for (new a = 0; a < g_arN; a++)
+	{
+		new keep = 0, n = g_spN[a];
+		for (new i = 0; i < n; i++)
+		{
+			new Float:o[3]; o = g_sp[a][i]; o[2] += 37.0;   // safe_spot's heights, without its log line per miss
+			new bool:ok = false;
+			for (new l = 0; l < 3 && !ok; l++) { ok = spot_clear(o) && hns_in_arena(a, o, 0.0); o[2] += 18.0; }
+			if (ok) g_sp[a][keep++] = g_sp[a][i];
+		}
+		g_spN[a] = keep;
+		if (keep < n) dbg("HNS arena %s: %d of %d spawns usable.", g_arName[a], keep, n);
+	}
+}
+
+hns_pick()
+{
+	hns_check_spawns();
+	g_hnsAr = -1;
+	new ok[MAX_AR], n = 0;
+	for (new a = 0; a < g_arN; a++)
+	{
+		new boxes = 0; for (new b = 0; b < g_boxN; b++) if (g_boxAr[b] == a) boxes++;
+		if (boxes && g_spN[a] >= SEATS) ok[n++] = a;
+	}
+	if (!n) return;
+	if (g_hnsForce >= 0 && g_hnsForce < g_arN && g_spN[g_hnsForce] >= SEATS) g_hnsAr = g_hnsForce;
+	else
+	{
+		g_hnsAr = ok[random(n)];
+		if (n > 1) while (g_hnsAr == g_hnsPrev) g_hnsAr = ok[random(n)];
+	}
+	g_hnsPrev = g_hnsAr;
+	hns_build_fence(g_hnsAr);
+	dbg("Hide and Seek arena: %s (%d spawns, %d fence segments).", g_arName[g_hnsAr], g_spN[g_hnsAr], g_fenceN);
+}
+
+bool:hns_in_box(b, const Float:o[3], Float:inset)
+{
+	return o[0] >= g_box[b][0] + inset && o[0] <= g_box[b][3] - inset
+		&& o[1] >= g_box[b][1] + inset && o[1] <= g_box[b][4] - inset
+		&& o[2] >= g_box[b][2] && o[2] <= g_box[b][5];
+}
+
+bool:hns_in_arena(ar, const Float:o[3], Float:inset)
+{
+	for (new b = 0; b < g_boxN; b++) if (g_boxAr[b] == ar && hns_in_box(b, o, inset)) return true;
+	return false;
+}
+
+// the arena's outline: every box edge, cut into segments, minus the stretches that lie inside another box of the arena
+hns_build_fence(ar)
+{
+	g_fenceN = 0;
+	new Float:perim = 0.0;
+	for (new b = 0; b < g_boxN; b++) if (g_boxAr[b] == ar) perim += 2.0 * ((g_box[b][3] - g_box[b][0]) + (g_box[b][4] - g_box[b][1]));
+	new Float:step = floatmax(160.0, perim / float(MAX_FENCE - 4));
+	for (new b = 0; b < g_boxN; b++)
+	{
+		if (g_boxAr[b] != ar) continue;
+		for (new e = 0; e < 4; e++)
+		{
+			// edge e: 0 south, 1 east, 2 north, 3 west
+			new Float:ax, Float:ay, Float:dx, Float:dy, Float:ox, Float:oy, Float:len;
+			switch (e)
+			{
+				case 0: { ax = g_box[b][0]; ay = g_box[b][1]; dx = 1.0; dy = 0.0; ox = 0.0; oy = -1.0; len = g_box[b][3] - g_box[b][0]; }
+				case 1: { ax = g_box[b][3]; ay = g_box[b][1]; dx = 0.0; dy = 1.0; ox = 1.0; oy = 0.0; len = g_box[b][4] - g_box[b][1]; }
+				case 2: { ax = g_box[b][0]; ay = g_box[b][4]; dx = 1.0; dy = 0.0; ox = 0.0; oy = 1.0; len = g_box[b][3] - g_box[b][0]; }
+				default: { ax = g_box[b][0]; ay = g_box[b][1]; dx = 0.0; dy = 1.0; ox = -1.0; oy = 0.0; len = g_box[b][4] - g_box[b][1]; }
+			}
+			new n = max(1, floatround(len / step, floatround_ceil));
+			for (new k = 0; k < n && g_fenceN < MAX_FENCE; k++)
+			{
+				new Float:t0 = len * float(k) / float(n), Float:t1 = len * float(k + 1) / float(n), Float:tm = (t0 + t1) * 0.5;
+				new Float:probe[3];
+				probe[0] = ax + dx * tm + ox * 8.0; probe[1] = ay + dy * tm + oy * 8.0; probe[2] = (g_box[b][2] + g_box[b][5]) * 0.5;
+				if (hns_in_arena(ar, probe, 0.0)) continue;   // inside a neighbouring box: not an outer edge
+				new Float:zref = hns_floor_near(ar, probe[0], probe[1]);
+				g_fence[g_fenceN][0] = ax + dx * t0; g_fence[g_fenceN][1] = ay + dy * t0;
+				g_fence[g_fenceN][2] = ax + dx * t1; g_fence[g_fenceN][3] = ay + dy * t1;
+				g_fence[g_fenceN][4] = zref + 40.0;
+				g_fenceN++;
+			}
+		}
+	}
+}
+
+// floor height of the arena's spawn point nearest to x,y, refined with a trace down
+Float:hns_floor_near(ar, Float:x, Float:y)
+{
+	new best = 0; new Float:bd = 9.0e9;
+	for (new i = 0; i < g_spN[ar]; i++)
+	{
+		new Float:d = (g_sp[ar][i][0] - x) * (g_sp[ar][i][0] - x) + (g_sp[ar][i][1] - y) * (g_sp[ar][i][1] - y);
+		if (d < bd) { bd = d; best = i; }
+	}
+	new Float:z = g_spN[ar] ? g_sp[ar][best][2] : 0.0;
+	new Float:a[3], Float:b[3], Float:hit[3], tr = create_tr2(), Float:fr;
+	a[0] = x; a[1] = y; a[2] = z + 100.0; b[0] = x; b[1] = y; b[2] = z - 200.0;
+	engfunc(EngFunc_TraceLine, a, b, IGNORE_MONSTERS, 0, tr);
+	get_tr2(tr, TR_flFraction, fr);
+	if (fr < 1.0 && !get_tr2(tr, TR_StartSolid)) { get_tr2(tr, TR_vecEndPos, hit); z = hit[2]; }
+	free_tr2(tr);
+	return z;
+}
+
+// best of a few random free spawn spots: the one farthest from everyone already placed
+hns_place(s)
+{
+	new id = g_seatPlayer[s], ar = g_hnsAr;
+	if (g_hnsSeatSp[s] >= 0) { g_hnsSpUsed[g_hnsSeatSp[s]] = false; g_hnsSeatSp[s] = -1; }
+	new best = -1; new Float:bd = -1.0;
+	for (new t = 0; t < 8; t++)
+	{
+		new i = random(g_spN[ar]), tries = 0;
+		while (g_hnsSpUsed[i] && tries++ < g_spN[ar]) i = (i + 1) % g_spN[ar];
+		if (g_hnsSpUsed[i]) continue;
+		new Float:mind = 9.0e9;
+		for (new k = 0; k < SEATS; k++)
+		{
+			if (k == s || g_hnsSeatSp[k] < 0) continue;
+			new Float:d = floatsqroot((g_sp[ar][i][0] - g_sp[ar][g_hnsSeatSp[k]][0]) * (g_sp[ar][i][0] - g_sp[ar][g_hnsSeatSp[k]][0]) + (g_sp[ar][i][1] - g_sp[ar][g_hnsSeatSp[k]][1]) * (g_sp[ar][i][1] - g_sp[ar][g_hnsSeatSp[k]][1]));
+			if (d < mind) mind = d;
+		}
+		if (mind > bd) { bd = mind; best = i; }
+	}
+	if (best < 0) best = random(g_spN[ar]);
+	g_hnsSpUsed[best] = true; g_hnsSeatSp[s] = best;
+	new Float:o[3], Float:none[2];
+	safe_spot(o, g_sp[ar][best], none);
+	entity_set_origin(id, o);
+	new Float:zero[3]; set_entvar(id, var_velocity, zero);
+	g_hnsLast[s] = o;
+	dbg("HNS %s (%s) placed at %.0f %.0f %.0f.", g_seatName[s], g_mgSide[s] == SIDE_CT ? "seeker" : "hider", o[0], o[1], o[2]);
+}
+
+public task_hns_bounds()
+{
+	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { remove_task(TASK_HNSB); return; }
+	for (new s = 0; s < SEATS; s++)
+	{
+		new id = g_seatPlayer[s];
+		if (!g_mgIn[s] || !is_user_alive(id) || g_hnsSeatSp[s] < 0) continue;
+		new Float:o[3]; get_entvar(id, var_origin, o);
+		if (hns_in_arena(g_hnsAr, o, 0.0))
+		{
+			if (hns_in_arena(g_hnsAr, o, 24.0)) g_hnsLast[s] = o;
+			continue;
+		}
+		g_hnsPushes++;
+		new Float:back[3], Float:none[2], Float:zero[3];
+		if (g_hnsLast[s][2] > -90000.0) back = g_hnsLast[s];
+		else safe_spot(back, g_sp[g_hnsAr][g_hnsSeatSp[s]], none);
+		if (get_gametime() - g_hnsLog[s] > 2.0) { g_hnsLog[s] = get_gametime(); dbg("HNS %s left the arena at %.0f %.0f %.0f; sent back.", g_seatName[s], o[0], o[1], o[2]); }
+		entity_set_origin(id, back); set_entvar(id, var_velocity, zero);
+		if (!is_user_bot(id) && get_gametime() - g_hnsWarn[s] > 1.5)
+		{
+			g_hnsWarn[s] = get_gametime();
+			center_print(id, "Stay inside the red fence!");
+		}
+	}
+}
+
+public task_hns_fence()
+{
+	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { remove_task(TASK_HNSF); return; }
+	new Float:pos[SEATS][3], n = 0;
+	for (new s = 0; s < SEATS; s++)
+	{
+		new id = g_seatPlayer[s];
+		if (is_user_connected(id) && !is_user_bot(id) && is_user_alive(id)) { get_entvar(id, var_origin, pos[n]); n++; }
+	}
+	if (!n) return;
+	for (new i = 0; i < g_fenceN; i++)
+	{
+		new Float:mx = (g_fence[i][0] + g_fence[i][2]) * 0.5, Float:my = (g_fence[i][1] + g_fence[i][3]) * 0.5, bool:near = false;
+		for (new k = 0; k < n && !near; k++)
+			near = (pos[k][0] - mx) * (pos[k][0] - mx) + (pos[k][1] - my) * (pos[k][1] - my) < 1000.0 * 1000.0;
+		if (!near) continue;
+		new Float:a[3], Float:b[3];
+		a[0] = g_fence[i][0]; a[1] = g_fence[i][1]; a[2] = g_fence[i][4];
+		b[0] = g_fence[i][2]; b[1] = g_fence[i][3]; b[2] = g_fence[i][4];
+		beam(a, b, 255, 60, 40, 30, 1.05);
+	}
+}
+
+// dev: csp_hns_arena <index>  forces the next Hide and Seek arena (-1 = random)
+public cmd_hns_arena()
+{
+	new a[8]; read_argv(1, a, charsmax(a)); g_hnsForce = str_to_num(a);
+	server_print("[CSP] next Hide and Seek arena forced to %d", g_hnsForce);
+	return PLUGIN_HANDLED;
+}
+
+// dev: arenas, boxes and spawns, with a walkability check of every spawn
+public cmd_hns_probe()
+{
+	hns_check_spawns();
+	server_print("[CSP] hns arenas: %d, boxes: %d", g_arN, g_boxN);
+	for (new a = 0; a < g_arN; a++)
+	{
+		new boxes = 0, inb = 0, clear = 0;
+		for (new b = 0; b < g_boxN; b++) if (g_boxAr[b] == a) boxes++;
+		for (new i = 0; i < g_spN[a]; i++)
+		{
+			new Float:o[3], Float:none[2]; safe_spot(o, g_sp[a][i], none);
+			if (hns_in_arena(a, o, 0.0)) inb++;
+			if (spot_clear(o)) clear++;
+		}
+		hns_build_fence(a);
+		server_print("[CSP] hns arena %d '%s': %d boxes, %d spawns (%d in bounds, %d clear), %d fence segments", a, g_arName[a], boxes, g_spN[a], inb, clear, g_fenceN);
+	}
+	return PLUGIN_HANDLED;
+}
+
+// dev: csp_hns_corners [seat]  during a Hide and Seek round, throw the seat (default: the first one playing) past every outer corner of the arena (and the middle of each outer
+// edge) and report whether the boundary check brought them back
+new g_cornerStep, g_cornerFail, g_cornerSeat;
+public cmd_hns_corners()
+{
+	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] corners: no Hide and Seek round"); return PLUGIN_HANDLED; }
+	new a[8]; read_argv(1, a, charsmax(a)); g_cornerSeat = a[0] ? clamp(str_to_num(a), 0, SEATS - 1) : -1;
+	for (new k = 0; k < SEATS && g_cornerSeat < 0; k++) if (g_mgIn[k] && is_user_alive(g_seatPlayer[k])) g_cornerSeat = k;   // no seat: the first one playing
+	if (g_cornerSeat < 0) { server_print("[CSP] corners: nobody alive in the round"); return PLUGIN_HANDLED; }
+	remove_task(TASK_HNSB + 5); remove_task(TASK_HNSB + 6);   // a second request restarts the test instead of interleaving with it
+	g_cornerStep = 0; g_cornerFail = 0;
+	set_task(0.5, "task_hns_corner", TASK_HNSB + 5);
+	return PLUGIN_HANDLED;
+}
+
+public task_hns_corner(taskid)
+{
+	new id = g_seatPlayer[g_cornerSeat], ar = g_hnsAr;
+	if (g_state != ST_MINIGAME || !is_user_alive(id)) { server_print("[CSP] corners: aborted"); return; }
+	// step k: box k/8, point k%8 (4 corners, 4 edge middles), pushed 90 units outward
+	new k = g_cornerStep, bi = -1, seen = 0;
+	for (new b = 0; b < g_boxN; b++) if (g_boxAr[b] == ar) { if (seen == k / 8) { bi = b; break; } seen++; }
+	if (bi < 0) { server_print("[CSP] corners: done, %d escaped", g_cornerFail); return; }
+	new p = k % 8, Float:o[3];
+	new Float:cx = (g_box[bi][0] + g_box[bi][3]) * 0.5, Float:cy = (g_box[bi][1] + g_box[bi][4]) * 0.5;
+	switch (p)
+	{
+		case 0: { o[0] = g_box[bi][0] - 90.0; o[1] = g_box[bi][1] - 90.0; }
+		case 1: { o[0] = g_box[bi][3] + 90.0; o[1] = g_box[bi][1] - 90.0; }
+		case 2: { o[0] = g_box[bi][3] + 90.0; o[1] = g_box[bi][4] + 90.0; }
+		case 3: { o[0] = g_box[bi][0] - 90.0; o[1] = g_box[bi][4] + 90.0; }
+		case 4: { o[0] = cx; o[1] = g_box[bi][1] - 90.0; }
+		case 5: { o[0] = g_box[bi][3] + 90.0; o[1] = cy; }
+		case 6: { o[0] = cx; o[1] = g_box[bi][4] + 90.0; }
+		default: { o[0] = g_box[bi][0] - 90.0; o[1] = cy; }
+	}
+	o[2] = (g_box[bi][2] + g_box[bi][5]) * 0.5;
+	g_cornerStep++;
+	if (hns_in_arena(ar, o, 0.0)) { set_task(0.05, "task_hns_corner", TASK_HNSB + 5); return; }   // inside a neighbouring box
+	new Float:zero[3]; freeze(id); entity_set_origin(id, o); set_entvar(id, var_velocity, zero);
+	set_task(0.6, "task_hns_corner_check", TASK_HNSB + 6, o, 3);
+}
+
+public task_hns_corner_check(const Float:from[3])
+{
+	new id = g_seatPlayer[g_cornerSeat], Float:o[3];
+	if (is_user_alive(id)) get_entvar(id, var_origin, o);
+	new bool:ok = is_user_alive(id) && hns_in_arena(g_hnsAr, o, 0.0);
+	if (is_user_alive(id) && g_mgSide[g_cornerSeat] != SIDE_CT) unfreeze(id);
+	if (!ok) g_cornerFail++;
+	server_print("[CSP] corner test from (%.0f %.0f %.0f): %s now at (%.0f %.0f %.0f)", from[0], from[1], from[2], ok ? "back inside," : "ESCAPED,", o[0], o[1], o[2]);
+	set_task(0.05, "task_hns_corner", TASK_HNSB + 5);
+}
+
+// dev: csp_hns_fenceview <seat> [n]  puts the seat 140 units inside the n-th fence segment that crosses open ground,
+// facing it, for screenshots of the fence
+public cmd_hns_fenceview()
+{
+	if (g_state != ST_MINIGAME || g_mg != MG_HNS || g_hnsAr < 0) { server_print("[CSP] fenceview: no Hide and Seek round"); return PLUGIN_HANDLED; }
+	new a[8]; read_argv(1, a, charsmax(a)); new s = clamp(str_to_num(a), 0, SEATS - 1), id = g_seatPlayer[s];
+	read_argv(2, a, charsmax(a)); new want = str_to_num(a), found = 0;
+	if (!is_user_alive(id)) { server_print("[CSP] fenceview: seat %d isn't alive", s); return PLUGIN_HANDLED; }
+	for (new i = 0; i < g_fenceN; i++)
+	{
+		new Float:m[3], Float:dx = g_fence[i][2] - g_fence[i][0], Float:dy = g_fence[i][3] - g_fence[i][1];
+		new Float:len = floatsqroot(dx * dx + dy * dy); if (len < 1.0) continue;
+		dx /= len; dy /= len;
+		m[0] = (g_fence[i][0] + g_fence[i][2]) * 0.5; m[1] = (g_fence[i][1] + g_fence[i][3]) * 0.5; m[2] = g_fence[i][4];
+		new Float:ox = dy, Float:oy = -dx, Float:t[3];          // outward normal: the side that leaves the arena
+		t[0] = m[0] + ox * 16.0; t[1] = m[1] + oy * 16.0; t[2] = m[2];
+		if (hns_in_arena(g_hnsAr, t, 0.0)) { ox = -ox; oy = -oy; }
+		new Float:p[3]; p[0] = m[0] - ox * 140.0; p[1] = m[1] - oy * 140.0; p[2] = m[2] - 40.0 + 37.0;
+		if (!spot_clear(p) || !hns_in_arena(g_hnsAr, p, 24.0)) continue;
+		new tr = create_tr2(), Float:fr; engfunc(EngFunc_TraceLine, p, m, IGNORE_MONSTERS, 0, tr); get_tr2(tr, TR_flFraction, fr); free_tr2(tr);
+		if (fr < 1.0) continue;                                // fence behind a wall from here
+		if (found++ < want) continue;
+		new Float:ang[3], Float:zero[3]; ang[1] = floatatan2(oy, ox, degrees);
+		entity_set_origin(id, p); set_entvar(id, var_velocity, zero);
+		entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang); entity_set_int(id, EV_INT_fixangle, 1);
+		server_print("[CSP] fenceview: seat %d at (%.0f %.0f %.0f) facing fence segment %d", s, p[0], p[1], p[2], i);
+		return PLUGIN_HANDLED;
+	}
+	server_print("[CSP] fenceview: only %d open fence segments", found);
+	return PLUGIN_HANDLED;
 }
 
 public task_hns_release(taskid)
@@ -4806,9 +5299,12 @@ set_race_map(const map[])
 //   buttons 1                   kreedz: pressing the map's stop-timer button finishes (counter_off, ...)
 //   progress x|-x|y|-y|z|-z|dist   who got furthest when time runs out (default: x on csp_ maps, else dist to the finish)
 //   pool surf|bhop|climb|maze|none   which race's pool the map is in (default: by its name)
+//   time <seconds>              the race's time limit (default 120)
+//   bottime <lo> <hi>           the window bots finish in, seconds (default: the race's MG_BOT_TIME)
 // No start box and no spawn lines: racers start on the map's own spawn points.
 #define ZSPAWN_MAX 8
 new Float:g_zSpawn[ZSPAWN_MAX][4], g_zSpawnN, bool:g_zStartOk, bool:g_zFinishOk, Float:g_zGoal[3], g_zProg;
+new Float:g_zTime = 120.0, Float:g_zBotLo, Float:g_zBotHi;
 new bool:g_zButtons, g_btnStops, bool:g_btnHit[SEATS];
 new const KZ_STOP[][] = { "counter_off", "clockstopbutton", "clockstop", "but_stop", "counter_stop_button", "multi_stop", "stop_counter", "m_counter_end_emi" };
 
@@ -4822,7 +5318,7 @@ bool:kz_stop_target(ent)
 load_zones()
 {
 	new map[32], path[192]; get_mapname(map, charsmax(map)); zone_ini_path(map, path, charsmax(path));
-	g_zonesOk = false; g_zStartOk = false; g_zFinishOk = false; g_zSpawnN = 0; g_zButtons = false; g_btnStops = 0;
+	g_zonesOk = false; g_zStartOk = false; g_zFinishOk = false; g_zSpawnN = 0; g_zButtons = false; g_btnStops = 0; g_zTime = 120.0; g_zBotLo = 0.0; g_zBotHi = 0.0;
 	g_zProg = equal(map, "csp_", 4) ? 1 : 0;   // 0 dist, +-1/2/3 = axis x/y/z
 	new f = fopen(path, "rt"); if (!f) { log_amx("No zones for %s (%s).", map, path); return; }
 	new line[160], key[16], v[6][16];
@@ -4837,6 +5333,8 @@ load_zones()
 		else if (equal(key, "finish")) { g_zFinish[0] = lo; g_zFinish[1] = hi; g_zFinishOk = true; }
 		else if (equal(key, "spawn") && g_zSpawnN < ZSPAWN_MAX) { for (new k = 0; k < 4; k++) g_zSpawn[g_zSpawnN][k] = str_to_float(v[k]); g_zSpawnN++; }
 		else if (equal(key, "buttons")) g_zButtons = str_to_num(v[0]) != 0;
+		else if (equal(key, "time")) { new Float:t = str_to_float(v[0]); if (t >= 30.0) g_zTime = floatmin(t, 1800.0); }
+		else if (equal(key, "bottime")) { new Float:a = str_to_float(v[0]), Float:b = str_to_float(v[1]); if (a > 0.0 && b >= a) { g_zBotLo = a; g_zBotHi = b; } }
 		else if (equal(key, "progress"))
 		{
 			new sgn = v[0][0] == '-' ? -1 : 1, c = v[0][sgn < 0 ? 1 : 0];
@@ -4949,7 +5447,7 @@ public task_remote_wait()
 	for (new s = 0; s < SEATS; s++)
 	{
 		g_finished[s] = false; g_finishTime[s] = 0.0; g_btnHit[s] = false;
-		g_botFinish[s] = random_float(MG_BOT_TIME[g_mg][0], MG_BOT_TIME[g_mg][1]);
+		g_botFinish[s] = g_zBotHi > 0.0 ? random_float(g_zBotLo, g_zBotHi) : random_float(MG_BOT_TIME[g_mg][0], MG_BOT_TIME[g_mg][1]);
 		new id = g_seatPlayer[s];
 		if (!is_user_connected(id)) continue;
 		rg_set_user_team(id, (s % 2) ? TEAM_TERRORIST : TEAM_CT, MODEL_UNASSIGNED, true, false);
@@ -5038,7 +5536,7 @@ public task_race()
 	}
 	static Float:rebindAt;
 	if (get_gametime() - rebindAt >= 1.0 || get_gametime() < rebindAt) { rebindAt = get_gametime(); race_rebind(); }
-	if (t > 120.0 && g_mgWinnerN == 0 && !g_raceOver)
+	if (t > g_zTime && g_mgWinnerN == 0 && !g_raceOver)
 	{
 		g_raceOver = true;   // with nobody left to win it, this ran (and queued a changelevel) every tick
 		// nobody made it: furthest along the course wins (race_progress)

@@ -1,4 +1,4 @@
-// ISSUE (tools/dev/racepool_e2e.js): race map pools with a browser client. One player joins the board, then:
+// #3979 (tools/dev/racepool_e2e.js): race map pools with a browser client. One player joins the board, then:
 //   1. csp_test_remote 10 ffa kz_triangles   a pool map that isn't in gamedata.zip: its map pack must arrive
 //                                            (CSP_MAP_) before the engine loads it, and the race must run
 //   2.. csp_test_remote 10 ffa               pool draws: never a map this match already played, until the pool is used up

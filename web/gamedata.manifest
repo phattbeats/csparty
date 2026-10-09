@@ -663,7 +663,7 @@ valve/sound/weapons/sshell3.wav
 cstrike/models/csp_tile.mdl
 cstrike/sprites/csp_face.spr
 cstrike/sprites/csp_space.spr
-# CS Party voice lines (radio/bot cheer/sorry pools, ISSUE): precached by the plugin
+# CS Party voice lines (radio/bot cheer/sorry pools, #3920): precached by the plugin
 cstrike/sound/radio/bot/alright_lets_do_this.wav
 cstrike/sound/radio/bot/and_thats_how_its_done.wav
 cstrike/sound/radio/bot/aw_hell.wav

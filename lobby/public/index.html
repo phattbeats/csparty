@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#121411">
+<link rel="icon" href="art/favicon.svg" type="image/svg+xml">
+<title>CS Party: lobby</title>
+<link rel="stylesheet" href="lobby.css?v=1">
+</head>
+<body>
+<main class="menu">
+  <div class="window-bar"><span><span class="mini-die" aria-hidden="true">&#8281;</span> CS PARTY</span><span id="conn" aria-live="polite"></span></div>
+  <header class="masthead">
+    <img class="logo" src="art/logo.webp" alt="CS Party" width="720" height="360">
+    <div class="intro"><p class="eyebrow" id="eyebrow">PARTY LOBBY</p><h1 id="headline">Make a party, send the code.</h1><p id="subline">Up to 4 players. Bots fill the empty seats.</p></div>
+  </header>
+
+  <!-- home: create or join -->
+  <section id="home" class="layout">
+    <div class="panel">
+      <h2>Your name</h2>
+      <input type="text" id="name" maxlength="20" placeholder="Player name" autocomplete="nickname">
+      <div class="row">
+        <button id="create" type="button">Create a party</button>
+        <label class="check"><input type="checkbox" id="public"> List it publicly</label>
+      </div>
+      <h2>Have a code?</h2>
+      <form id="join-form" class="row">
+        <input type="text" id="code" maxlength="5" placeholder="ABCDE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Party code">
+        <button type="submit">Join</button>
+      </form>
+      <p id="home-status" class="status" role="status" aria-live="polite"></p>
+    </div>
+    <div class="panel" id="public-panel" hidden>
+      <h2>Open parties</h2>
+      <ul id="public-list" class="plain"></ul>
+    </div>
+  </section>
+
+  <!-- in a lobby -->
+  <section id="lobby" hidden>
+    <div class="code-bar">
+      <div><p class="eyebrow">PARTY CODE</p><div id="lobby-code" class="big-code">-----</div></div>
+      <div class="row"><button id="copy" type="button" class="alt">Copy invite link</button><button id="leave" type="button" class="alt">Leave</button></div>
+    </div>
+    <ol id="seats" class="seats" aria-label="Seats"></ol>
+    <p id="spectators" class="muted" hidden></p>
+    <div class="layout">
+      <fieldset class="roster"><legend class="eyebrow">YOUR CHARACTER</legend><div id="char-grid" class="char-grid"></div></fieldset>
+      <div class="panel actions">
+        <p id="lobby-status" class="status big" role="status" aria-live="polite"></p>
+        <button id="ready" type="button" aria-pressed="false">Ready</button>
+        <button id="start" type="button" class="alt" hidden>Start now (bots fill)</button>
+        <label class="check" id="public-wrap" hidden><input type="checkbox" id="lobby-public"> Listed publicly</label>
+        <a id="go" class="button" hidden>Join the match</a>
+        <button id="end" type="button" class="alt" hidden>Back to the lobby (end match)</button>
+        <p class="muted small">Everyone ready starts the match. The host can start any time.</p>
+      </div>
+    </div>
+  </section>
+  <footer class="muted small">No accounts. Your name, character and a random id live in this browser only.</footer>
+</main>
+<script src="lobby.js?v=1"></script>
+</body>
+</html>

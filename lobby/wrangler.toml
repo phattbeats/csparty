@@ -1,0 +1,34 @@
+# CS Party lobby API (#3989, design: docs/lobby-design.md).
+# Local:  npm run dev   (wrangler dev; secrets from .dev.vars)
+# Live:   npx wrangler secret put LOBBY_SECRET   then   npm run deploy   (needs a Workers/DO-scoped API token)
+name = "csparty-lobby"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+# /api/* goes to the Worker; everything else is the static lobby page
+run_worker_first = ["/api/*", "/healthz"]
+
+[[durable_objects.bindings]]
+name = "LOBBY"
+class_name = "Lobby"
+
+[[durable_objects.bindings]]
+name = "DIRECTORY"
+class_name = "Directory"
+
+# SQLite-backed Durable Objects: the only kind on the free plan
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Lobby", "Directory"]
+
+[vars]
+# Capacity: game servers that are already running, each behind its own relay (web/relay.js). The relay with
+# RELAY_ID=<id> and the same LOBBY_SECRET accepts this Worker's per-lobby tokens as its party key.
+# A slot is handed to a lobby only while its relay reports 0 peers, so friends already playing there are safe.
+POOL = '[{"id":"raid1","url":"https://csparty.example.com"}]'
+MIN_HUMANS = "2"            # auto-start needs this many ready humans (the host can always start, even alone)
+AUTOSTART_SECS = "5"        # everyone ready this long -> start
+TOKEN_HOURS = "3"           # how long a lobby's party key opens its server

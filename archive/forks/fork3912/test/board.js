@@ -1,4 +1,4 @@
-// ISSUE check: board music during the board phase, fade-out for minigames, theme at game end.
+// #3912 check: board music during the board phase, fade-out for minigames, theme at game end.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const URL = `http://127.0.0.1:8095/?key=${process.env.KEY}&char=1&nosound`;
