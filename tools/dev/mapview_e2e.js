@@ -16,7 +16,7 @@ function rcon(cmd) {
   return new Promise((ok) => {
     const s = dgram.createSocket("udp4"); const H = Buffer.from([255, 255, 255, 255]);
     let out = "", timer;
-    const done = => { try { s.close(); } catch {} ok(out || "timeout"); };
+    const done = () => { try { s.close(); } catch {} ok(out || "timeout"); };
     timer = setTimeout(done, 4000);
     s.on("message", (m) => {
       const t = m.slice(4).toString();
@@ -28,13 +28,14 @@ function rcon(cmd) {
   });
 }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const pg = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const states = [];
   pg.on("console", (m) => { const t = m.text(); const s = /\[watch\] state (-?\d) -> (\d)/.exec(t); if (s) states.push(+s[2]);
     if (/Host_Error|Sys_Error|abort|csp_space|csp_face|couldn't|not found/i.test(t)) note(`console: ${t.slice(0, 200)}`); });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
+  await pg.addInitScript(() => { try { localStorage.setItem("csp_primer", "1"); } catch {} });   // skip the first-visit primer (PHA-4094), it covers Join
   await pg.goto(URL, { waitUntil: "domcontentloaded" });
   note("renderer: " + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));
   await pg.fill("#name", "phaTT"); await pg.click("#go");
@@ -42,7 +43,7 @@ function rcon(cmd) {
   note("in game: " + states.includes(4));
   await sleep(15000);
   note((await rcon("csp_speed 0.2; csp_turn_timeout 1; csp_start")).trim());
-  const board = async => { let st = ""; for (let i = 0; i < 90; i++) { st = await rcon("csp_state"); if (/state=1 turn=[1-9]/.test(st)) break; await sleep(2000); } note("state: " + st.split("\n")[0]); };
+  const board = async () => { let st = ""; for (let i = 0; i < 90; i++) { st = await rcon("csp_state"); if (/state=1 turn=[1-9]/.test(st)) break; await sleep(2000); } note("state: " + st.split("\n")[0]); };
   await sleep(12000); await board();
   await pg.evaluate(() => { const p = document.getElementById("pause"); if (p) p.hidden = true; });
   for (let k = 0; k < (+process.env.SHOTS || 3); k++) {
