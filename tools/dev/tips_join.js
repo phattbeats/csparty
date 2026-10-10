@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 8111, KEY = process.env.KEY || "t3984", PHONE =
 const OUT = `/work/join${PHONE ? "-phone" : ""}`; fs.mkdirSync(OUT, { recursive: true });
 const t0 = Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const note = (s) => console.log(`[${((Date.now() - t0) / 1000).toFixed(1)}] ${s}`);
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const ctx = await browser.newContext(PHONE ? { viewport: { width: 740, height: 360 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 } : { viewport: { width: 960, height: 600 } });
   const pg = await ctx.newPage(); const states = [];

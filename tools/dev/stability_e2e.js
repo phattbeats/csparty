@@ -14,7 +14,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function rcon(cmd) {
   return new Promise((ok) => {
     const s = dgram.createSocket("udp4"), H = Buffer.from([255, 255, 255, 255]); let buf = "", t;
-    const done = => { try { s.close(); } catch {} ok(buf || "timeout"); }; t = setTimeout(done, 3000);
+    const done = () => { try { s.close(); } catch {} ok(buf || "timeout"); }; t = setTimeout(done, 3000);
     s.on("message", (m) => { const x = m.slice(4).toString(), c = /^challenge rcon (\d+)/.exec(x);
       if (c) s.send(Buffer.concat([H, Buffer.from(`rcon ${c[1]} "${RPW}" ${cmd}\n`)]), 27030, "127.0.0.1");
       else { buf += x.slice(1); clearTimeout(t); t = setTimeout(done, 600); } });
@@ -32,7 +32,7 @@ async function join(browser, name, role) {
       if (c.st === 0 && prev >= 1 && !c.paused && !c.rejoining) { c.lost = (c.lost || 0) + 1; rejoin(c); } }
     else if (/Host_Error|Sys_Error|abort|assert|disconnect|kicked|Server shutting|overflow|timed out/i.test(t)) log(`${name} console: ${t.slice(0, 200)}`); });
   c.pg.on("pageerror", (e) => { c.errors++; log(`${name} PAGEERROR ${e.message.slice(0, 200)}`); });
-  c.pg.on("crash", => { c.crashed = true; log(`${name} PAGE CRASHED`); });
+  c.pg.on("crash", () => { c.crashed = true; log(`${name} PAGE CRASHED`); });
   c.pg.on("dialog", (d) => d.dismiss().catch(() => {}));
   await c.pg.goto(URL, { waitUntil: "domcontentloaded" });
   await c.pg.fill("#name", name); await c.pg.click("#go");
@@ -64,7 +64,7 @@ async function drive(c) {   // seated players: press Jump (crate / menu pick) an
 }
 async function waitAll(list, secs) { for (let i = 0; i < secs * 2; i++) { if (list.every((c) => c.st === 4)) return true; await sleep(500); } return false; }
 
-(async => {
+(async () => {
   for (const cmd of [...(process.env.FIX ? ["sv_rehlds_maxclients_from_single_ip 32"] : []), "sv_rehlds_maxclients_from_single_ip", "csp_turns 4", "csp_force_mg 8"]) log(`rcon ${cmd}: ${(await rcon(cmd)).trim().slice(0, 80)}`);
   const b = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu"] });
   const P = [], S = [];

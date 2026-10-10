@@ -53,13 +53,13 @@ async function runMap(map) {
       if (/Host_Error|Sys_Error|can't find|not found|abort|Error/i.test(t) && !/room_type|logos\/remapped|_sky|Audio subsystem|VoiceCapture|overviews\//.test(t)) note(`console.${m.type()}: ${t.slice(0, 300)}`);
     });
     pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
-    pg.on("crash", => note("PAGE CRASHED"));
+    pg.on("crash", () => note("PAGE CRASHED"));
     pg.on("response", (r) => { if (r.url().includes("mappacks/")) packs.push(`${r.status()} ${r.url().replace(/key=[^&]*/, "key=***").split("/").pop()}`); });
     await pg.goto(URL, { waitUntil: "domcontentloaded" });
     note(`== ${map} (${VIEW}); renderer: ` + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));
     if (VIEW === "phone") note("  touch UI: " + await pg.evaluate(() => matchMedia("(pointer: coarse)").matches + " coarse, " + ("ontouchstart" in window) + " ontouchstart, landscape " + matchMedia("(orientation: landscape)").matches));
     await pg.fill("#name", "phaTT"); await pg.click("#go");
-    const joins = => states.filter((s) => s === 4).length;
+    const joins = () => states.filter((s) => s === 4).length;
     const waitJoins = async (n, secs) => { const t = Date.now(); while (Date.now() - t < secs * 1000) { if (joins() >= n) return true; await sleep(500); } return false; };
     note("  joined board: " + await waitJoins(1, 240));
     await sleep(12000);
@@ -98,7 +98,7 @@ async function runMap(map) {
   return result;
 }
 
-(async => {
+(async () => {
   const maps = (process.env.MAPS || "").split(",").filter(Boolean);
   const results = [];
   for (const map of maps) {

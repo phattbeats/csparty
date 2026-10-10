@@ -26,15 +26,15 @@ function rcon(cmd) {
   });
 }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const pg = await browser.newPage({ viewport: { width: 640, height: 400 } });
   const states = [];
   pg.on("console", (m) => { const t = m.text(); const s = /\[watch\] state (-?\d) -> (\d)/.exec(t); if (s) states.push(+s[2]);
     if (/watch|boot|error|Error|vertex|buffer|GL_|WebGL|Host_Error|Sys_Error|abort|assert/i.test(t)) note(`console.${m.type()}: ${t.slice(0, 300)}`); });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
-  pg.on("crash", => note("PAGE CRASHED"));
-  pg.on("close", => note("page closed"));
+  pg.on("crash", () => note("PAGE CRASHED"));
+  pg.on("close", () => note("page closed"));
   let dialogMode = "dismiss";
   pg.on("dialog", async (d) => { note(`DIALOG ${d.type()}: ${d.message()}`); dialogMode === "accept" ? await d.accept() : await d.dismiss(); });
 

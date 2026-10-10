@@ -20,7 +20,7 @@ function rcon(cmd) {
   return new Promise((ok) => {
     const s = dgram.createSocket("udp4"); const H = Buffer.from([255, 255, 255, 255]);
     let out = "", timer;
-    const done = => { try { s.close(); } catch {} ok(out || "timeout"); };
+    const done = () => { try { s.close(); } catch {} ok(out || "timeout"); };
     timer = setTimeout(done, 4000);
     s.on("message", (m) => {
       const t = m.slice(4).toString();
@@ -32,7 +32,7 @@ function rcon(cmd) {
   });
 }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const vw = +(process.env.VW || 1280), vh = +(process.env.VH || 720);
   const ctxOpts = process.env.PHONE ? { viewport: { width: vw, height: vh }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: devices["Pixel 7"].userAgent }
@@ -41,14 +41,14 @@ function rcon(cmd) {
   const pg = await ctx.newPage();
   // PAD=1: a fake standard-mapping controller; drive it with `eval window.__padSet([0], [])` (pressed buttons, axes)
   if (process.env.PAD) await pg.addInitScript(() => {
-    const mk = => ({ id: "Fake Pad (STANDARD GAMEPAD)", index: 0, mapping: "standard", connected: true, timestamp: performance.now(), axes: [0, 0, 0, 0],
-      buttons: Array.from({ length: 17 }, => ({ pressed: false, touched: false, value: 0 })) });
+    const mk = () => ({ id: "Fake Pad (STANDARD GAMEPAD)", index: 0, mapping: "standard", connected: true, timestamp: performance.now(), axes: [0, 0, 0, 0],
+      buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })) });
     let pad = mk(); window.__pad = pad;
     window.__padSet = (btns, axes) => { pad = mk(); (btns || []).forEach((i) => { pad.buttons[i] = { pressed: true, touched: true, value: 1 }; }); (axes || []).forEach((v, i) => { pad.axes[i] = v; }); window.__pad = pad; return true; };
-    navigator.getGamepads = => [pad, null, null, null];
+    navigator.getGamepads = () => [pad, null, null, null];
     setTimeout(() => window.dispatchEvent(new Event("gamepadconnected")), 300);
   });
-  pg.on("console", (m) => { const t = m.text(); if (/\[watch\] state|Host_Error|Sys_Error|abort|disconnect|kicked/i.test(t)) note(`console: ${t.slice(0, 200)}`); });
+  pg.on("console", (m) => { const t = m.text(); if (process.env.ALLLOG) fs.appendFileSync("/work/console.txt", t + "\n"); if (/\[watch\] state|Host_Error|Sys_Error|abort|disconnect|kicked/i.test(t)) note(`console: ${t.slice(0, 200)}`); });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
   await pg.goto(URL, { waitUntil: "domcontentloaded" });
   note("renderer: " + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));

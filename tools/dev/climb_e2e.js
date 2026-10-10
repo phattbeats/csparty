@@ -48,7 +48,7 @@ async function client(browser, who, phone) {
     if (/finishes in|wins the|Time!|Host_Error|Sys_Error|can't find|not found|mappack|PAGEERROR|couldn't load "maps/i.test(t)) note(`${who} console: ${t.slice(0, 200)}`);
   });
   pg.on("pageerror", (e) => note(`${who} PAGEERROR: ${e.message}`));
-  pg.on("crash", => note(`${who} PAGE CRASHED`));
+  pg.on("crash", () => note(`${who} PAGE CRASHED`));
   pg.on("response", (r) => { if (r.url().includes("mappacks/")) c.packs.push(`${r.url().split("/").pop().split("?")[0]} ${r.status()} ${r.headers()["content-length"] || "?"}`); });
   await pg.goto(URL, { waitUntil: "domcontentloaded" });
   note(`${who} renderer: ` + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));
@@ -78,7 +78,7 @@ async function pressUse(c) {
 
 const shot = (c, name) => c.pg.screenshot({ path: `${OUT}/${name}-${c.who}.png` }).catch((e) => note(`${c.who} screenshot failed ${e.message}`));
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu"] });
   const results = [];
   for (const map of MAPS) {

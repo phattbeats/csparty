@@ -24,7 +24,7 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, timeo
 // GoldSrc rcon: get a challenge, then send the command
 const rcon = (cmd) => new Promise((resolve) => {
   const s = dgram.createSocket("udp4"); let out = "", stage = 0;
-  const done = => { try { s.close(); } catch {} resolve(out); };
+  const done = () => { try { s.close(); } catch {} resolve(out); };
   const t = setTimeout(done, 2500);
   s.on("message", (m) => {
     const txt = m.toString("latin1").slice(4);
@@ -35,7 +35,7 @@ const rcon = (cmd) => new Promise((resolve) => {
   s.send(Buffer.from("\xff\xff\xff\xffchallenge rcon\n", "latin1"), +RPORT, RHOST);
 });
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const player = async (name) => {
     const ctx = await browser.newContext({ viewport: { width: 960, height: 600 } });
@@ -107,7 +107,7 @@ const rcon = (cmd) => new Promise((resolve) => {
   const back = await A.ctx.newPage();
   await back.goto(`${LOBBY}/?code=${code}`);
   await back.waitForSelector("#lobby:not([hidden])");
-  const reopened = await back.waitForFunction(() => !document.getElementById("ready").hidden, null, { timeout: 330000 }).then(() => true, => false);
+  const reopened = await back.waitForFunction(() => !document.getElementById("ready").hidden, null, { timeout: 330000 }).then(() => true, () => false);
   check(reopened, `lobby reopened for a rematch ${Math.round((Date.now() - t0) / 1000)} s after everyone left the server`);
   await shot(back, "6-lobby-reopened");
   await browser.close();

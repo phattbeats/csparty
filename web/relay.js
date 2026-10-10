@@ -109,10 +109,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, headers);
     if (req.method === "HEAD") { res.end(); return; }
     const stream = fs.createReadStream(file);
-    stream.on("error", => res.destroy());
+    stream.on("error", () => res.destroy());
     if (isProtected) {
       stats.downloads++;
-      res.on("close", => { stats.downloads--; lastActive = Date.now(); });
+      res.on("close", () => { stats.downloads--; lastActive = Date.now(); });
     }
     stream.pipe(res);
   });
@@ -134,7 +134,7 @@ const wss = new WebSocketServer({ server, path: "/relay", maxPayload: 64 * 1024,
 let seq = 0;
 wss.on("connection", (ws, req) => {
   // a refused socket still gets an error listener: one malformed frame on it was an unhandled error that killed the relay
-  if (req.refuse) { ws.on("error", => {}); log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
+  if (req.refuse) { ws.on("error", () => {}); log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
   const id = ++seq, who = clientIp(req);
   perIp.set(who, (perIp.get(who) || 0) + 1);
   stats.peers++; stats.totalPeers++;
@@ -160,7 +160,7 @@ wss.on("connection", (ws, req) => {
     ws.send(msg, { binary: true }); down++; stats.down++; lastTraffic = Date.now();
   });
   udp.on("error", (e) => close(`udp error ${e.message}`));
-  udp.bind(0, => log(`[${id}] ${who} -> udp :${udp.address().port} -> ${GAME_HOST}:${GAME_PORT}`));
+  udp.bind(0, () => log(`[${id}] ${who} -> udp :${udp.address().port} -> ${GAME_HOST}:${GAME_PORT}`));
 
   ws.on("message", (data) => {
     if (closed) return;
@@ -171,7 +171,7 @@ wss.on("connection", (ws, req) => {
     try { udp.send(buf, +GAME_PORT, GAME_HOST); } catch (e) { return close(`udp send ${e.code || e.message}`); }
     up++; stats.up++; lastTraffic = Date.now();
   });
-  ws.on("pong", => { alive = true; });
+  ws.on("pong", () => { alive = true; });
   ws.on("close", (code) => close(`browser closed (${code})`));
   ws.on("error", (e) => close(`ws error ${e.message}`));
 
@@ -191,10 +191,10 @@ const shutdown = (sig) => {
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 };
-process.on("SIGTERM", => shutdown("SIGTERM"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
 // Last resort: one bad request must not drop every player in the party. Log it and keep relaying.
 process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
 server.on("clientError", (e, sock) => { try { sock.destroy(); } catch {} });
-process.on("SIGINT", => shutdown("SIGINT"));
+process.on("SIGINT", () => shutdown("SIGINT"));
 
-server.listen(PORT, => log(`CS Party relay: http://0.0.0.0:${PORT}  ->  ${GAME_HOST}:${GAME_PORT}  (root ${ROOT})${KEY ? "  [party key on]" : ""}`));
+server.listen(PORT, () => log(`CS Party relay: http://0.0.0.0:${PORT}  ->  ${GAME_HOST}:${GAME_PORT}  (root ${ROOT})${KEY ? "  [party key on]" : ""}`));

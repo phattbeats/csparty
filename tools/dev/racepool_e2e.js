@@ -32,7 +32,7 @@ function rcon(cmd) {
   });
 }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu"] });
   const pg = await browser.newPage({ viewport: { width: 640, height: 400 } });
   const states = [], maps = [];
@@ -42,14 +42,14 @@ function rcon(cmd) {
     if (/watch|\[boot\]|CSP_MAP|Host_Error|Sys_Error|couldn't|can't find|not found|download|abort|Error/i.test(t)) note(`console.${m.type()}: ${t.slice(0, 300)}`);
   });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
-  pg.on("crash", => note("PAGE CRASHED"));
+  pg.on("crash", () => note("PAGE CRASHED"));
   const mapRequests = [];
   pg.on("request", (r) => { if (r.url().includes("mappacks/")) mapRequests.push(r.url().replace(/key=[^&]*/, "key=***")); });
 
   await pg.goto(URL, { waitUntil: "domcontentloaded" });
   note("renderer: " + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));
   await pg.fill("#name", "phaTT"); await pg.click("#go");
-  const joins = => states.filter((s) => s === 4).length;
+  const joins = () => states.filter((s) => s === 4).length;
   const waitJoins = async (n, secs) => { const t = Date.now(); while (Date.now() - t < secs * 1000) { if (joins() >= n) return true; await sleep(500); } return false; };
   note("joined board: " + await waitJoins(1, 240));
   await sleep(15000);

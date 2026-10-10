@@ -17,7 +17,7 @@ function rcon(cmd) {
     s.send(Buffer.concat([H, Buffer.from("challenge rcon\n")]), GPORT, "127.0.0.1");
   });
 }
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
   const ctx = await browser.newContext(PHONE ? { viewport: { width: 740, height: 360 }, hasTouch: true, isMobile: true, deviceScaleFactor: 1 } : { viewport: { width: 960, height: 600 } });
   const pg = await ctx.newPage(); const states = [];

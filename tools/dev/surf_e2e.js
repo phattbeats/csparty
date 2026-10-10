@@ -51,7 +51,7 @@ async function pos() {
 }
 async function state() { const r = await rcon("csp_state"); const m = /state=(\d+)/.exec(r); return m ? +m[1] : -1; }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu"] });
   const ctxOpts = DEVICE === "phone" ? { ...devices["Pixel 7 landscape"] } : { viewport: { width: 640, height: 400 } };
   const ctx = await browser.newContext(ctxOpts);
@@ -64,7 +64,7 @@ async function state() { const r = await rcon("csp_state"); const m = /state=(\d
     if (/watch|\[boot\]|CSP_MAP|Host_Error|Sys_Error|couldn't|can't find|not found|download|abort|Error/i.test(t)) note(`console.${m.type()}: ${t.slice(0, 240)}`);
   });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
-  pg.on("crash", => note("PAGE CRASHED"));
+  pg.on("crash", () => note("PAGE CRASHED"));
   const packs = [];
   pg.on("response", (r) => { if (r.url().includes("mappacks/")) packs.push(`${r.status()} ${r.url().replace(/key=[^&]*/, "key=***").replace(RELAY, "")}`); });
 
@@ -72,12 +72,12 @@ async function state() { const r = await rcon("csp_state"); const m = /state=(\d
   note(`device ${DEVICE} ${JSON.stringify(ctxOpts.viewport)} touch=${await pg.evaluate(() => matchMedia("(pointer: coarse)").matches)}`);
   note("renderer: " + await pg.evaluate(() => { const g = document.createElement("canvas").getContext("webgl2"); const x = g.getExtension("WEBGL_debug_renderer_info"); return g.getParameter(x.UNMASKED_RENDERER_WEBGL); }));
   await pg.fill("#name", DEVICE === "phone" ? "phone" : "desk"); await pg.click("#go");
-  const joins = => states.filter((s) => s === 4).length;
+  const joins = () => states.filter((s) => s === 4).length;
   const waitJoins = async (n, secs) => { const t = Date.now(); while (Date.now() - t < secs * 1000) { if (joins() >= n) return true; await sleep(500); } return false; };
   note("joined board: " + await waitJoins(1, 300));
   await sleep(15000);
   const cmd = (c) => pg.evaluate((c) => { const e = window.__csp; const p = e.stringToNewUTF8(c + "\n"); e._Cbuf_AddText(p); e._free(p); }, c);
-  const release = => cmd("-forward; -back; -moveleft; -moveright; -jump; -duck");
+  const release = () => cmd("-forward; -back; -moveleft; -moveright; -jump; -duck");
   const results = [];
 
   for (const map of MAPS) {

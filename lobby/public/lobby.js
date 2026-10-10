@@ -18,13 +18,13 @@
   $("name").value = store.get("csp_name") || "";
   let myChar = +(store.get("csp_char") ?? -1);
   if (!CHARS[myChar]) myChar = -1;
-  const myName = => $("name").value.trim().slice(0, 20) || "Player";
+  const myName = () => $("name").value.trim().slice(0, 20) || "Player";
 
   const homeStatus = (t, err) => { $("home-status").textContent = t; $("home-status").className = "status" + (err ? " err" : ""); };
   const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/;
 
   // ------------------------------------------------------------------ home
-  $("create").addEventListener("click", async => {
+  $("create").addEventListener("click", async () => {
     store.set("csp_name", myName());
     $("create").disabled = true; homeStatus("Making a party…");
     try {
@@ -37,7 +37,7 @@
     $("create").disabled = false;
   });
   $("join-form").addEventListener("submit", (e) => { e.preventDefault(); tryJoin($("code").value); });
-  $("code").addEventListener("input", => { $("code").value = $("code").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
+  $("code").addEventListener("input", () => { $("code").value = $("code").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 
   async function tryJoin(raw) {
     const code = String(raw || "").trim().toUpperCase();
@@ -80,13 +80,13 @@
     const q = new URLSearchParams({ pid, name: myName(), char: String(myChar) });
     ws = new WebSocket(`${proto}://${location.host}/api/lobbies/${code}/ws?${q}`);
     const sock = ws;
-    sock.onopen = => { retry = 0; $("conn").textContent = "CONNECTED"; $("conn").className = ""; };
+    sock.onopen = () => { retry = 0; $("conn").textContent = "CONNECTED"; $("conn").className = ""; };
     sock.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === "state") render(m); else if (m.t === "error") lobbyStatus(m.msg, true); };
     sock.onclose = (e) => {
       if (sock !== ws || leaving) return;
       $("conn").textContent = "RECONNECTING"; $("conn").className = "off";
       if (e.code === 4000) { lobbyStatus("This party is open in another tab.", true); $("conn").textContent = "OTHER TAB"; return; }
-      setTimeout(async => {
+      setTimeout(async () => {
         // a lobby that expired answers 404: back to the start screen
         try { if ((await fetch(`/api/lobbies/${code}`)).status === 404) { backHome(`Party ${code} has ended.`); return; } } catch {}
         if (sock === ws && !leaving) connect();
@@ -105,16 +105,16 @@
     homeStatus(msg || "", !!msg);
     loadPublic();
   }
-  $("leave").addEventListener("click", => { send({ t: "leave" }); backHome(""); });
-  $("copy").addEventListener("click", async => {
+  $("leave").addEventListener("click", () => { send({ t: "leave" }); backHome(""); });
+  $("copy").addEventListener("click", async () => {
     const link = `${location.origin}/?code=${code}`;
     try { await navigator.clipboard.writeText(link); $("copy").textContent = "Copied!"; } catch { prompt("Invite link:", link); }
     setTimeout(() => { $("copy").textContent = "Copy invite link"; }, 1500);
   });
-  $("ready").addEventListener("click", => send({ t: "ready", ready: $("ready").getAttribute("aria-pressed") !== "true" }));
-  $("start").addEventListener("click", => send({ t: "start" }));
-  $("end").addEventListener("click", => { if (confirm("End the match for everyone and go back to the lobby?")) send({ t: "end" }); });
-  $("lobby-public").addEventListener("change", => send({ t: "public", public: $("lobby-public").checked }));
+  $("ready").addEventListener("click", () => send({ t: "ready", ready: $("ready").getAttribute("aria-pressed") !== "true" }));
+  $("start").addEventListener("click", () => send({ t: "start" }));
+  $("end").addEventListener("click", () => { if (confirm("End the match for everyone and go back to the lobby?")) send({ t: "end" }); });
+  $("lobby-public").addEventListener("change", () => send({ t: "public", public: $("lobby-public").checked }));
 
   function lobbyStatus(t, err) { $("lobby-status").textContent = t; $("lobby-status").className = "status big" + (err ? " err" : ""); }
 
@@ -170,7 +170,7 @@
     if (s.error) lobbyStatus(s.error, s.state !== "queued");
     else if (open && s.startsIn > 0) {
       const at = Date.now() + s.startsIn;
-      const tick = => lobbyStatus(`Everyone's ready. Starting in ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}…`);
+      const tick = () => lobbyStatus(`Everyone's ready. Starting in ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}…`);
       tick(); countdown = setInterval(tick, 250);
     } else if (open) {
       const ready = players.filter((m) => m.ready && m.online).length, online = players.filter((m) => m.online).length;

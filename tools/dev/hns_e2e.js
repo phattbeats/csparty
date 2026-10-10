@@ -41,7 +41,7 @@ async function state() {
   return { st: m ? +m[1] : -1, seat: seat === undefined ? -1 : +seat };
 }
 
-(async => {
+(async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu"] });
   const pg = await browser.newPage({ viewport: { width: 960, height: 600 } });
   const states = [];
@@ -50,8 +50,8 @@ async function state() {
     if (/watch|Host_Error|Sys_Error|couldn't|can't find|abort/i.test(t)) note(`console.${m.type()}: ${t.slice(0, 300)}`);
   });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
-  pg.on("crash", => note("PAGE CRASHED"));
-  const joins = => states.filter((s) => s === 4).length;
+  pg.on("crash", () => note("PAGE CRASHED"));
+  const joins = () => states.filter((s) => s === 4).length;
   const waitJoins = async (n, secs) => { const t = Date.now(); while (Date.now() - t < secs * 1000) { if (joins() >= n) return true; await sleep(500); } return false; };
   const shot = async (name) => {
     await pg.evaluate(() => { const p = document.getElementById("pause"); if (p) p.hidden = true; document.getElementById("canvas").focus(); });

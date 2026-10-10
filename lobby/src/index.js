@@ -95,7 +95,7 @@ export class Lobby extends DurableObject {
     super(ctx, env);
     this.closing = new Set();
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));
-    this.ctx.blockConcurrencyWhile(async => { this.s = (await this.ctx.storage.get("s")) || null; });
+    this.ctx.blockConcurrencyWhile(async () => { this.s = (await this.ctx.storage.get("s")) || null; });
   }
   dir() { return this.env.DIRECTORY.get(this.env.DIRECTORY.idFromName("directory")); }
   async save() { await this.ctx.storage.put("s", this.s); }
