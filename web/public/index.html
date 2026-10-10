@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-visual">
 <meta name="theme-color" content="#121411">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -99,6 +99,29 @@
   #nav-ctl .back { flex:1.6 1 0; font-size:15px; }
   /* z-index 5: over the page's Menu/Fullscreen buttons (4). Scrolls when it's taller than the screen,
      and "safe" keeps the top reachable instead of centring it off the edge. */
+  /* phone chat (PHA-4058): 18 px text (the engine's chat HUD is ~8 px), 48 px targets, rides above the soft keyboard */
+  #chat-open, #chat, #chat-feed { display:none; }
+  .touch.ingame #chat-open { display:block; }
+  .touch.ingame #chat-feed { display:flex; }
+  #chat-open { position:fixed; z-index:4; left:max(8px, env(safe-area-inset-left)); top:max(76px, calc(env(safe-area-inset-top) + 66px)); width:48px; height:48px; padding:0;
+    background:rgba(26, 29, 24, .85); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:22px; line-height:1; touch-action:manipulation; }
+  #chat-feed { position:fixed; z-index:3; left:max(8px, env(safe-area-inset-left)); bottom:max(64px, calc(env(safe-area-inset-bottom) + 8px));
+    flex-direction:column; justify-content:flex-end; gap:4px; width:min(60vw, 480px); max-height:40vh; margin:0; padding:0; list-style:none;
+    overflow:hidden; pointer-events:none; font:600 18px/1.3 system-ui, sans-serif; color:#fff; -webkit-user-select:none; user-select:none; }
+  #chat-feed li { background:rgba(10, 12, 9, .78); padding:4px 10px; border-radius:6px; overflow-wrap:anywhere; transition:opacity .6s; text-shadow:0 1px 2px #000; }
+  #chat-feed li b { color:var(--hud); font-weight:700; }
+  #chat-feed li.team b { color:#8fd0ff; }
+  #chat-feed li.old { opacity:0; }
+  .chatting #chat-feed { pointer-events:auto; overflow-y:auto; overscroll-behavior:contain; touch-action:pan-y; bottom:calc(var(--chat-kb, 0px) + 64px);
+    max-height:calc(var(--chat-vh, 100vh) - 84px); justify-content:flex-start; }
+  .chatting #chat-feed li.old { opacity:1; }
+  #chat-bar { position:fixed; z-index:6; left:0; right:0; bottom:var(--chat-kb, 0px); display:flex; gap:8px; align-items:center;
+    padding:8px max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); background:rgba(10, 12, 9, .94); border-top:1px solid var(--line); }
+  #chat-bar[hidden] { display:none; }
+  #chat-bar input { flex:1; min-width:0; height:48px; padding:0 12px; font-size:18px; border-radius:8px; -webkit-user-select:text; user-select:text; }
+  #chat-bar button { flex:none; min-width:48px; height:48px; padding:0 14px; font-size:16px; border-radius:8px; touch-action:manipulation; }
+  #chat-bar #chat-mode, #chat-bar #chat-close { background:transparent; color:var(--text); border:1px solid var(--line); }
+  #chat-mode[aria-pressed="true"] { color:#8fd0ff; border-color:#8fd0ff; }
   #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:5; overflow-y:auto; place-items:safe center; }
   #pause .card { gap:12px; }
   /* phones held sideways (~360 px tall): two columns, sliders and buttons side by side, so it fits without scrolling */
@@ -536,6 +559,14 @@
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
 <button id="pz-open" type="button" aria-label="Open the menu">Menu</button>
+<button id="chat-open" type="button" aria-label="Chat">&#128172;</button>
+<ol id="chat-feed" aria-live="polite" aria-label="Chat"></ol>
+<form id="chat-bar" hidden autocomplete="off">
+  <button id="chat-mode" type="button" aria-pressed="false" aria-label="Send to all or to team">All</button>
+  <input id="chat-input" type="text" maxlength="120" enterkeyhint="send" autocomplete="off" autocapitalize="sentences" aria-label="Chat message" placeholder="Message">
+  <button id="chat-send" type="submit">Send</button>
+  <button id="chat-close" type="button" aria-label="Close chat">&#10005;</button>
+</form>
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>

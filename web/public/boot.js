@@ -267,7 +267,7 @@
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
-      if (!watch.joined) { watch.joined = true; tipStop(); hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); }
+      if (!watch.joined) { watch.joined = true; tipStop(); hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); if (TOUCH) { consoleCmd("touch_removebutton chat"); consoleCmd("hud_saytext_time 0"); } }
       toast("");
       return;
     }
@@ -589,6 +589,67 @@
 
   // phones have no Esc: an on-screen button opens the menu (shown on touch screens only)
   $("pz-open").addEventListener("click", () => openPause());
+
+  // Phone chat (PHA-4058). The engine's own chat HUD is ~8 px text and its on-screen keyboard is a second
+  // system keyboard layered on the game, so on touch screens chat is DOM: a feed fed from the engine's
+  // "<name> text" console lines, and a compose bar that rides above the soft keyboard and sends say / say_team.
+  // While the bar is open, keys never reach the engine (window capture, below) and touches stay on the panel.
+  const chat = { open: false, team: false, feed: $("chat-feed"), bar: $("chat-bar"), input: $("chat-input") };
+  const CHAT_MAX = 6, CHAT_FADE = 9000;
+  const chatLine = (raw) => {
+    if (!TOUCH) return;
+    // players print as "name : text" (the server's own say as "<name> text"); team chat adds a "(Terrorist)" style prefix
+    const m = /^(?:\[[\d:]+\]\s*)?((?:\*DEAD\*|\*SPEC\*|\(Terrorist\)|\(Counter-Terrorist\)|\(Spectator\)|\s)*)(?:<(.{1,48}?)>|([^\s\[\]"<>:][^\[\]"<>:]{0,40}?) : )\s*(.+)$/.exec(raw.replace(/\^\d/g, "").replace(/Unknown command: \S+/, "").trimEnd());
+    if (!m) return;
+    const who = (m[2] || m[3]).replace(/^\(\d+\)/, "");
+    const li = document.createElement("li"), name = document.createElement("b");
+    name.textContent = who + ":";
+    if (/Terrorist\)/.test(m[1]) || /Counter/.test(m[1])) li.className = "team";
+    li.append(name, " " + m[4]);
+    chat.feed.append(li);
+    while (chat.feed.children.length > CHAT_MAX + (chat.open ? 20 : 0)) chat.feed.firstChild.remove();
+    chat.feed.scrollTop = chat.feed.scrollHeight;
+    setTimeout(() => li.classList.add("old"), CHAT_FADE);
+  };
+  // keep the bar on the visible area: on-screen keyboard height and the notch/home-bar insets
+  const chatLayout = () => {
+    const v = window.visualViewport;
+    const kb = v ? Math.max(0, innerHeight - v.height - v.offsetTop) : 0;
+    const root = document.documentElement.style;
+    root.setProperty("--chat-kb", kb + "px");
+    root.setProperty("--chat-vh", (v ? v.height : innerHeight) + "px");
+    chat.feed.scrollTop = chat.feed.scrollHeight;
+  };
+  const chatSet = (open) => {
+    chat.open = open; chat.bar.hidden = !open;
+    document.documentElement.classList.toggle("chatting", open);
+    if (open) { chatLayout(); chat.input.focus({ preventScroll: true }); if (document.pointerLockElement) document.exitPointerLock(); }
+    else { chat.input.blur(); $("canvas").focus(); }
+  };
+  const chatMode = (team) => { chat.team = team; $("chat-mode").textContent = team ? "Team" : "All"; $("chat-mode").setAttribute("aria-pressed", team); };
+  if (TOUCH) {
+    window.visualViewport?.addEventListener("resize", chatLayout);
+    window.visualViewport?.addEventListener("scroll", chatLayout);
+    $("chat-open").addEventListener("click", () => chatSet(!chat.open));
+    $("chat-close").addEventListener("click", () => chatSet(false));
+    $("chat-mode").addEventListener("click", () => { chatMode(!chat.team); chat.input.focus({ preventScroll: true }); });
+    // tapping a bar button must not drop the soft keyboard (the input keeps focus)
+    for (const id of ["chat-mode", "chat-send"]) $(id).addEventListener("pointerdown", (e) => e.preventDefault());
+    $("chat-bar").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const t = chat.input.value.replace(/["\\;\r\n]+/g, " ").trim().slice(0, 120);
+      if (t) consoleCmd(`${chat.team ? "say_team" : "say"} "${t}"`);
+      chat.input.value = ""; chatSet(false);
+    });
+    // nothing typed or touched on the chat panels reaches the game
+    for (const id of ["chat-bar", "chat-feed", "chat-open"]) for (const t of ["touchstart", "touchmove", "touchend", "pointerdown", "pointerup", "mousedown", "mouseup", "wheel"])
+      $(id).addEventListener(t, (e) => e.stopPropagation(), { passive: true });
+    for (const t of ["keydown", "keyup", "keypress"]) addEventListener(t, (e) => {
+      if (!chat.open) return;
+      e.stopImmediatePropagation();
+      if (t === "keydown" && e.key === "Escape") { e.preventDefault(); chatSet(false); }
+    }, true);
+  }
   // Mouse capture lost without the engine asking (Esc while captured, alt-tab): that's a pause.
   // The engine lets go itself on map changes and for its console; those go through exitPointerLock.
   // It also lets go whenever the keyboard leaves the game (chat, console, a menu with a mouse cursor).
@@ -892,6 +953,7 @@
         locateFile: (f) => f,
         print: (t) => {
           console.log(t);
+          chatLine(t);
           const mp = /CSP_MAP_([\w.\-]+)/.exec(t);
           if (mp) fetchMapPack(mp[1]);
           if (t.includes("CSP_NAV")) navLine(t);
