@@ -18,8 +18,13 @@
   html, body { margin:0; height:100%; background:var(--bg); color:var(--text); font:15px/1.45 system-ui, sans-serif; overflow:hidden;
     overscroll-behavior:none; -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; -webkit-tap-highlight-color:transparent; }
   input { -webkit-user-select:text; user-select:text; }
-  /* min size: keeps the 3D view and the HUD usable when a phone page shrinks (keyboard, split screen) */
-  #canvas { touch-action:none; position:fixed; inset:0; width:100vw; height:100vh; height:100dvh; min-width:480px; min-height:320px; display:block; background:#000; outline:none; }
+  /* PHA-4120: the presentation box follows the real viewport and letterboxes the engine's
+     framebuffer (object-fit) instead of stretching it. min-width/min-height are clamped to the
+     viewport so PHA-3946's renderer floor still applies wherever it fits, but can no longer push
+     the canvas wider than a phone screen (it used to force 480px into a 390px viewport). */
+  #canvas { touch-action:none; position:fixed; inset:0; width:100%; height:100%; height:100dvh;
+    min-width:min(480px, 100vw); min-height:min(320px, 100vh);
+    object-fit:contain; object-position:center; display:block; background:#000; outline:none; }
   .screen { position:fixed; inset:0; display:grid; place-items:center; padding:16px; z-index:2; }
   #gate { background:var(--bg); }
   #overlay { background:rgba(10, 11, 9, .95); backdrop-filter: blur(6px); z-index:3; }
@@ -320,6 +325,91 @@
   @keyframes turn { 0%, 30% { transform:rotate(0); } 60%, 100% { transform:rotate(-90deg); } }
   @media (orientation: portrait) and (pointer: coarse) { .ingame #rotate { display:grid; } }   /* the name form is fine upright */
   @media (prefers-reduced-motion: reduce) { .spin, #rotate .phone { animation:none; } .bar i, #fs { transition:none; } }
+
+  /* ==========================================================================================
+     PHA-4120 - mobile readability pass (Brandon's real-phone report, 2026-10-10).
+     Phone floors: body >= 18 CSS px, primary instruction >= 24 CSS px, tap targets >= 44 CSS px.
+     Scoped to coarse pointers / narrow screens so the desktop layout keeps its current scale.
+     ========================================================================================== */
+  @media (pointer: coarse), (max-width: 690px) {
+    /* join screen */
+    #gate #status           { font-size:25px; line-height:1.35; }
+    #gate .note             { font-size:26px; line-height:1.35; padding:10px 12px; }
+    #gate .character-name   { font-size:22px; line-height:1.2; }
+    #gate .team-heading     { font-size:24px; }
+    #gate .team-short       { font-size:20px; }
+    #gate .eyebrow          { font-size:20px; }
+    #gate .die-heading, #gate .name-label, #gate .detail-bar { font-size:22px; }
+    #gate .window-bar       { font-size:20px; }
+    #gate .player-tag, #gate .random-check { font-size:20px; }
+    #gate .badge            { font-size:18px; width:38px; height:38px; }
+    #gate .summary          { font-size:26px; line-height:1.4; }
+    #gate .steps            { font-size:24px; }
+    #gate .needs li         { font-size:22px; padding:8px 10px; }
+    #gate .phases           { font-size:20px; }
+    #gate .random-copy > span { font-size:22px; }
+    /* 20px: clears the 16px iOS focus-zoom threshold and the 18px body floor */
+    #gate #name             { font-size:20px; }
+    #gate .join-button      { font-size:26px; min-height:56px; }
+    #gate .how-link         { font-size:26px; padding:13px 0; min-height:48px; }
+    #gate .footer           { font-size:24px; }
+    #gate .footer summary   { font-size:26px; padding:12px 0; min-height:48px; }
+    #gate .footer details p { font-size:26px; line-height:1.5; }
+    #music                  { font-size:20px; }
+    #gate #music button     { width:48px; height:48px; font-size:20px; }
+    #music input            { height:48px; }
+
+    /* first-visit primer. body is 32px = exactly 2x the old 16px, so the card grows; it scrolls
+       rather than clipping when a short viewport (phone in landscape, browser chrome) can't
+       take it, and the title keeps its lead over the body. */
+    #primer               { overflow-y:auto; align-content:safe center; padding-block:max(14px, env(safe-area-inset-top)) max(14px, env(safe-area-inset-bottom)); }
+    #primer .pbody        { min-height:0; }
+    #primer p.ptext       { font-size:32px; line-height:1.35; }
+    #primer h2            { font-size:40px; }
+    #primer .pnum         { font-size:24px; }
+    #primer .pbar         { font-size:22px; }
+    #primer .pnav button  { font-size:24px; min-height:52px; padding:14px 12px; flex-shrink:0; }
+    #primer .phint        { font-size:20px; }
+    #primer .pdots i      { width:12px; height:12px; }
+    #primer .pdots        { gap:10px; }
+
+    /* loading screen: minigame HOWTO cards and tips are the phone's instructions */
+    #loading-howto          { font-size:28px; line-height:1.45; }
+    #loading p              { font-size:26px; }
+    .tip, #loading .tip     { font-size:24px; line-height:1.4; }
+
+    /* in-game overlay + device menu */
+    #overlay #ov-text       { font-size:28px; line-height:1.4; }
+    #overlay .ov-note       { font-size:24px; }
+    #pause h2               { font-size:30px; }
+    #pause > .card > p      { font-size:24px; }
+    #pause .keys            { font-size:26px; line-height:1.4; }
+    #pause button           { font-size:20px; min-height:48px; padding:12px 14px; }
+    #pause label            { font-size:20px; }
+    #pause label input      { min-height:44px; }
+    #pause .card            { gap:16px; padding:18px; }
+
+    /* corner chrome: 44px+ targets. Positioning stays with the existing rules on purpose -
+       #fs/#pz-open are position:fixed and the base rules already place them (env() safe area
+       included); only the hit area is enlarged here. */
+    #fs, #pz-open           { font-size:16px; min-width:48px; min-height:48px; padding:12px 14px; }
+    #toast                  { font-size:22px; max-width:calc(100vw - 28px); }
+  }
+
+  /* phone held sideways (~360-420px tall): same floors, compact enough to stay on one screen */
+  @media (max-height: 500px) and (pointer: coarse) {
+    #primer p.ptext         { font-size:24px; line-height:1.3; }
+    #primer h2              { font-size:26px; }
+    #primer .pnum, #primer .pbar, #primer .phint { font-size:20px; }
+    #primer .pnav button    { font-size:20px; min-height:48px; padding:10px 8px; }
+    #loading-howto         { font-size:22px; }
+    .tip, #loading .tip     { font-size:20px; }
+    #loading p              { font-size:22px; }
+    #pause .keys, #pause label, #pause button { font-size:20px; }
+    #pause h2               { font-size:26px; }
+    #pause > .card > p      { font-size:20px; }
+    #pause .card            { gap:8px; padding:12px 16px; }
+  }
 </style>
 </head>
 <body>
