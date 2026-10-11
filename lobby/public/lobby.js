@@ -29,7 +29,7 @@
     $("create").disabled = true; homeStatus("Making a party…");
     try {
       const r = await fetch("/api/lobbies", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pid, name: myName(), char: myChar, public: $("public").checked }) });
+        body: JSON.stringify({ pid, name: myName(), char: myChar, public: $("public").checked, title: $("title").value }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
       enter(j.code, "create");
@@ -69,7 +69,7 @@
     try {
       const { lobbies } = await (await fetch("/api/public")).json();
       $("public-panel").hidden = !lobbies.length;
-      $("public-list").innerHTML = lobbies.map((l) => `<li><button type="button" class="alt" data-code="${esc(l.code)}"><span>${esc(l.code)}</span><span>${l.seeking ? "LOOKING " : ""}${l.players}/4</span></button></li>`).join("");
+      $("public-list").innerHTML = lobbies.map((l) => `<li><button type="button" class="alt" data-code="${esc(l.code)}"><span>${l.title ? esc(l.title) + " · " : ""}${esc(l.code)}</span><span>${l.seeking ? "LOOKING " : ""}${l.players}/4</span></button></li>`).join("");
     } catch {}
   }
   $("public-list").addEventListener("click", (e) => { const b = e.target.closest("button[data-code]"); if (b) tryJoin(b.dataset.code, "public"); });
@@ -160,6 +160,7 @@
   }
 
   function render(s) {
+    $("eyebrow").textContent = "PARTY " + s.code + (s.title ? " · " + s.title : "");
     const prev = last; last = s;
     banner(s.notice);
     const me = s.members.find((m) => m.n === s.you), isHost = s.you === s.host;

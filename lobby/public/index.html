@@ -26,6 +26,8 @@
         <button id="quick" type="button">Quick play</button>
         <span class="muted small">Joins a random open party, or starts one for others to find.</span>
       </div>
+      <h2>Party name <span class="muted small">(optional)</span></h2>
+      <input type="text" id="title" maxlength="30" placeholder="Friday night chaos" autocomplete="off">
       <div class="row">
         <button id="create" type="button" class="alt">Create a party</button>
         <label class="check"><input type="checkbox" id="public"> List it publicly</label>
@@ -70,6 +72,6 @@
     changes every day so you can't be followed from one day to the next. IP addresses are kept only as a one-way hash,
     for 24 hours to limit spam (longer only while banned for abuse). No chat is stored.</footer>
 </main>
-<script src="lobby.js?v=4"></script>
+<script src="lobby.js?v=5"></script>
 </body>
 </html>

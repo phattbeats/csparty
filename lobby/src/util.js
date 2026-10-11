@@ -8,6 +8,7 @@ export const PID_RE = /^[A-Za-z0-9-]{8,64}$/;
 export const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers } });
 export const nick = (s) => String(s ?? "").replace(/[\u0000-\u001f\u007f"\\;]/g, "").trim().slice(0, 20) || "Player";
+export const title = (s) => String(s ?? "").replace(/[\u0000-\u001f\u007f<>"\\;]/g, "").replace(/\s+/g, " ").trim().slice(0, 30);
 export const charOf = (c) => (Number.isInteger(+c) && +c >= 0 && +c <= 7 ? +c : -1);
 export const pool = (env) => { try { return JSON.parse(env.POOL || "[]"); } catch { return []; } };
 

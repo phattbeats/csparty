@@ -21,7 +21,7 @@
 // per lobby. A lobby goes to a pool-agent first, then to a free static POOL server, else it queues (first come,
 // first served, with its place in line shown).
 import { DurableObject } from "cloudflare:workers";
-import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree } from "./util.js";
+import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, title, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree } from "./util.js";
 import { EVENTS, datapoint, blob, num, secs, hourOf, dayOf, ttsBucket } from "./analytics.js";
 import { adminFetch, ingestFetch, adminOp } from "./admin.js";
 
@@ -80,7 +80,7 @@ export default {
       if (r.error) return json({ error: r.error }, r.status || 429);
       if (r.publicOff) pub = seeking = false;
       await env.LOBBY.get(env.LOBBY.idFromName(r.code)).init(r.code,
-        { pid: body.pid, name: nick(body.name), char: charOf(body.char), public: pub || seeking, seeking, via, cc });
+        { pid: body.pid, name: nick(body.name), char: charOf(body.char), public: pub || seeking, seeking, via, cc, title: title(body.title) });
       return json({ code: r.code, created: true });
     };
     if ((p === "/api/lobbies" || p === "/api/quickplay") && req.method === "POST") {
@@ -169,14 +169,14 @@ export class Lobby extends DurableObject {
   flush() { const q = this.evq; this.evq = []; return q; }
   summary() {
     const s = this.s, on = this.online();
-    return { state: s.state, public: s.public, seeking: s.seeking, players: s.order.length,
+    return { state: s.state, public: s.public, seeking: s.seeking, title: s.title || "", players: s.order.length,
       online: s.order.filter((p) => on.has(p)).length, ready: s.order.filter((p) => s.members[p].ready).length,
       host: s.members[s.host]?.name || "", created: s.created };
   }
 
-  async init(code, { pid, name, char, public: pub, seeking, via, cc }) {
+  async init(code, { pid, name, char, public: pub, seeking, via, cc, title: ttl = "" }) {
     const now = Date.now();
-    this.s = { code, created: now, host: pid, state: "open", public: pub, seeking: !!seeking, fillAt: 0, nextN: 1, members: {}, order: [],
+    this.s = { code, title: ttl, created: now, host: pid, state: "open", public: pub, seeking: !!seeking, fillAt: 0, nextN: 1, members: {}, order: [],
       readyAt: 0, match: null, queuedAt: 0, error: "", emptySince: now, f: {}, matches: 0, log: [], notice: null };
     const m = this.addMember(pid, name, char);
     m.cc = cc;
@@ -188,7 +188,7 @@ export class Lobby extends DurableObject {
 
   async info() {
     if (!this.s) return null;
-    return { code: this.s.code, state: this.s.state, public: this.s.public, players: this.s.order.length, seats: SEATS, seeking: this.s.seeking };
+    return { code: this.s.code, title: this.s.title || "", state: this.s.state, public: this.s.public, players: this.s.order.length, seats: SEATS, seeking: this.s.seeking };
   }
 
   addMember(pid, name, char) {
@@ -532,7 +532,7 @@ export class Lobby extends DurableObject {
     }
     const notice = s.notice && s.notice.until > Date.now() ? s.notice.text : "";
     return {
-      t: "state", code: s.code, state: s.state, public: s.public, seeking: s.seeking, fill, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
+      t: "state", code: s.code, title: s.title || "", state: s.state, public: s.public, seeking: s.seeking, fill, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
       you: me?.n ?? 0, host: s.members[s.host]?.n ?? 0, startsIn, error: s.error, go, notice,
       queuePos: s.state === "queued" ? s.queuePos || 0 : 0, progress: s.match?.progress || null,
       members: s.order.map((p, i) => {
@@ -558,7 +558,7 @@ export class Directory extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS lobbies(code TEXT PRIMARY KEY, state TEXT, public INTEGER, players INTEGER, updated INTEGER, seeking INTEGER DEFAULT 0);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS lobbies(code TEXT PRIMARY KEY, state TEXT, public INTEGER, players INTEGER, updated INTEGER, seeking INTEGER DEFAULT 0, title TEXT DEFAULT '');
       CREATE TABLE IF NOT EXISTS slots(id TEXT PRIMARY KEY, code TEXT NOT NULL, since INTEGER, empty INTEGER DEFAULT 0);
       CREATE TABLE IF NOT EXISTS creates(ip TEXT, at INTEGER);
       CREATE TABLE IF NOT EXISTS rollup(hour INTEGER, e TEXT, k TEXT, n INTEGER, sum REAL, PRIMARY KEY(hour, e, k));
@@ -575,7 +575,7 @@ export class Directory extends DurableObject {
       CREATE TABLE IF NOT EXISTS queue(code TEXT PRIMARY KEY, at INTEGER, seen INTEGER);`);
     // tables from before quick play / analytics
     for (const col of ["seeking INTEGER DEFAULT 0", "online INTEGER DEFAULT 0", "ready INTEGER DEFAULT 0", "host TEXT DEFAULT ''",
-      "created INTEGER DEFAULT 0", "round INTEGER DEFAULT 0", "lastmg TEXT DEFAULT ''", "fin INTEGER DEFAULT 0"])
+      "created INTEGER DEFAULT 0", "round INTEGER DEFAULT 0", "lastmg TEXT DEFAULT ''", "fin INTEGER DEFAULT 0", "title TEXT DEFAULT ''"])
       try { this.sql.exec(`ALTER TABLE lobbies ADD COLUMN ${col}`); } catch {}
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));   // pool-agent keepalive, no wake-up
     ctx.blockConcurrencyWhile(async () => { if (!(await ctx.storage.getAlarm())) await ctx.storage.setAlarm(Date.now() + 60e3); });
@@ -628,11 +628,11 @@ export class Directory extends DurableObject {
   }
 
   async report(code, info, events = []) {
-    const { state, public: pub, seeking, players, online = 0, ready = 0, host = "", created = 0 } = info;
-    this.sql.exec(`INSERT INTO lobbies (code, state, public, players, updated, seeking, online, ready, host, created) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const { state, public: pub, seeking, title: ttl = "", players, online = 0, ready = 0, host = "", created = 0 } = info;
+    this.sql.exec(`INSERT INTO lobbies (code, state, public, players, updated, seeking, online, ready, host, created, title) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(code) DO UPDATE SET state = excluded.state, public = excluded.public, players = excluded.players, updated = excluded.updated,
-        seeking = excluded.seeking, online = excluded.online, ready = excluded.ready, host = excluded.host, created = excluded.created`,
-      code, state, pub ? 1 : 0, players, Date.now(), seeking ? 1 : 0, online, ready, String(host).slice(0, 20), created);
+        seeking = excluded.seeking, online = excluded.online, ready = excluded.ready, host = excluded.host, created = excluded.created, title = excluded.title`,
+      code, state, pub ? 1 : 0, players, Date.now(), seeking ? 1 : 0, online, ready, String(host).slice(0, 20), created, String(ttl).slice(0, 30));
     await this.record(code, events);
     return { notice: this.noticeNow() };
   }
@@ -660,7 +660,7 @@ export class Directory extends DurableObject {
   }
   listPublic() {
     if (this.cfg().publicOff) return [];
-    return this.sql.exec("SELECT code, players, seeking FROM lobbies WHERE public = 1 AND state = 'open' AND players < ? AND updated > ? ORDER BY seeking DESC, updated DESC LIMIT 20",
+    return this.sql.exec("SELECT code, title, players, seeking FROM lobbies WHERE public = 1 AND state = 'open' AND players < ? AND updated > ? ORDER BY seeking DESC, updated DESC LIMIT 20",
       SEATS, Date.now() - 30 * 60e3).toArray();
   }
 
