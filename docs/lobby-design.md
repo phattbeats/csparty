@@ -190,3 +190,32 @@ Each phase ships through the normal deploy gate (peers==0, no humans, merged ont
 2. **Admin auth:** bearer token in a Worker secret, with a rate limit on failures. No Cloudflare Access.
 3. **Capacity beyond RAID:** no rented hosts. Run the true P2P / wasm feasibility spike (option A) instead (P5, #4004).
 4. **Valve gamedata:** serving it publicly is OK. Per-lobby party keys still gate access to each game server.
+
+## 13. Phase 2 as built, and the measured ceiling (#4154)
+
+**Built.** `web/pool-agent.js` runs next to the relay in its own container (the relay image, `node pool-agent.js`). It holds the Docker socket and listens on loopback only. It keeps an outbound WebSocket to the directory (`/api/agent`, HMAC with `LOBBY_SECRET`) and starts one game server container per lobby from the live server image. Each container gets its own UDP port on 127.0.0.1, a read-only root (tmpfs for logs and the plugin's match state), no volumes, all capabilities dropped, `no-new-privileges`, 1.5 CPUs, 1 GB, 256 pids, and a bridge network with inter-container traffic off. The relay routes a lobby key signed for `<host>.pool` to that lobby's port and refuses it with 4004 once the server is gone; the static key and Phase 1 keys still open the relay's own server. `MAX_LOBBIES` caps a host; past it the directory queues lobbies first come, first served and shows each its place in line. A static `POOL` server stays as overflow for whoever is first. Reconnect is `setinfo _csp_pid` (a random id per lobby member) plus `csp_seat_grace` (90 s). The plugin's `[CSPEV]` lines feed the Phase 3 analytics and the lobby page's "turn N of M". A lobby server plays one match (`csp_one_match`), then sends everyone back to the lobby for the rematch. Lifecycle details: `lobby/README.md`.
+
+**Measured** on the RAID (12 cores, 31 GB, other services keeping the load at 2-16), 2026-10-11, with `tools/dev/pool_measure.js`:
+
+| What | Per lobby server |
+|---|---|
+| 4 real browser players, board + 3 minigames (Knife Fight, Full Buy, Climb), 7 min | CPU 7.7% of a core (max 8.3%), RAM 104-138 MB, upload 93 kbps (max 150) |
+| 4 real browser players, mostly board, 8 min | CPU 7.5%, RAM 108 MB, upload 114 kbps (max 185) |
+| 6 lobby servers at once, bots only, real 15-turn matches, 6 min | CPU 3-5% each, short spikes to ~100% of one core on map loads; RAM 80-102 MB each; host load 1.5-5.5 |
+| The relay (one Node process for every lobby) | 4-8% of a core for 4 browser players, so about 1.4% per player |
+| Start to "server ready" | 3-7 s (map load); players in the game 18-25 s after everyone readied |
+
+Upload per player is about 25 kbps. That is far below the 50-100 KB/s guessed in section 4: the server sends little per tick, and the board sends more than the fights. The real upload cost is the **first visit**: 55 MB of game data per new player straight off the home uplink, because the relay keeps it off Cloudflare's cache.
+
+**Ceiling on the RAID: about 15 full lobbies (60 browser players) at once.**
+
+- The relay is the binding limit: one Node thread at ~1.4% of a core per player saturates around 70 players, and the friends' server shares it.
+- RAM allows about 40 lobbies (6 GB of the ~8 GB free), CPU about 60 (~5 spare cores at 8% each).
+- Upload: ~0.2 Mbps per lobby at peak, so 15 lobbies need ~3 Mbps plus 55 MB per first-time player.
+
+This sits inside the 10-30 estimate. `MAX_LOBBIES` ships at 12, which leaves the relay headroom for the friends' server.
+
+Ways past it, cheapest first:
+1. Serve `gamedata.zip` from Cloudflare (allowed by decision 4). This removes the first-visit upload.
+2. Run the relay as several processes (Node cluster or one relay per few lobbies). That moves the limit to RAM, about 40 lobbies.
+3. Rented hosts are ruled out (decision 3); the agent already supports any number of hosts.
