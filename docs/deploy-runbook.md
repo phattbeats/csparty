@@ -461,3 +461,14 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   (`cat gamedata.zip.pre-0534 > gamedata.zip`), then `./csparty-up.sh agent`.
 - The playwright image used by `spot3985/` was pruned on the host; the live check ran through browserless instead. Browserless
   hangs network requests made from blob workers, so the check routes boot.js to a copy that inlines fflate (test only).
+
+## Minigame intro cards + results block (server 0.5.35-vq + relay 0.4.35, 2026-10-11 ~21:50 UTC)
+- Every minigame intro shows one template (Goal / Controls / Scoring) and every result shows the winner plus your placement
+  and money change. Phones get HTML cards from the page (`CSP_CARD_<mg>_<fmt>`, `CSP_RES|...` echo cues); other clients get HUD text.
+- 0.5.35-vq = 0.5.34-vq + `patch0535-pha4095/` (cs_party.amxx). Relay 0.4.35 = 0.4.34 + `patch-relay35-pha4095/`
+  (boot.js, index.html). Plugin and relay ship together: the plugin hides the HUD how-to on phones and relies on the page card.
+  The agent was recreated so new lobbies start from 0.5.35-vq.
+- Gate checked in the same command: peers 0, 0 humans in rcon status, 0 running lobbies, live 0.5.34-vq / 0.4.34.
+- Rollback: containers `cs-party-{server,relay,agent}-pha4095old`, `csparty-up.sh.pre-0535-pha4095`, then `./csparty-up.sh all`.
+- Pre-deploy check on the isolated test stack (:27084 / :8184) with a phone and a desktop GPU client: Nades Only intro card
+  and results card on the phone, HUD how-to and `WINNER +$1500 (you have $2300)` line on the desktop.
