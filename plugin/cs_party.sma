@@ -169,6 +169,7 @@ new g_seatPlayer[SEATS], g_seatName[SEATS][32], bool:g_seatBot[SEATS], g_seatSki
 new g_seatOwner[SEATS][32];
 #define NAV_MAX 10
 new g_navMenu[33], g_navPos[33], g_navN[33], g_navOld[33], Float:g_navNext[33];   // cursor menus; g_navMenu = handle + 1
+new g_navSeq[33], g_navSeqCtr, g_navPosSent[33];   // touch mirror: a fresh number per menu shown, so a late tap can't land on the next menu
 new g_navName[33][NAV_MAX][96], bool:g_navThawed[33], bool:g_navRedraw[33], g_navHandler[33][32], bool:g_navPicking;
 enum { W_NONE = 0, W_TURN, W_BRANCH, W_HOSTAGE, W_SHOP, W_NEGOT, W_TARGET };
 new g_waitKind[SEATS], g_waitLast[SEATS], Float:g_waitAt[SEATS];   // what the board waits for a human to decide, since when
@@ -309,6 +310,7 @@ public plugin_init()
 	register_srvcmd("csp_test_remote", "cmd_test_remote");
 	register_srvcmd("csp_give", "cmd_give");   // dev: csp_give <seat> <item index> puts an item in that seat's inventory (0 Knife Out, 1 Bhop Script)
 	register_srvcmd("csp_board", "cmd_board_srv");          // csp_board <map>: switch to another board (between matches)   // dev: csp_force_mg <minigame index> for the next pick (-1 clears)   // dev: drop the director camera to compare   // dev: movement state of the active player     // dev: move every human to spectator (camera client, streams)
+	register_clcmd("csp_nav", "cmd_nav");   // phones: the page's menu buttons (pick <seq> <item>, up, down, ok, back <seq>)
 	register_clcmd("say /party", "cmd_start_client");
 	register_clcmd("say /help", "cmd_help");
 	register_clcmd("say /menu", "cmd_menu");
@@ -3495,6 +3497,7 @@ bool:nav_thaw(id)
 
 nav_end(id)
 {
+	if (g_navMenu[id] && is_touch(id)) client_cmd(id, "echo CSP_NAV_CLOSE");
 	g_navMenu[id] = 0;
 	if (!g_navThawed[id]) return;
 	g_navThawed[id] = false;
@@ -3516,7 +3519,55 @@ nav_show(id, m, const handler[])
 	{ new sw = seat_of(id); if (sw >= 0 && sw == g_cur && g_state == ST_BOARD && g_waitLast[sw]) wait_for(sw, g_waitLast[sw]); }
 	new acc, info[8], cb;
 	for (new i = 0; i < n; i++) menu_item_getinfo(m, i, acc, info, charsmax(info), g_navName[id][i], charsmax(g_navName[][]), cb);
+	g_navSeq[id] = ++g_navSeqCtr;
 	nav_draw(id);
+	if (is_touch(id)) nav_mirror(id, m);
+}
+
+// What a phone needs to draw its own buttons: the items of the menu actually on screen, each with its real
+// number (what the key would be), plus where the cursor is and which item is "back". One echo per line
+// (a stuffed command stops at 255 characters); the page assembles them and swaps the panel in on _END.
+// Greyed items (a leading \d: not usable now) are sent as "-" so the page leaves them out but keeps the numbering.
+nav_mirror(id, m)
+{
+	new back = nav_back_item(id), line[64];
+	for (new i = 0; i < g_navN[id]; i++)
+	{
+		new bool:dim = i != back && g_navName[id][i][0] == '\' && g_navName[id][i][1] == 'd';
+		nav_label(g_navName[id][i], line, charsmax(line));
+		client_cmd(id, "echo CSP_NAV_I|%d|%d|%d|%s", g_navSeq[id], i, dim ? 0 : 1, line);
+	}
+	client_cmd(id, "echo CSP_NAV_END|%d|%d|%d|%d", g_navSeq[id], g_navN[id], g_navPos[id], back);
+}
+
+// The item that backs out of the menu: the bottom-most "Back", "Done" or "Never mind", or the safe decline ("Walk on", "Keep the money").
+// By label, not by info string: info "0" is also seat 0 in the target menus. -1 when the menu has none.
+nav_back_item(id)
+{
+	new lab[24];
+	for (new i = g_navN[id] - 1; i >= 0; i--)
+	{
+		nav_label(g_navName[id][i], lab, charsmax(lab));
+		if (equal(lab, "Back") || equal(lab, "Done") || equal(lab, "Never mind") || equal(lab, "Walk on") || equal(lab, "Walk on by") || equal(lab, "Keep the money")) return i;
+	}
+	return -1;
+}
+
+// menu text -> plain label: no \y \w \r \d colour codes, no cursor star, nothing that breaks a stuffed command
+nav_label(const src[], dst[], len)
+{
+	new j = 0;
+	for (new i = 0; src[i] && j < len; i++)
+	{
+		new c = src[i];
+		if (c == '\' && src[i + 1]) { i++; continue; }
+		if (c == '^n') c = ' ';
+		if (c < 32 || c > 126 || c == ';' || c == '"' || c == '|' || c == '%') continue;
+		if (j == 0 && (c == '*' || c == ' ')) continue;
+		dst[j++] = c;
+	}
+	dst[j] = 0;
+	while (j > 0 && dst[j - 1] == ' ') dst[--j] = 0;
 }
 
 nav_draw(id)
@@ -3530,6 +3581,7 @@ nav_draw(id)
 	g_navRedraw[id] = true;                 // re-showing a menu cancels the open one: its handler gets MENU_EXIT
 	menu_display(id, m, 0);
 	g_navRedraw[id] = false;
+	if (g_navPosSent[id] != g_navSeq[id] * 100 + g_navPos[id] && is_touch(id)) { g_navPosSent[id] = g_navSeq[id] * 100 + g_navPos[id]; client_cmd(id, "echo CSP_NAV_POS|%d|%d", g_navSeq[id], g_navPos[id]); }
 }
 
 bool:nav_open(id)
@@ -3541,9 +3593,9 @@ bool:nav_open(id)
 	return true;
 }
 
-nav_pick(id, i)
+nav_pick(id, i, bool:tap = false)
 {
-	if (get_gametime() < g_navNext[id]) return;
+	if (!tap && get_gametime() < g_navNext[id]) return;   // a tap on the phone's panel is already tied to one menu by its seq
 	g_navNext[id] = get_gametime() + 0.5;
 	// AMXX keeps newmenu selection to itself: nothing server-side can press a menu key, and a stuffed
 	// "menuselect" round trip proved unreliable on slow clients. So: forget the menu (the handler sees an
@@ -3554,6 +3606,24 @@ nav_pick(id, i)
 	nav_end(id);
 	if (callfunc_begin(handler) == 1) { callfunc_push_int(id); callfunc_push_int(m); callfunc_push_int(i); callfunc_end(); }
 	else log_amx("nav: handler %s not found", handler);
+}
+
+// csp_nav pick <seq> <item> | back <seq> | up <seq> | down <seq> | ok <seq>: the phone's menu buttons. Every command carries the
+// number of the menu the player saw; once that menu is answered or replaced the number no longer matches and the tap does nothing.
+public cmd_nav(id)
+{
+	if (!is_user_connected(id) || is_user_bot(id) || !g_navMenu[id] || !nav_open(id)) return PLUGIN_HANDLED;
+	new act[8], a[12]; read_argv(1, act, charsmax(act)); read_argv(2, a, charsmax(a));
+	if (str_to_num(a) != g_navSeq[id]) return PLUGIN_HANDLED;
+	if (equal(act, "pick")) { read_argv(3, a, charsmax(a)); new i = str_to_num(a); if (i >= 0 && i < g_navN[id]) nav_pick(id, i, true); }
+	else if (equal(act, "ok")) nav_pick(id, g_navPos[id], true);
+	else if (equal(act, "back")) { new i = nav_back_item(id); if (i >= 0) nav_pick(id, i, true); }
+	else if (equal(act, "up") || equal(act, "down"))
+	{
+		g_navPos[id] = (g_navPos[id] + (act[0] == 'u' ? g_navN[id] - 1 : 1)) % g_navN[id];
+		nav_draw(id);
+	}
+	return PLUGIN_HANDLED;
 }
 
 public fw_nav_cmdstart(id, uc)
@@ -3578,12 +3648,8 @@ public hc_nav_prethink(const id)
 	if (pressed & IN_JUMP) { nav_pick(id, g_navPos[id]); return HC_CONTINUE; }
 	if (pressed & IN_USE)
 	{
-		// "back": the item whose info is "0" (Done), if the menu has one
-		for (new i = 0; i < g_navN[id]; i++)
-		{
-			new acc, info[8], nm[2], cb; menu_item_getinfo(g_navMenu[id] - 1, i, acc, info, charsmax(info), nm, charsmax(nm), cb);
-			if (equal(info, "0")) { nav_pick(id, i); break; }
-		}
+		// "back": see nav_back_item
+		new i = nav_back_item(id); if (i >= 0) nav_pick(id, i);
 		return HC_CONTINUE;
 	}
 	if (now < g_navNext[id]) return HC_CONTINUE;      // analog sticks chatter: one step per 0.15 s

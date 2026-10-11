@@ -69,6 +69,23 @@
   #pz-open { display:none; position:fixed; z-index:4; top:max(10px, env(safe-area-inset-top)); left:50%; transform:translateX(calc(-100% - 6px));
     padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text); border:1px solid var(--line); }
   .touch.ingame #pz-open { display:block; }
+  /* PHA-4121: touch menu buttons. The server menu text is hidden under the option pad (up/down/OK/Back are its bottom row);
+     everything is on the left, so the Jump/Use/Fire buttons on the right edge stay free. Every hit area is >= 48 px. */
+  #navpad { position:fixed; inset:0; z-index:1; pointer-events:none; touch-action:none; }
+  #navpad button { pointer-events:auto; touch-action:none; font:600 17px/1.1 system-ui, sans-serif; color:var(--text); background:rgba(26, 29, 24, .94);
+    border:1px solid var(--line); border-radius:8px; min-height:48px; min-width:48px; margin:0; padding:6px 10px; display:flex; align-items:center; gap:10px; text-align:left; }
+  #navpad button.down { background:#3a3220; border-color:var(--hud); transform:scale(.97); }
+  #nav-box { position:absolute; left:max(8px, env(safe-area-inset-left)); top:max(40px, calc(env(safe-area-inset-top) + 34px)); width:min(38vw, 400px);
+    display:grid; gap:6px; padding:8px; background:rgba(10, 11, 9, .94); border:1px solid var(--line); border-radius:10px; pointer-events:auto; }
+  #nav-rows { display:grid; grid-template-columns:repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows:repeat(var(--rows, 1), 48px); grid-auto-flow:column; gap:6px; }
+  #nav-rows .opt { height:48px; overflow:hidden; }
+  #nav-rows .opt b { flex:none; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:var(--hud); color:#1a1710; font-size:15px; }
+  #nav-rows .opt span { min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:14px; line-height:1.15; overflow-wrap:anywhere; }
+  #nav-rows .opt.cur { border-color:var(--hud); box-shadow:inset 0 0 0 1px var(--hud); }
+  #nav-ctl { display:flex; gap:6px; }
+  #nav-ctl button { flex:1 1 0; justify-content:center; min-height:48px; font-size:18px; text-align:center; padding:6px 4px; }
+  #nav-ctl .ok { background:var(--hud); color:#1a1710; border-color:var(--hud); }
+  #nav-ctl .back { flex:1.6 1 0; font-size:16px; }
   /* z-index 5: over the page's Menu/Fullscreen buttons (4). Scrolls when it's taller than the screen,
      and "safe" keeps the top reachable instead of centring it off the edge. */
   #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:5; overflow-y:auto; place-items:safe center; }
@@ -488,10 +505,20 @@
     <button id="pz-fs" type="button" class="alt">Fullscreen</button>
     <div class="keys" data-dev="kbd"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
     <div class="keys" data-dev="pad" hidden><b>Your turn:</b> <b>A</b> picks "Jump at the crate", <b>A</b> again rolls. Menus: <b>D-pad</b> or stick to move, <b>A</b> to pick, <b>B</b> to go back. <b>Y</b> shows the stars. <b>Start</b> opens this menu.</div>
-    <div class="keys" data-dev="touch" hidden><b>Your turn:</b> tap <b>Jump</b> to pick "Jump at the crate", <b>Jump</b> again rolls. Menus: slide your left thumb up or down, <b>Jump</b> to pick, <b>Use</b> to go back. The <b>Menu</b> button at the top opens this.</div>
+    <div class="keys" data-dev="touch" hidden><b>Your turn:</b> tap <b>Jump</b> to pick "Jump at the crate", <b>Jump</b> again rolls. Menus: tap the numbered buttons on the left, or &#9650; &#9660; then <b>OK</b>; <b>Back</b> goes back. The <b>Menu</b> button at the top opens this.</div>
     <button id="pz-leave" type="button" class="alt">Leave the party</button>
   </div>
 </div>
+
+<div id="navpad" hidden aria-label="Menu buttons"><div id="nav-box">
+  <div id="nav-rows" role="group" aria-label="Menu options"></div>
+  <div id="nav-ctl" role="group" aria-label="Move through the menu">
+    <button type="button" class="up" data-act="up" aria-label="Previous option">&#9650;</button>
+    <button type="button" class="dn" data-act="down" aria-label="Next option">&#9660;</button>
+    <button type="button" class="ok" data-act="ok">OK</button>
+    <button type="button" class="back" data-act="back">Back</button>
+  </div>
+</div></div>
 
 <div id="rotate" class="screen" aria-live="polite"><div><div class="phone" aria-hidden="true"></div><p>Turn your phone sideways to play.</p></div></div>
 
