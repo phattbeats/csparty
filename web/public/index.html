@@ -59,6 +59,13 @@
   #overlay button.alt:hover, #overlay button.alt:focus-visible { border-color:var(--hud); color:var(--hud); }
   .spin { width:22px; height:22px; border:3px solid var(--line); border-top-color:var(--hud); border-radius:50%; animation:spin .9s linear infinite; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  #maplegend { position:fixed; left:max(10px, env(safe-area-inset-left)); bottom:max(10px, env(safe-area-inset-bottom)); z-index:3; pointer-events:none; background:rgba(26, 29, 24, .88);
+    border:1px solid var(--line); color:var(--text); font:13px/1.25 system-ui, sans-serif; padding:8px 12px; }
+  #maplegend h2 { margin:0 0 5px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--hud); }
+  #maplegend ul { list-style:none; margin:0; padding:0; display:grid; gap:3px; }
+  #maplegend li { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+  #maplegend i { flex:none; width:14px; height:14px; border-radius:3px; border:1px solid #000; }
+  @media (max-height:520px) { #maplegend ul { grid-template-columns:repeat(2, auto); column-gap:14px; } #maplegend { font-size:11px; padding:5px 8px; } }
   #toast { position:fixed; left:50%; top:14px; transform:translateX(-50%); z-index:4; background:rgba(26, 29, 24, .9); border:1px solid var(--line);
     color:var(--text); font:600 13px system-ui, sans-serif; letter-spacing:.04em; padding:7px 14px; pointer-events:none; }
   #fs { position:fixed; right:14px; bottom:64px; z-index:4; padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text);
@@ -572,6 +579,7 @@
 
 <div id="rotate" class="screen" aria-live="polite"><div><div class="phone" aria-hidden="true"></div><p>Turn your phone sideways to play.</p></div></div>
 
+<aside id="maplegend" aria-label="Space colours" hidden><h2>Spaces</h2><ul><li><i style="background:#2872eb"></i><b>+$</b> Blue: you gain money</li><li><i style="background:#d72828"></i><b>-$</b> Red: you lose money</li><li><i style="background:#f0c828"></i><b>?</b> Event: anything can happen</li><li><i style="background:#f58c1e"></i><b>C4</b> Bomb site: plants a C4 up the road</li><li><i style="background:#f0f0eb"></i><b>GO</b> Start</li><li><i style="background:#3caf4b"></i><b>SHOP</b> Shop: spend your money</li><li><i style="background:#6e0a0a"></i><b>AWP</b> Camper</li><li><i style="background:#5f6e82"></i><b>ARMOR</b> Armory</li><li><i style="background:#faf5e1"></i><b>VIP</b> VIP escort</li><li><i style="background:#8c50dc"></i><b>1v1</b> Duel another player</li><li><i style="background:#f05aaa"></i><b>DEAL</b> Negotiation</li></ul></aside>
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
 <button id="pz-open" type="button" aria-label="Open the menu">Menu</button>

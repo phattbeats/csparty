@@ -1070,6 +1070,7 @@
           if (t.includes("CSP_NAV")) navLine(t);
           const hw = /CSP_HOWTO_(\d+)/.exec(t);
           if (hw) howto = HOWTO[+hw[1]] || "";
+          else if (t.includes("CSP_MAPVIEW_")) $("maplegend").hidden = !t.includes("CSP_MAPVIEW_1");
           else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);
           else if (t.includes("CSP_THEME_STOP") && music.want) musicStop();
           else if (t.includes("CSP_MUSIC_BOARD")) boardPlay();

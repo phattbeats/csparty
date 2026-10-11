@@ -1571,7 +1571,7 @@ new g_camMode, Float:g_camUntil, bool:g_camSnap, Float:g_camLook[3], Float:g_cam
 cam_shot(mode, Float:hold = 0.0)
 {
 	// into or out of the map view: cut, don't fly through the walls and the sky
-	if ((g_camMode == CAM_MAP) != (mode == CAM_MAP)) { g_camSnap = true; map_overlay_show(mode == CAM_MAP); }
+	if ((g_camMode == CAM_MAP) != (mode == CAM_MAP)) { g_camSnap = true; map_overlay_show(mode == CAM_MAP); client_cmd(0, "echo CSP_MAPVIEW_%d", mode == CAM_MAP ? 1 : 0); }   // the browser page shows the space legend (boot.js)
 	g_camMode = mode;
 	g_camUntil = hold > 0.0 ? get_gametime() + hold : 0.0;
 }
