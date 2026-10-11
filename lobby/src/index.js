@@ -66,6 +66,14 @@ export default {
       }
       return makeLobby(body, true, true, "quick");
     }
+    if (p === "/api/pool" && req.method === "GET") {   // ops: what the Worker sees of each pool server
+      return json({ slots: await dir.slotList(), servers: await Promise.all(pool(env).map(async (s) => {
+        try {
+          const r = await fetch(`${s.url.replace(/\/$/, "")}/healthz?t=${Date.now()}`, { cf: { cacheTtl: 0 }, signal: AbortSignal.timeout(4000) });
+          return { id: s.id, host: new URL(s.url).host, status: r.status, body: (await r.text()).slice(0, 160) };
+        } catch (e) { return { id: s.id, host: new URL(s.url).host, error: String(e).slice(0, 160) }; }
+      })) });
+    }
     if (p === "/api/public" && req.method === "GET") return json({ lobbies: await dir.listPublic() });
     const m = /^\/api\/lobbies\/([^/]+)(\/ws)?$/.exec(p);
     if (m) {
@@ -564,6 +572,7 @@ export class Directory extends DurableObject {
     }
     return null;
   }
+  slotList() { return this.sql.exec("SELECT id, code, since FROM slots").toArray(); }
   releaseSlot(code) { this.sql.exec("DELETE FROM slots WHERE code = ?", code); }
 
   // ---- analytics

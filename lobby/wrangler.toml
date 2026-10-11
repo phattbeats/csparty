@@ -36,7 +36,7 @@ new_sqlite_classes = ["Lobby", "Directory"]
 # Capacity: game servers that are already running, each behind its own relay (web/relay.js). The relay with
 # RELAY_ID=<id> and the same LOBBY_SECRET accepts this Worker's per-lobby tokens as its party key.
 # A slot is handed to a lobby only while its relay reports 0 peers, so friends already playing there are safe.
-POOL = '[{"id":"raid1","url":"https://csparty.example.com"}]'
+POOL = '[{"id":"raid1","url":"https://csparty.phatt.vip"}]'
 MIN_HUMANS = "2"            # auto-start needs this many ready humans (the host can always start, even alone)
 AUTOSTART_SECS = "5"        # everyone ready this long -> start
 TOKEN_HOURS = "3"           # how long a lobby's party key opens its server
