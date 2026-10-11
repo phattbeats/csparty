@@ -55,7 +55,7 @@
       <fieldset class="roster"><legend class="eyebrow">YOUR CHARACTER</legend><div id="char-grid" class="char-grid"></div></fieldset>
       <div class="panel actions">
         <p id="lobby-status" class="status big" role="status" aria-live="polite"></p>
-        <button id="ready" type="button" aria-pressed="false">Ready</button>
+        <button id="ready" type="button" aria-pressed="false" hidden>Ready</button>
         <button id="start" type="button" class="alt" hidden>Start now (bots fill)</button>
         <label class="check" id="public-wrap" hidden><input type="checkbox" id="lobby-public"> Listed publicly</label>
         <label class="check" id="seeking-wrap" hidden><input type="checkbox" id="lobby-seeking"> Fill empty seats with random players</label>
@@ -70,6 +70,6 @@
     changes every day so you can't be followed from one day to the next. IP addresses are kept only as a one-way hash,
     for 24 hours to limit spam (longer only while banned for abuse). No chat is stored.</footer>
 </main>
-<script src="lobby.js?v=3"></script>
+<script src="lobby.js?v=4"></script>
 </body>
 </html>

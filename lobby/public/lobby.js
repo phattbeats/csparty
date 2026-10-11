@@ -79,6 +79,7 @@
 
   function enter(c, how) {
     code = c; via = how || "code"; leaving = false; sawStart = false; last = null;
+    $("ready").hidden = true;   // until the lobby's first state: a click before the socket opens would be lost
     history.replaceState(null, "", `/?code=${code}`);
     $("home").hidden = true; $("lobby").hidden = false;
     $("lobby-code").textContent = code;
