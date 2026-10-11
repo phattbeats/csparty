@@ -36,6 +36,18 @@
     } catch (e) { homeStatus(String(e.message || e), true); }
     $("create").disabled = false;
   });
+  $("quick").addEventListener("click", async () => {
+    store.set("csp_name", myName());
+    $("quick").disabled = true; homeStatus("Looking for a party…");
+    try {
+      const r = await fetch("/api/quickplay", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pid, name: myName(), char: myChar }) });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      enter(j.code);
+    } catch (e) { homeStatus(String(e.message || e), true); }
+    $("quick").disabled = false;
+  });
   $("join-form").addEventListener("submit", (e) => { e.preventDefault(); tryJoin($("code").value); });
   $("code").addEventListener("input", () => { $("code").value = $("code").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 
@@ -56,7 +68,7 @@
     try {
       const { lobbies } = await (await fetch("/api/public")).json();
       $("public-panel").hidden = !lobbies.length;
-      $("public-list").innerHTML = lobbies.map((l) => `<li><button type="button" class="alt" data-code="${esc(l.code)}"><span>${esc(l.code)}</span><span>${l.players}/4</span></button></li>`).join("");
+      $("public-list").innerHTML = lobbies.map((l) => `<li><button type="button" class="alt" data-code="${esc(l.code)}"><span>${esc(l.code)}</span><span>${l.seeking ? "LOOKING " : ""}${l.players}/4</span></button></li>`).join("");
     } catch {}
   }
   $("public-list").addEventListener("click", (e) => { const b = e.target.closest("button[data-code]"); if (b) tryJoin(b.dataset.code); });
@@ -115,6 +127,7 @@
   $("start").addEventListener("click", () => send({ t: "start" }));
   $("end").addEventListener("click", () => { if (confirm("End the match for everyone and go back to the lobby?")) send({ t: "end" }); });
   $("lobby-public").addEventListener("change", () => send({ t: "public", public: $("lobby-public").checked }));
+  $("lobby-seeking").addEventListener("change", () => send({ t: "seeking", seeking: $("lobby-seeking").checked }));
 
   function lobbyStatus(t, err) { $("lobby-status").textContent = t; $("lobby-status").className = "status big" + (err ? " err" : ""); }
 
@@ -162,6 +175,7 @@
     $("ready").textContent = me?.ready ? "Ready! (click to cancel)" : "Ready";
     $("start").hidden = !isHost || !open;
     $("public-wrap").hidden = !isHost; $("lobby-public").checked = s.public;
+    $("seeking-wrap").hidden = !isHost; $("lobby-seeking").checked = s.seeking;
     $("end").hidden = !isHost || open;
     $("go").hidden = !(inMatch && s.go);
     if (s.go) $("go").href = s.go;
@@ -170,7 +184,7 @@
     if (s.error) lobbyStatus(s.error, s.state !== "queued");
     else if (open && s.startsIn > 0) {
       const at = Date.now() + s.startsIn;
-      const tick = () => lobbyStatus(`Everyone's ready. Starting in ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}…`);
+      const tick = () => lobbyStatus(`${s.fill ? "Party is full enough. Bots fill the rest. Starting in" : "Everyone's ready. Starting in"} ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}…`);
       tick(); countdown = setInterval(tick, 250);
     } else if (open) {
       const ready = players.filter((m) => m.ready && m.online).length, online = players.filter((m) => m.online).length;

@@ -22,7 +22,11 @@
       <h2>Your name</h2>
       <input type="text" id="name" maxlength="20" placeholder="Player name" autocomplete="nickname">
       <div class="row">
-        <button id="create" type="button">Create a party</button>
+        <button id="quick" type="button">Quick play</button>
+        <span class="muted small">Joins a random open party, or starts one for others to find.</span>
+      </div>
+      <div class="row">
+        <button id="create" type="button" class="alt">Create a party</button>
         <label class="check"><input type="checkbox" id="public"> List it publicly</label>
       </div>
       <h2>Have a code?</h2>
@@ -53,6 +57,7 @@
         <button id="ready" type="button" aria-pressed="false">Ready</button>
         <button id="start" type="button" class="alt" hidden>Start now (bots fill)</button>
         <label class="check" id="public-wrap" hidden><input type="checkbox" id="lobby-public"> Listed publicly</label>
+        <label class="check" id="seeking-wrap" hidden><input type="checkbox" id="lobby-seeking"> Fill empty seats with random players</label>
         <a id="go" class="button" hidden>Join the match</a>
         <button id="end" type="button" class="alt" hidden>Back to the lobby (end match)</button>
         <p class="muted small">Everyone ready starts the match. The host can start any time.</p>
@@ -61,6 +66,6 @@
   </section>
   <footer class="muted small">No accounts. Your name, character and a random id live in this browser only.</footer>
 </main>
-<script src="lobby.js?v=1"></script>
+<script src="lobby.js?v=2"></script>
 </body>
 </html>

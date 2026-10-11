@@ -4,7 +4,8 @@
 // link to it carrying a per-lobby party key (an HMAC token the relay checks with the shared LOBBY_SECRET).
 // The plugin's own lobby countdown (csp_autostart) then starts the match on the server, bots filling seats.
 //
-//   POST /api/lobbies            {pid, name, char, public}  -> {code}
+//   POST /api/lobbies            {pid, name, char, public, seeking}  -> {code}
+//   POST /api/quickplay          {pid, name, char}  -> {code, created}  join the fullest open public lobby, or make one
 //   GET  /api/lobbies/:code      -> {code, state, players, public}  (404 if no such lobby)
 //   GET  /api/lobbies/:code/ws?pid=&name=&char=   WebSocket: roster, ready, start (see Lobby.webSocketMessage)
 //   GET  /api/public             -> open public lobbies
@@ -19,6 +20,7 @@ const PID_RE = /^[A-Za-z0-9-]{8,64}$/;
 const EXPIRE_MS = 15 * 60e3;          // lobby with nobody in it for this long is gone
 const SEAT_GRACE_MS = 90e3;           // a dropped tab keeps its seat this long while the lobby is open
 const QUEUE_RETRY_MS = 10e3;          // no free server: try again this often
+const QUICK_FRESH_MS = 10 * 60e3;     // quick play only joins lobbies that changed this recently
 const CREATES_PER_10MIN = 10;         // per IP
 const MATCH_MAX_MS = 3 * 3600e3;      // hard cap on how long a lobby holds a server
 
@@ -58,15 +60,26 @@ export default {
     const p = url.pathname;
     if (p === "/healthz") return json({ ok: true });
     const dir = env.DIRECTORY.get(env.DIRECTORY.idFromName("directory"));
-    if (p === "/api/lobbies" && req.method === "POST") {
-      let body = {}; try { body = await req.json(); } catch {}
-      if (!PID_RE.test(body.pid || "")) return json({ error: "bad player id" }, 400);
+    const makeLobby = async (body, pub, seeking) => {
       const ip = req.headers.get("cf-connecting-ip") || "local";
       const ipHash = await sha(`${ip}|${new Date().toISOString().slice(0, 10)}|${env.LOBBY_SECRET || ""}`);
       const r = await dir.reserveCode(ipHash);
       if (r.error) return json(r, 429);
-      await env.LOBBY.get(env.LOBBY.idFromName(r.code)).init(r.code, { pid: body.pid, name: nick(body.name), char: charOf(body.char), public: !!body.public });
-      return json({ code: r.code });
+      await env.LOBBY.get(env.LOBBY.idFromName(r.code)).init(r.code, { pid: body.pid, name: nick(body.name), char: charOf(body.char), public: pub || seeking, seeking });
+      return json({ code: r.code, created: true });
+    };
+    if ((p === "/api/lobbies" || p === "/api/quickplay") && req.method === "POST") {
+      let body = {}; try { body = await req.json(); } catch {}
+      if (!PID_RE.test(body.pid || "")) return json({ error: "bad player id" }, 400);
+      if (p === "/api/lobbies") return makeLobby(body, !!body.public, !!body.seeking);
+      // quick play: the fullest open public lobby (one looking for players first); none: start one that is
+      for (let i = 0; i < 3; i++) {
+        const code = await dir.quickMatch();
+        if (!code) break;
+        if (await env.LOBBY.get(env.LOBBY.idFromName(code)).info()) return json({ code, created: false });
+        await dir.remove(code);   // the directory listed a lobby that is gone
+      }
+      return makeLobby(body, true, true);
     }
     if (p === "/api/public" && req.method === "GET") return json({ lobbies: await dir.listPublic() });
     const m = /^\/api\/lobbies\/([^/]+)(\/ws)?$/.exec(p);
@@ -100,18 +113,19 @@ export class Lobby extends DurableObject {
   dir() { return this.env.DIRECTORY.get(this.env.DIRECTORY.idFromName("directory")); }
   async save() { await this.ctx.storage.put("s", this.s); }
 
-  async init(code, { pid, name, char, public: pub }) {
+  async init(code, { pid, name, char, public: pub, seeking }) {
     const now = Date.now();
-    this.s = { code, created: now, host: pid, state: "open", public: pub, nextN: 1, members: {}, order: [],
+    this.s = { code, created: now, host: pid, state: "open", public: pub, seeking: !!seeking, fillAt: 0, nextN: 1, members: {}, order: [],
       readyAt: 0, match: null, queuedAt: 0, error: "", emptySince: now };
     this.addMember(pid, name, char);
     await this.save();
     await this.schedule();
+    await this.dir().report(code, { state: "open", public: pub, seeking: !!seeking, players: 1 });   // listed before anyone connects
   }
 
   async info() {
     if (!this.s) return null;
-    return { code: this.s.code, state: this.s.state, public: this.s.public, players: this.s.order.length, seats: SEATS };
+    return { code: this.s.code, state: this.s.state, public: this.s.public, players: this.s.order.length, seats: SEATS, seeking: this.s.seeking };
   }
 
   addMember(pid, name, char) {
@@ -169,7 +183,9 @@ export class Lobby extends DurableObject {
         m.char = c; break;
       }
       case "ready": if (open) m.ready = !!msg.ready; break;
-      case "public": if (isHost) s.public = !!msg.public; break;
+      case "public": if (isHost) { s.public = !!msg.public; if (!s.public) s.seeking = false; } break;
+      // host: look for random players to fill the empty seats (lists the party publicly, quick play sends people here)
+      case "seeking": if (isHost) { s.seeking = !!msg.seeking; if (s.seeking) s.public = true; } break;
       case "start": if (isHost && open) return this.start("host"); break;
       // host: everyone back to the lobby (match over, or stuck). Frees the server for the next lobby.
       case "end": if (isHost && s.state !== "open") { await this.dir().releaseSlot(s.code); return this.matchEnded(); } break;
@@ -203,21 +219,32 @@ export class Lobby extends DurableObject {
   }
 
   // report: tell the directory (not when the directory is the caller: a call back into it waits on itself)
+  // a looking-for-players party also starts on its own FILL_SECS after it has enough people, ready or not
+  seatedOnline() { const on = this.online(); return this.s.order.slice(0, SEATS).filter((p) => on.has(p)).length; }
+  tick() {
+    const s = this.s;
+    if (s.state !== "open") { s.readyAt = 0; s.fillAt = 0; return; }
+    if (this.allReady()) s.readyAt ||= Date.now(); else s.readyAt = 0;
+    if (s.seeking && this.seatedOnline() >= +(this.env.MIN_HUMANS || 2)) s.fillAt ||= Date.now(); else s.fillAt = 0;
+  }
+  startAt() {
+    const s = this.s, t = [];
+    if (s.readyAt) t.push(s.readyAt + 1000 * +(this.env.AUTOSTART_SECS || 5));
+    if (s.fillAt) t.push(s.fillAt + 1000 * +(this.env.FILL_SECS || 20));
+    return t.length ? Math.min(...t) : 0;
+  }
   async changed(report = true) {
     const s = this.s;
-    if (s.state === "open") {
-      if (this.allReady()) s.readyAt ||= Date.now();
-      else s.readyAt = 0;
-    }
+    this.tick();
     await this.save();
     await this.schedule();
     this.broadcast();
-    if (report) await this.dir().report(s.code, { state: s.state, public: s.public, players: s.order.length });
+    if (report) await this.dir().report(s.code, { state: s.state, public: s.public, seeking: s.seeking, players: s.order.length });
   }
 
   async start(mode) {
     const s = this.s;
-    s.state = "starting"; s.readyAt = 0; s.startMode = mode;
+    s.state = "starting"; s.readyAt = 0; s.fillAt = 0; s.startMode = mode;
     await this.save(); this.broadcast();
     const slot = await this.dir().claimSlot(s.code);
     if (!slot) {
@@ -237,7 +264,7 @@ export class Lobby extends DurableObject {
   async matchEnded(fromDirectory = false) {
     if (!this.s) return;
     const s = this.s;
-    s.state = "open"; s.match = null; s.queuedAt = 0; s.readyAt = 0;
+    s.state = "open"; s.match = null; s.queuedAt = 0; s.readyAt = 0; s.fillAt = 0;
     // members still in the game have no lobby socket: they get the usual seat grace from now to come back
     const on = this.online();
     for (const [pid, m] of Object.entries(s.members)) { m.ready = false; if (!on.has(pid)) m.gone = Date.now(); }
@@ -247,7 +274,7 @@ export class Lobby extends DurableObject {
 
   async schedule() {
     const s = this.s, t = [];
-    if (s.readyAt) t.push(s.readyAt + 1000 * +(this.env.AUTOSTART_SECS || 5));
+    if (this.startAt()) t.push(this.startAt());
     if (s.state === "queued") t.push(Date.now() + QUEUE_RETRY_MS);
     if (s.state === "open") for (const m of Object.values(s.members)) if (m.gone) t.push(m.gone + SEAT_GRACE_MS);
     if (s.emptySince && s.state !== "in_match") t.push(s.emptySince + EXPIRE_MS);
@@ -267,14 +294,16 @@ export class Lobby extends DurableObject {
     if (s.state === "queued") return this.start(s.startMode || "queued");
     if (s.state === "open") {
       for (const [pid, m] of Object.entries(s.members)) if (m.gone && now >= m.gone + SEAT_GRACE_MS) this.removeMember(pid);
-      if (s.readyAt && this.allReady() && now >= s.readyAt + 1000 * +(this.env.AUTOSTART_SECS || 5)) return this.start("all_ready");
+      this.tick();
+      const at = this.startAt();
+      if (at && now >= at) return this.start(s.readyAt && now >= s.readyAt + 1000 * +(this.env.AUTOSTART_SECS || 5) ? "all_ready" : "fill");
     }
     await this.changed();
   }
 
   view(pid) {
     const s = this.s, on = this.online(), me = s.members[pid];
-    const startsIn = s.readyAt ? Math.max(0, s.readyAt + 1000 * +(this.env.AUTOSTART_SECS || 5) - Date.now()) : 0;
+    const at = this.startAt(), startsIn = at ? Math.max(0, at - Date.now()) : 0, fill = !!at && !s.readyAt;
     let go = null;
     if (s.match && me) {
       const q = new URLSearchParams({ key: s.match.key, name: me.name, lobby: `${s.origin}/?code=${s.code}` });
@@ -282,7 +311,7 @@ export class Lobby extends DurableObject {
       go = `${s.match.url}/?${q}`;
     }
     return {
-      t: "state", code: s.code, state: s.state, public: s.public, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
+      t: "state", code: s.code, state: s.state, public: s.public, seeking: s.seeking, fill, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
       you: me?.n ?? 0, host: s.members[s.host]?.n ?? 0, startsIn, error: s.error, go,
       members: s.order.map((p, i) => {
         const m = s.members[p];
@@ -305,9 +334,10 @@ export class Directory extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
-    this.sql.exec(`CREATE TABLE IF NOT EXISTS lobbies(code TEXT PRIMARY KEY, state TEXT, public INTEGER, players INTEGER, updated INTEGER);
+    this.sql.exec(`CREATE TABLE IF NOT EXISTS lobbies(code TEXT PRIMARY KEY, state TEXT, public INTEGER, players INTEGER, updated INTEGER, seeking INTEGER DEFAULT 0);
       CREATE TABLE IF NOT EXISTS slots(id TEXT PRIMARY KEY, code TEXT NOT NULL, since INTEGER, empty INTEGER DEFAULT 0);
       CREATE TABLE IF NOT EXISTS creates(ip TEXT, at INTEGER);`);
+    try { this.sql.exec("ALTER TABLE lobbies ADD COLUMN seeking INTEGER DEFAULT 0"); } catch {}   // table from before quick play
   }
 
   reserveCode(ipHash) {
@@ -319,22 +349,32 @@ export class Directory extends DurableObject {
       const rnd = crypto.getRandomValues(new Uint8Array(5));
       const code = [...rnd].map((b) => ALPHABET[b % ALPHABET.length]).join("");
       if (this.sql.exec("SELECT 1 FROM lobbies WHERE code = ?", code).toArray().length) continue;
-      this.sql.exec("INSERT INTO lobbies VALUES (?, 'open', 0, 0, ?)", code, now);
+      this.sql.exec("INSERT INTO lobbies (code, state, public, players, updated) VALUES (?, 'open', 0, 0, ?)", code, now);
       this.sql.exec("INSERT INTO creates VALUES (?, ?)", ipHash, now);
       return { code };
     }
     return { error: "Couldn't make a code, try again." };
   }
 
-  report(code, { state, public: pub, players }) {
-    this.sql.exec("INSERT OR REPLACE INTO lobbies VALUES (?, ?, ?, ?, ?)", code, state, pub ? 1 : 0, players, Date.now());
+  report(code, { state, public: pub, seeking, players }) {
+    this.sql.exec("INSERT OR REPLACE INTO lobbies (code, state, public, players, updated, seeking) VALUES (?, ?, ?, ?, ?, ?)",
+      code, state, pub ? 1 : 0, players, Date.now(), seeking ? 1 : 0);
+  }
+  // Quick play: an open public lobby with a free seat. Ones looking for players first, then the fullest.
+  // The seat is held at once (players + 1) so two people arriving together don't both count on the last one.
+  quickMatch() {
+    const row = this.sql.exec(`SELECT code FROM lobbies WHERE public = 1 AND state = 'open' AND players > 0 AND players < ? AND updated > ?
+      ORDER BY seeking DESC, players DESC, updated DESC LIMIT 1`, SEATS, Date.now() - QUICK_FRESH_MS).toArray()[0];
+    if (!row) return null;
+    this.sql.exec("UPDATE lobbies SET players = players + 1 WHERE code = ?", row.code);
+    return row.code;
   }
   remove(code) {
     this.sql.exec("DELETE FROM lobbies WHERE code = ?", code);
     this.sql.exec("DELETE FROM slots WHERE code = ?", code);
   }
   listPublic() {
-    return this.sql.exec("SELECT code, players FROM lobbies WHERE public = 1 AND state = 'open' AND players < ? AND updated > ? ORDER BY updated DESC LIMIT 20",
+    return this.sql.exec("SELECT code, players, seeking FROM lobbies WHERE public = 1 AND state = 'open' AND players < ? AND updated > ? ORDER BY seeking DESC, updated DESC LIMIT 20",
       SEATS, Date.now() - 30 * 60e3).toArray();
   }
 

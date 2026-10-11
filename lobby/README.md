@@ -27,14 +27,23 @@ the whole party to a free game server with that party's own key. Design: `docs/l
    apart, after `MATCH_GRACE_SECS`), or the host presses "Back to the lobby", the server is released and the
    lobby opens for a rematch. A lobby nobody is connected to expires after 15 minutes.
 
+## Matchmaking
+
+- **Quick play** (`POST /api/quickplay`): joins the open public party that is looking for players, else the
+  fullest open public one with a free seat (changed in the last 10 minutes). None: it starts a public party that
+  is looking for players. The seat is held in the directory at once so two people arriving together don't collide.
+- **Fill empty seats with random players** (host checkbox, `seeking`): lists the party publicly and sends quick
+  players to it. Once `MIN_HUMANS` are in, the party starts by itself `FILL_SECS` (20) later, ready or not;
+  bots fill the rest. Everyone ready still starts it after `AUTOSTART_SECS`.
+
 ## Develop and test
 
 ```
 cd lobby && npm install && cp .dev.vars.example .dev.vars
 # a relay to hand out (no game server needed for the API test):
 PORT=18095 GAME=127.0.0.1:27999 PARTY_KEY=statickey LOBBY_SECRET=dev-secret-change-me RELAY_ID=raid1 node ../web/relay.js --root ../web/public
-npx wrangler dev --port 8787 --var 'POOL:[{"id":"raid1","url":"http://127.0.0.1:18095"}]' --var AUTOSTART_SECS:3 --var MATCH_GRACE_SECS:0
-node test/lobby_test.mjs           # 33 checks; SLOW=1 adds the server-release path (about 4 minutes)
+npx wrangler dev --port 8787 --var 'POOL:[{"id":"raid1","url":"http://127.0.0.1:18095"}]' --var AUTOSTART_SECS:3 --var MATCH_GRACE_SECS:0 --var FILL_SECS:3
+node test/lobby_test.mjs           # 41 checks; SLOW=1 adds the server-release path (about 4 minutes)
 ```
 
 `tools/dev/lobby_e2e.js` runs two real browsers through create, join, ready, the hand-off and the match on a

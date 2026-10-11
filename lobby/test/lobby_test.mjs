@@ -125,6 +125,27 @@ s = await A.until((s) => s.state === "in_match", 15000);
 check(!!s, "peer leaves -> queued lobby starts");
 A.send({ t: "end" }); await A.until((s) => s.state === "open");
 
+// --- quick play (worker run with --var FILL_SECS:3): join a random open public party, or start one that looks for players
+const qp = async (pid, name) => { const r = await fetch(`${LOBBY}/api/quickplay`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid, name }) }); return { status: r.status, body: await r.json() }; };
+const q1 = await qp("pid-quick1xxxx", "Qone");
+check(q1.status === 200 && q1.body.created === true && /^[A-Z2-9]{5}$/.test(q1.body.code), `quick play with nothing open starts a party ${q1.body.code}`);
+const pub = (await (await fetch(`${LOBBY}/api/public`)).json()).lobbies.find((l) => l.code === q1.body.code);
+check(!!pub && pub.seeking === 1, "the new party is listed publicly as looking for players");
+const Q1 = new Member(q1.body.code, "pid-quick1xxxx", "Qone"); await Q1.open;
+const q2 = await qp("pid-quick2xxxx", "Qtwo");
+check(q2.body.code === q1.body.code && q2.body.created === false, "second quick play joins the first one's party");
+const Q2 = new Member(q2.body.code, "pid-quick2xxxx", "Qtwo"); await Q2.open;
+check(!!(await Q1.until((s) => s.members.length === 2 && s.seeking)), "host sees the joiner, party is seeking");
+s = await Q1.until((s) => s.startsIn > 0 && s.fill);
+check(!!s, `two humans in a seeking party start the fill countdown without anyone readying (${s?.startsIn} ms)`);
+check(!!(await Q1.until((s) => s.state === "in_match" && s.go, 15000)), "fill countdown ends -> match starts with bots");
+Q1.send({ t: "end" }); await Q1.until((s) => s.state === "open");
+Q1.send({ t: "seeking", seeking: false });
+check(!!(await Q1.until((s) => !s.seeking && s.startsIn === 0)), "host stops looking: no fill countdown");
+Q1.send({ t: "public", public: false }); Q1.send({ t: "seeking", seeking: true });
+check(!!(await Q1.until((s) => s.seeking && s.public)), "looking for players lists the party publicly");
+for (const m of [Q1, Q2]) m.ws.close();
+
 // --- rate limit on creates
 let limited = false;
 for (let i = 0; i < 12 && !limited; i++) limited = (await create(`pid-rate${i}xxxx`, "R")).status === 429;
