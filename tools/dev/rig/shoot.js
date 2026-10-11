@@ -33,7 +33,7 @@ function rcon(cmd) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
+  const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required", "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
   const vw = +(process.env.VW || 1280), vh = +(process.env.VH || 720);
   const ctxOpts = process.env.PHONE ? { viewport: { width: vw, height: vh }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, userAgent: devices["Pixel 7"].userAgent }
                                     : { viewport: { width: vw, height: vh } };

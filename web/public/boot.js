@@ -267,7 +267,7 @@
     if (st === 4) {
       watch.retried = 0; watch.lastRx = performance.now();
       if (watch.gaveUp) { watch.gaveUp = false; hideOverlay(); $("canvas").focus(); }   // a slow join or a retry made it after all
-      if (!watch.joined) { watch.joined = true; tipStop(); hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); if (TOUCH) { consoleCmd("touch_removebutton chat"); consoleCmd("hud_saytext_time 0"); } }
+      if (!watch.joined) { watch.joined = true; tipStop(); hideOverlay(); $("canvas").focus(); applySettings(); readSettings(); padGame(); if (TOUCH) { consoleCmd("touch_removebutton chat"); consoleCmd("hud_saytext_time 0"); } voiceStart($("name").value.trim().slice(0, 31)); }
       toast("");
       return;
     }
@@ -667,6 +667,117 @@
     if (performance.now() - selfUnlock < 1000) return;
     openPause();
   });
+  // Voice chat (PHA-4058): push-to-talk, browser to browser over WebRTC (a mesh; the party is at most 10).
+  // The relay's /voice socket only introduces peers and forwards offers/answers/ICE; the audio never touches it.
+  // Hold V (keyboard) or the mic button (touch) to talk. Each peer has a Mute button in the Esc menu.
+  const voice = { ws: null, id: 0, peers: new Map(), mic: null, micAsk: null, talking: false, retry: 0, name: "", on: false, muted: new Set() };
+  try { voice.muted = new Set(JSON.parse(localStorage.getItem("csp_vmute") || "[]")); } catch {}
+  const STUN = [{ urls: "stun:stun.l.google.com:19302" }];
+  const vsend = (o) => { if (voice.ws?.readyState === 1) voice.ws.send(JSON.stringify(o)); };
+  const voiceRender = () => {
+    const talkers = [...voice.peers.values()].filter((p) => p.talking).map((p) => p.name);
+    if (voice.talking) talkers.unshift("You");
+    $("voice-talk").textContent = talkers.length ? "\u{1F399} " + talkers.join(", ") : "";
+    $("voice-talk").hidden = !talkers.length;
+    const list = $("voice-list"); list.replaceChildren();
+    for (const p of voice.peers.values()) {
+      const row = document.createElement("div"), nm = document.createElement("span"), bt = document.createElement("button");
+      nm.textContent = p.name + (p.state === "connected" ? "" : " …");
+      bt.type = "button"; bt.className = "alt"; bt.textContent = voice.muted.has(p.name) ? "Unmute" : "Mute";
+      bt.addEventListener("click", () => {
+        voice.muted.has(p.name) ? voice.muted.delete(p.name) : voice.muted.add(p.name);
+        p.audio.muted = voice.muted.has(p.name);
+        try { localStorage.setItem("csp_vmute", JSON.stringify([...voice.muted])); } catch {}
+        voiceRender();
+      });
+      row.append(nm, bt); list.append(row);
+    }
+    $("voice-box").hidden = !voice.on;
+  };
+  const voicePeerClose = (id) => {
+    const p = voice.peers.get(id); if (!p) return;
+    try { p.pc.close(); } catch {}
+    p.audio.srcObject = null; p.audio.remove(); voice.peers.delete(id); voiceRender();
+  };
+  const voicePeer = (id, name, initiator) => {
+    let p = voice.peers.get(id); if (p) return p;
+    const pc = new RTCPeerConnection({ iceServers: STUN });
+    const audio = document.createElement("audio");
+    audio.autoplay = true; audio.muted = voice.muted.has(name); audio.hidden = true; document.body.append(audio);
+    p = { id, name, pc, audio, talking: false, state: "new", queue: [], sender: null };
+    voice.peers.set(id, p);
+    p.sender = pc.addTransceiver("audio", { direction: "sendrecv" }).sender;   // the mic track is swapped in later, no renegotiation
+    if (voice.mic) p.sender.replaceTrack(voice.mic).catch(() => {});
+    pc.onicecandidate = (e) => { if (e.candidate) vsend({ t: "sig", to: id, data: { ice: e.candidate } }); };
+    pc.ontrack = (e) => { audio.srcObject = new MediaStream([e.track]); audio.play().catch(() => {}); };
+    pc.onconnectionstatechange = () => {
+      p.state = pc.connectionState; voiceRender();
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") voicePeerClose(id);
+    };
+    if (initiator) pc.onnegotiationneeded = async () => {
+      try { await pc.setLocalDescription(await pc.createOffer()); vsend({ t: "sig", to: id, data: { sdp: pc.localDescription } }); } catch {}
+    };
+    voiceRender();
+    return p;
+  };
+  const voiceSig = async (from, data) => {
+    const p = voice.peers.get(from); if (!p) return;
+    try {
+      if (data.sdp) {
+        await p.pc.setRemoteDescription(data.sdp);
+        for (const c of p.queue.splice(0)) await p.pc.addIceCandidate(c).catch(() => {});
+        if (data.sdp.type === "offer") { await p.pc.setLocalDescription(await p.pc.createAnswer()); vsend({ t: "sig", to: from, data: { sdp: p.pc.localDescription } }); }
+      } else if (data.ice) {
+        if (p.pc.remoteDescription) await p.pc.addIceCandidate(data.ice).catch(() => {}); else p.queue.push(data.ice);
+      }
+    } catch {}
+  };
+  const voiceStart = (name) => {
+    if (!window.RTCPeerConnection || voice.ws || !name) return;
+    voice.name = name;
+    const ws = new NativeWS(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/voice${keyQuery}`);
+    voice.ws = ws;
+    ws.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === "welcome") {
+        voice.id = m.id; voice.on = true; voice.retry = 0;
+        vsend({ t: "hello", name: voice.name });
+        for (const q of m.peers) voicePeer(q.id, q.name, true);   // the newcomer calls everyone already here
+        voiceRender();
+      } else if (m.t === "join") voicePeer(m.id, m.name, false);
+      else if (m.t === "sig") voiceSig(m.from, m.data || {});
+      else if (m.t === "talk") { const p = voice.peers.get(m.id); if (p) { p.talking = !!m.on; voiceRender(); } }
+      else if (m.t === "leave") voicePeerClose(m.id);
+    };
+    ws.onclose = (e) => {
+      voice.ws = null; voice.on = false;
+      for (const id of [...voice.peers.keys()]) voicePeerClose(id);
+      voiceRender();
+      if (e.code >= 4000 || voice.retry > 5) return;   // refused (key, full): don't hammer
+      setTimeout(() => voiceStart(voice.name), 2000 * ++voice.retry);
+    };
+  };
+  const voiceMic = () => voice.micAsk || (voice.micAsk = navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }).then((s) => {
+    voice.mic = s.getAudioTracks()[0]; voice.mic.enabled = false;
+    for (const p of voice.peers.values()) p.sender.replaceTrack(voice.mic).catch(() => {});
+    return voice.mic;
+  }).catch(() => { voice.micAsk = null; toast("Microphone blocked: allow it in the browser to talk.", 4000); return null; }));
+  let pttWant = false;
+  const voicePtt = async (on) => {
+    pttWant = on;
+    if (on && !voice.on) return;
+    if (on && !voice.mic) { await voiceMic(); if (!pttWant) return; }
+    if (!voice.mic || voice.talking === on) return;
+    voice.mic.enabled = on; voice.talking = on; vsend({ t: "talk", on });
+    $("mic").classList.toggle("live", on); voiceRender();
+  };
+  $("mic").addEventListener("pointerdown", (e) => { e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch {} voicePtt(true); });
+  for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) $("mic").addEventListener(t, () => voicePtt(false));
+  $("mic").addEventListener("contextmenu", (e) => e.preventDefault());
+  for (const t of ["touchstart", "touchmove", "touchend", "mousedown", "mouseup"]) $("mic").addEventListener(t, (e) => e.stopPropagation(), { passive: true });
+  addEventListener("keydown", (e) => { if (e.code === "KeyV" && !e.repeat && inGame() && !typing && pause.hidden && !chat.open && !e.ctrlKey && !e.metaKey && !e.altKey) voicePtt(true); }, true);
+  addEventListener("keyup", (e) => { if (e.code === "KeyV") voicePtt(false); }, true);
+  addEventListener("blur", () => voicePtt(false));
   // capture phase on window: runs before the engine's own key handler, so it can keep keys from it
   addEventListener("keydown", (e) => {
     if (!inGame()) return;
