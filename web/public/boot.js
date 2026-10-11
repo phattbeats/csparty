@@ -532,18 +532,19 @@
   function navShow() { const on = !!nav.seq && !!nav.usable && inGame() && pause.hidden; if (!on && !navpad.hidden) navRelease(); navpad.hidden = !on; }
   function navDraw() {
     navRows.replaceChildren(); nav.down.clear();
-    // greyed items stay off the pad and the others keep their real number; a plain Back/Done/Never mind is the Back button's job
+    // every item keeps its real number; greyed ones (can't afford it, not now) stay on the pad, dimmed and untappable, so the
+    // shop still reads as a price list. A plain Back/Done/Never mind is the Back button's job.
     const backItem = nav.items.find((it) => it.i === nav.back), plainBack = !!backItem && /^(back|done|never mind)$/i.test(backItem.label);
-    const usable = nav.items.filter((it) => it.ok && it.label && !(plainBack && it.i === nav.back));
+    const shown = nav.items.filter((it) => it.label && it.label !== "-" && !(plainBack && it.i === nav.back)), usable = shown.filter((it) => it.ok);
     const backBtn = $("nav-ctl").querySelector('[data-act="back"]');
     backBtn.hidden = !backItem; backBtn.textContent = !backItem || plainBack ? "Back" : backItem.label;   // "Walk on", "Keep the money": the safe way out, under its own name
     nav.usable = usable.length + (backItem ? 1 : 0);
     navShow();
     if (navpad.hidden) return;
-    const cols = usable.length > 5 ? 2 : 1;
-    navRows.style.setProperty("--rows", Math.max(1, Math.ceil(usable.length / cols)));
+    const cols = shown.length > 4 ? 2 : 1;   // two columns keep a long list out of the chat lines at the bottom
+    navRows.style.setProperty("--rows", Math.max(1, Math.ceil(shown.length / cols)));
     navRows.style.setProperty("--cols", cols);
-    for (const it of usable) navRows.append(navBtn("opt", String(it.i + 1), it.label, "pick", it.i));
+    for (const it of shown) { const b = navBtn("opt", String(it.i + 1), it.label, "pick", it.i); b.disabled = !it.ok; navRows.append(b); }
     navMark();
   }
   const navDbg = (m) => { const l = (window.__navlog ||= []); l.push(Math.round(performance.now()) + " " + m); if (l.length > 60) l.shift(); };   // devtools / tests: what the pad did

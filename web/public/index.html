@@ -64,28 +64,39 @@
   #fs { position:fixed; right:14px; bottom:64px; z-index:4; padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text);
     border:1px solid var(--line); opacity:0; transition:opacity .25s; }
   #fs.show, .touch #fs { opacity:1; }
-  .touch #fs { top:max(10px, env(safe-area-inset-top)); bottom:auto; right:auto; left:50%; transform:translateX(6px); }
-  /* phones have no Esc key: this opens the menu, next to Fullscreen at the top */
+  /* phones: the top right corner, the one patch the engine's touch buttons leave free (its top row ends at ~3/4 of the
+     width, Jump/Duck start below the top quarter); top centre is the board table's header. Fullscreen is an icon there. */
+  .touch #fs { top:max(6px, env(safe-area-inset-top)); bottom:auto; right:max(8px, env(safe-area-inset-right)); left:auto; transform:none;
+    font-size:0; width:44px; min-width:44px; height:44px; min-height:44px; padding:0; display:grid; place-items:center; }
+  .touch #fs::before { content:"\26F6"; font-size:24px; line-height:1; }
+  /* phones have no Esc key: this opens the menu (next to Fullscreen) */
   #pz-open { display:none; position:fixed; z-index:4; top:max(10px, env(safe-area-inset-top)); left:50%; transform:translateX(calc(-100% - 6px));
     padding:7px 10px; font-size:12px; background:rgba(26, 29, 24, .85); color:var(--text); border:1px solid var(--line); }
+  .touch #pz-open { top:max(6px, env(safe-area-inset-top)); left:auto; right:calc(max(8px, env(safe-area-inset-right)) + 50px); transform:none;
+    min-height:44px; padding:0 12px; font-size:15px; }
   .touch.ingame #pz-open { display:block; }
-  /* PHA-4121: touch menu buttons. The server menu text is hidden under the option pad (up/down/OK/Back are its bottom row);
-     everything is on the left, so the Jump/Use/Fire buttons on the right edge stay free. Every hit area is >= 48 px. */
+  /* PHA-4121: touch menu buttons. The server menu text is hidden under the option pad (up/down/OK/Back are its bottom row).
+     The pad keeps to the strip the HUD leaves free on the left: below the engine's top row of buttons and the radar (17vh),
+     left of the board table (which starts at 37% of the width) and above the chat lines. Jump/Use/Fire on the right stay free.
+     Every hit area is >= 44 px. Greyed items (can't afford it, not now) stay on the pad, dimmed and with their price, but can't be tapped. */
   #navpad { position:fixed; inset:0; z-index:1; pointer-events:none; touch-action:none; }
-  #navpad button { pointer-events:auto; touch-action:none; font:600 17px/1.1 system-ui, sans-serif; color:var(--text); background:rgba(26, 29, 24, .94);
-    border:1px solid var(--line); border-radius:8px; min-height:48px; min-width:48px; margin:0; padding:6px 10px; display:flex; align-items:center; gap:10px; text-align:left; }
+  #navpad button { pointer-events:auto; touch-action:none; font:600 16px/1.1 system-ui, sans-serif; color:var(--text); background:rgba(26, 29, 24, .94);
+    border:1px solid var(--line); border-radius:8px; min-height:44px; min-width:44px; margin:0; padding:4px 6px; display:flex; align-items:center; gap:6px; text-align:left; }
   #navpad button.down { background:#3a3220; border-color:var(--hud); transform:scale(.97); }
-  #nav-box { position:absolute; left:max(8px, env(safe-area-inset-left)); top:max(40px, calc(env(safe-area-inset-top) + 34px)); width:min(38vw, 400px);
-    display:grid; gap:6px; padding:8px; background:rgba(10, 11, 9, .94); border:1px solid var(--line); border-radius:10px; pointer-events:auto; }
-  #nav-rows { display:grid; grid-template-columns:repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows:repeat(var(--rows, 1), 48px); grid-auto-flow:column; gap:6px; }
-  #nav-rows .opt { height:48px; overflow:hidden; }
-  #nav-rows .opt b { flex:none; width:26px; height:26px; border-radius:50%; display:grid; place-items:center; background:var(--hud); color:#1a1710; font-size:15px; }
-  #nav-rows .opt span { min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:14px; line-height:1.15; overflow-wrap:anywhere; }
+  #nav-box { position:absolute; left:max(6px, env(safe-area-inset-left)); top:max(17vh, calc(env(safe-area-inset-top) + 8px)); width:min(calc(36vw - 12px), 380px);
+    max-height:calc(100vh - max(17vh, calc(env(safe-area-inset-top) + 8px)) - 6px); overflow-y:auto; overscroll-behavior:contain;
+    display:grid; gap:4px; padding:5px; background:rgba(10, 11, 9, .9); border:1px solid var(--line); border-radius:10px; pointer-events:auto; }
+  #nav-rows { display:grid; grid-template-columns:repeat(var(--cols, 1), minmax(0, 1fr)); grid-template-rows:repeat(var(--rows, 1), 44px); grid-auto-flow:column; gap:4px; }
+  #nav-rows .opt { height:44px; overflow:hidden; }
+  #nav-rows .opt b { flex:none; width:22px; height:22px; border-radius:50%; display:grid; place-items:center; background:var(--hud); color:#1a1710; font-size:13px; }
+  #nav-rows .opt span { min-width:0; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; font-size:13px; line-height:1.15; overflow-wrap:anywhere; }
   #nav-rows .opt.cur { border-color:var(--hud); box-shadow:inset 0 0 0 1px var(--hud); }
-  #nav-ctl { display:flex; gap:6px; }
-  #nav-ctl button { flex:1 1 0; justify-content:center; min-height:48px; font-size:18px; text-align:center; padding:6px 4px; }
+  #nav-rows .opt:disabled { color:#8d8a80; background:rgba(26, 29, 24, .7); border-style:dashed; }
+  #nav-rows .opt:disabled b { background:#55534c; }
+  #nav-ctl { display:flex; gap:4px; }
+  #nav-ctl button { flex:1 1 0; justify-content:center; min-height:44px; font-size:17px; text-align:center; padding:4px 2px; }
   #nav-ctl .ok { background:var(--hud); color:#1a1710; border-color:var(--hud); }
-  #nav-ctl .back { flex:1.6 1 0; font-size:16px; }
+  #nav-ctl .back { flex:1.6 1 0; font-size:15px; }
   /* z-index 5: over the page's Menu/Fullscreen buttons (4). Scrolls when it's taller than the screen,
      and "safe" keeps the top reachable instead of centring it off the edge. */
   #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:5; overflow-y:auto; place-items:safe center; }
@@ -528,6 +539,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.30"></script>
+<script src="boot.js?v=0.4.31"></script>
 </body>
 </html>
