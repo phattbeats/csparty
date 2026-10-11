@@ -416,3 +416,9 @@ Source: Nextcloud `cloud/csparty/cs-party-design-v1.zip`, a GoldSrc party-menu d
   (`appdata/cs-party/spot3985/spot.js`: skips the first-visit primer, opens one case, screenshots).
 - Gate each time: rcon 0 humans, peers 0, expected live tags. Rollback: containers `cs-party-server-0.5.27-vqold`,
   `cs-party-server-0.5.28-vqold`, `cs-party-relay-0.4.28old`; `csparty-up.sh.pre-0528-ISSUE`, `.pre-0529-ISSUE`.
+
+## #4121: touch menu buttons (server 0.5.30-vq + relay 0.4.30, 2026-10-11 ~00:11 UTC)
+Server 0.5.30-vq = 0.5.29-vq + plugin change (CSP_NAV echoes + `csp_nav` command for touch players). Relay 0.4.30 = 0.4.29 +
+index.html/boot.js (option pad; `boot.js?v=0.4.30`), which also ships PHA-4120's layout/text changes. Patch dir
+`patch0530-pha4121/`; rollback containers `cs-party-server-0.5.29-vqold`, `cs-party-relay-0.4.29old`, `csparty-up.sh.pre-0530-pha4121`.
+E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard regression).
