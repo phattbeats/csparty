@@ -150,6 +150,7 @@ new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "cs
 // the .ini's "pool <surf|bhop|climb|maze|none>" line, else by the map's name (surf_, bhop_, kz_/climb_, maze_)
 #define POOL_MAX 64
 new g_poolMap[POOL_MAX][32], g_poolMg[POOL_MAX], g_poolN;
+new Float:g_mgDmg[SEATS];   // damage each seat dealt to opponents this fight (timeout tiebreak)
 new g_raceMap[32];      // the map this match's map minigame plays on: drawn at its intro, or csp_test_remote's pick
 new g_mapsUsed[600];    // race maps played this match, "|map|" each: none repeats until its pool runs out
 // zBots can't surf, bhop, climb or solve a maze: on race maps they "finish" at a random time in this window (seconds)
@@ -318,6 +319,7 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "hc_round_end", false);
 	RegisterHookChain(RG_CBasePlayer_Spawn, "hc_spawn_post", true);
 	RegisterHookChain(RG_CBasePlayer_Killed, "hc_killed_post", true);
+	RegisterHookChain(RG_CBasePlayer_TakeDamage, "hc_takedmg_post", true);
 	RegisterHookChain(RG_CSGameRules_FPlayerCanTakeDamage, "hc_can_take_damage", false);
 	RegisterHookChain(RG_ThrowHeGrenade, "hc_throw_he_post", true);
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "hc_reset_maxspeed_post", true);
@@ -4163,6 +4165,7 @@ mg_fight_start()
 		seat_settle(id);
 	}
 	g_mgDone = false; g_mgWinnerN = 0;
+	for (new s = 0; s < SEATS; s++) g_mgDmg[s] = 0.0;
 	g_state = ST_MINIGAME;
 	remove_task(TASK_CAM);
 	release_cameras();
@@ -4696,6 +4699,17 @@ public hc_throw_he_post(const index)
 }
 public task_regive_he(taskid) { new id = taskid - TASK_NADE; if (is_user_alive(id) && g_state == ST_MINIGAME) rg_give_item(id, "weapon_hegrenade"); }
 
+// damage dealt to opponents this fight: the tiebreak when time runs out with equal survivors and health
+public hc_takedmg_post(const victim, const inflictor, const attacker, Float:damage, bitsDamageType)
+{
+	if (g_state != ST_MINIGAME || g_mgDone || victim == attacker || !(1 <= attacker <= MaxClients)) return HC_CONTINUE;
+	new sv = seat_of(victim), sa = seat_of(attacker);
+	if (sv < 0 || sa < 0 || !g_mgIn[sv] || !g_mgIn[sa]) return HC_CONTINUE;
+	if (g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL && g_mgSide[sv] == g_mgSide[sa]) return HC_CONTINUE;
+	g_mgDmg[sa] += damage;
+	return HC_CONTINUE;
+}
+
 public hc_killed_post(const victim, const killer)
 {
 	if (g_state != ST_MINIGAME || g_mgDone) return;
@@ -4750,6 +4764,16 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 				if (h > bh) { bh = h; best = s; tie = false; } else if (h == bh) tie = true;
 			}
 			if (best >= 0 && !tie) g_mgWinners[g_mgWinnerN++] = best;
+			else if (best >= 0)
+			{
+				// level on health: whoever dealt more damage (bots that never engage still draw)
+				new Float:bd = 0.0; tie = false; best = -1;
+				for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s]))
+				{
+					if (g_mgDmg[s] > bd) { bd = g_mgDmg[s]; best = s; tie = false; } else if (g_mgDmg[s] == bd && best >= 0) tie = true;
+				}
+				if (best >= 0 && !tie) g_mgWinners[g_mgWinnerN++] = best;
+			}
 		}
 		else if (!mg_objective() && (event == ROUND_TARGET_SAVED || event == ROUND_END_DRAW || event == ROUND_HOSTAGE_NOT_RESCUED || status == WINSTATUS_DRAW))
 		{
@@ -4759,6 +4783,13 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 			new side = -1;
 			if (alive[SIDE_CT] != alive[SIDE_T]) side = alive[SIDE_CT] > alive[SIDE_T] ? SIDE_CT : SIDE_T;
 			else if (hp[SIDE_CT] != hp[SIDE_T]) side = hp[SIDE_CT] > hp[SIDE_T] ? SIDE_CT : SIDE_T;
+			else
+			{
+				// level on both: the side that dealt more damage
+				new Float:dm[2];
+				for (new s = 0; s < SEATS; s++) if (g_mgIn[s]) dm[g_mgSide[s]] += g_mgDmg[s];
+				if (dm[SIDE_CT] != dm[SIDE_T]) side = dm[SIDE_CT] > dm[SIDE_T] ? SIDE_CT : SIDE_T;
+			}
 			if (side >= 0) for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && g_mgSide[s] == side) g_mgWinners[g_mgWinnerN++] = s;
 		}
 		else if (status == WINSTATUS_CTS || status == WINSTATUS_TERRORISTS)
