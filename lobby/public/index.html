@@ -6,11 +6,12 @@
 <meta name="theme-color" content="#121411">
 <link rel="icon" href="art/favicon.svg" type="image/svg+xml">
 <title>CS Party: lobby</title>
-<link rel="stylesheet" href="lobby.css?v=1">
+<link rel="stylesheet" href="lobby.css?v=2">
 </head>
 <body>
 <main class="menu">
   <div class="window-bar"><span><span class="mini-die" aria-hidden="true">&#8281;</span> CS PARTY</span><span id="conn" aria-live="polite"></span></div>
+  <p id="banner" class="banner" role="status" aria-live="polite" hidden></p>
   <header class="masthead">
     <img class="logo" src="art/logo.webp" alt="CS Party" width="720" height="360">
     <div class="intro"><p class="eyebrow" id="eyebrow">PARTY LOBBY</p><h1 id="headline">Make a party, send the code.</h1><p id="subline">Up to 4 players. Bots fill the empty seats.</p></div>
@@ -54,7 +55,7 @@
       <fieldset class="roster"><legend class="eyebrow">YOUR CHARACTER</legend><div id="char-grid" class="char-grid"></div></fieldset>
       <div class="panel actions">
         <p id="lobby-status" class="status big" role="status" aria-live="polite"></p>
-        <button id="ready" type="button" aria-pressed="false">Ready</button>
+        <button id="ready" type="button" aria-pressed="false" hidden>Ready</button>
         <button id="start" type="button" class="alt" hidden>Start now (bots fill)</button>
         <label class="check" id="public-wrap" hidden><input type="checkbox" id="lobby-public"> Listed publicly</label>
         <label class="check" id="seeking-wrap" hidden><input type="checkbox" id="lobby-seeking"> Fill empty seats with random players</label>
@@ -64,8 +65,11 @@
       </div>
     </div>
   </section>
-  <footer class="muted small">No accounts. Your name, character and a random id live in this browser only.</footer>
+  <footer class="muted small">No accounts. Your name, character and a random id live in this browser only.
+    To see how parties go, we count lobby and match events with your country and that id, hashed with a salt that
+    changes every day so you can't be followed from one day to the next. IP addresses are kept only as a one-way hash,
+    for 24 hours to limit spam (longer only while banned for abuse). No chat is stored.</footer>
 </main>
-<script src="lobby.js?v=2"></script>
+<script src="lobby.js?v=4"></script>
 </body>
 </html>

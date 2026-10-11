@@ -120,6 +120,16 @@ Reading it: Analytics Engine SQL API from the dashboard Worker. If AE is not on 
 
 Plugin side: add a tiny `csp_event(name, json)` forward in `cs_party.sma` that logs a tagged line (`[CSPEV] ...`); pool-agent tails the container log and ships events over its WS. No new network code in Pawn.
 
+**As built (#3991).** Events and fields are in `lobby/src/analytics.js`. Changes from the table above:
+`lobby_all_ready`, `lobby_expired`, `lobby_closed`, `start_queued` and `admin_action` were added for the funnel
+and the abuse panel. The lobby can't tell a finished match from an abandoned one, so it emits `match_closed`
+(reason: host_end, server_empty, max_time, slot_removed, admin_kill), and the directory fills in the outcome
+(finished, unfinished, unknown) and the last minigame from the game server's events. `match_finished` and
+`match_abandoned` come from the game server only. Every event is written to Analytics Engine, and also to
+hourly counters in the directory Durable Object's SQLite, not D1. The DO already holds the lobby list, needs no
+extra binding or token, and its counts are exact where AE samples. The dashboard reads the counters, and AE SQL
+is there for ad hoc presets. The day salt is random, held by the directory and dropped when the UTC day ends.
+
 ## 9. Admin dashboard
 
 Purpose: see health at a glance, see what players are doing, and have a few safe levers. Single page, served by the same Worker at `/admin`.
@@ -145,6 +155,12 @@ Purpose: see health at a glance, see what players are doing, and have a few safe
 - Download CSV of daily rollups.
 
 **Implementation.** Static HTML + small vanilla JS (or Preact) from Workers Assets; data endpoints: `/api/admin/live` (DO), `/api/admin/stats?range=` (AE SQL / D1), `/api/admin/action`. Charts per our dataviz conventions. No third-party scripts. All admin queries are parameterized.
+
+**As built (#3991).** Bearer token per decision 2: 10 failures in 15 minutes lock that IP hash out, and the
+right token is refused too while locked. "Live now" polls `/api/admin/live` every 3 s while the tab is visible,
+instead of a WebSocket: a browser WebSocket can't send the bearer header, and polling is cheap at one admin. The
+audit log, bans and switches live in the directory's SQLite. In Phase 1, "kill" closes the lobby and frees its
+slot, but can't stop the game server. "Top creating IP hashes" uses a keyed IP hash kept 24 h.
 
 ## 10. Abuse and safety
 

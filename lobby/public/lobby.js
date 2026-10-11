@@ -32,7 +32,7 @@
         body: JSON.stringify({ pid, name: myName(), char: myChar, public: $("public").checked }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      enter(j.code);
+      enter(j.code, "create");
     } catch (e) { homeStatus(String(e.message || e), true); }
     $("create").disabled = false;
   });
@@ -44,14 +44,15 @@
         body: JSON.stringify({ pid, name: myName(), char: myChar }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
-      enter(j.code);
+      enter(j.code, j.created ? "create" : "quick");
     } catch (e) { homeStatus(String(e.message || e), true); }
     $("quick").disabled = false;
   });
-  $("join-form").addEventListener("submit", (e) => { e.preventDefault(); tryJoin($("code").value); });
+  $("join-form").addEventListener("submit", (e) => { e.preventDefault(); tryJoin($("code").value, "code"); });
   $("code").addEventListener("input", () => { $("code").value = $("code").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); });
 
-  async function tryJoin(raw) {
+  // via: how they got here (code typed, invite link, public list), counted on join (no other effect)
+  async function tryJoin(raw, via) {
     const code = String(raw || "").trim().toUpperCase();
     if (!CODE_RE.test(code)) { homeStatus("Codes are 5 letters and numbers, like K7XQ2.", true); return; }
     store.set("csp_name", myName());
@@ -60,7 +61,7 @@
       const r = await fetch(`/api/lobbies/${code}`);
       if (r.status === 404) { homeStatus(`No party with code ${code}. It may have ended.`, true); history.replaceState(null, "", "/"); return; }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      enter(code);
+      enter(code, via);
     } catch (e) { homeStatus(String(e.message || e), true); }
   }
 
@@ -71,13 +72,14 @@
       $("public-list").innerHTML = lobbies.map((l) => `<li><button type="button" class="alt" data-code="${esc(l.code)}"><span>${esc(l.code)}</span><span>${l.seeking ? "LOOKING " : ""}${l.players}/4</span></button></li>`).join("");
     } catch {}
   }
-  $("public-list").addEventListener("click", (e) => { const b = e.target.closest("button[data-code]"); if (b) tryJoin(b.dataset.code); });
+  $("public-list").addEventListener("click", (e) => { const b = e.target.closest("button[data-code]"); if (b) tryJoin(b.dataset.code, "public"); });
 
   // ------------------------------------------------------------------ lobby
-  let ws = null, code = "", last = null, sawStart = false, retry = 0, countdown = 0, leaving = false;
+  let ws = null, code = "", via = "code", last = null, sawStart = false, retry = 0, countdown = 0, leaving = false;
 
-  function enter(c) {
-    code = c; leaving = false; sawStart = false; last = null;
+  function enter(c, how) {
+    code = c; via = how || "code"; leaving = false; sawStart = false; last = null;
+    $("ready").hidden = true;   // until the lobby's first state: a click before the socket opens would be lost
     history.replaceState(null, "", `/?code=${code}`);
     $("home").hidden = true; $("lobby").hidden = false;
     $("lobby-code").textContent = code;
@@ -89,15 +91,20 @@
 
   function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const q = new URLSearchParams({ pid, name: myName(), char: String(myChar) });
+    const q = new URLSearchParams({ pid, name: myName(), char: String(myChar), via });
     ws = new WebSocket(`${proto}://${location.host}/api/lobbies/${code}/ws?${q}`);
     const sock = ws;
     sock.onopen = () => { retry = 0; $("conn").textContent = "CONNECTED"; $("conn").className = ""; };
-    sock.onmessage = (e) => { let m; try { m = JSON.parse(e.data); } catch { return; } if (m.t === "state") render(m); else if (m.t === "error") lobbyStatus(m.msg, true); };
+    sock.onmessage = (e) => {
+      let m; try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === "state") render(m); else if (m.t === "error") lobbyStatus(m.msg, true); else if (m.t === "closed") closedMsg = m.msg;
+    };
     sock.onclose = (e) => {
       if (sock !== ws || leaving) return;
       $("conn").textContent = "RECONNECTING"; $("conn").className = "off";
       if (e.code === 4000) { lobbyStatus("This party is open in another tab.", true); $("conn").textContent = "OTHER TAB"; return; }
+      // an admin closed the party or removed us (or we can't join right now): don't reconnect
+      if (e.code === 4003 || e.code === 4010) { $("conn").textContent = ""; backHome(closedMsg || e.reason || "You left the party."); return; }
       setTimeout(async () => {
         // a lobby that expired answers 404: back to the start screen
         try { if ((await fetch(`/api/lobbies/${code}`)).status === 404) { backHome(`Party ${code} has ended.`); return; } } catch {}
@@ -105,6 +112,7 @@
       }, Math.min(10000, 500 * 2 ** retry++));
     };
   }
+  let closedMsg = "";
   setInterval(() => { if (ws?.readyState === 1) ws.send("ping"); }, 30000);
   const send = (m) => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
 
@@ -115,7 +123,8 @@
     $("lobby").hidden = true; $("home").hidden = false;
     $("eyebrow").textContent = "PARTY LOBBY"; $("headline").textContent = "Make a party, send the code."; $("subline").textContent = "Up to 4 players. Bots fill the empty seats.";
     homeStatus(msg || "", !!msg);
-    loadPublic();
+    closedMsg = "";
+    loadPublic(); loadStatus();
   }
   $("leave").addEventListener("click", () => { send({ t: "leave" }); backHome(""); });
   $("copy").addEventListener("click", async () => {
@@ -144,8 +153,15 @@
     myChar = c; store.set("csp_char", String(c)); send({ t: "char", char: c });
   });
 
+  // maintenance and admin messages, above everything
+  const banner = (t) => { $("banner").textContent = t || ""; $("banner").hidden = !t; };
+  async function loadStatus() {
+    try { const st = await (await fetch("/api/status")).json(); banner(st.message || st.notice); } catch {}
+  }
+
   function render(s) {
     const prev = last; last = s;
+    banner(s.notice);
     const me = s.members.find((m) => m.n === s.you), isHost = s.you === s.host;
     const players = s.members.filter((m) => m.role === "player");
     // seats
@@ -208,5 +224,6 @@
 
   // ------------------------------------------------------------------ boot
   const q = new URLSearchParams(location.search).get("code");
-  if (q) { $("code").value = q.toUpperCase(); tryJoin(q); } else loadPublic();
+  if (q) { $("code").value = q.toUpperCase(); tryJoin(q, "link"); } else loadPublic();
+  loadStatus();
 })();

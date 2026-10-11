@@ -1,6 +1,9 @@
 # CS Party lobby API (#3989, design: docs/lobby-design.md).
 # Local:  npm run dev   (wrangler dev; secrets from .dev.vars)
 # Live:   npx wrangler secret put LOBBY_SECRET   then   npm run deploy   (needs a Workers/DO-scoped API token)
+# Admin dashboard (/admin, #3991): npx wrangler secret put ADMIN_TOKEN   (24+ random characters; unset = admin off)
+# Optional, for the dashboard's Analytics Engine SQL panel: secrets AE_ACCOUNT_ID and AE_READ_TOKEN (an API token
+# with Account Analytics: Read). Everything else on the dashboard works without them.
 name = "csparty-lobby"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
@@ -19,6 +22,11 @@ class_name = "Lobby"
 name = "DIRECTORY"
 class_name = "Directory"
 
+# Analytics events (src/analytics.js): one datapoint per event, read with the Analytics Engine SQL API
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "csparty_events"
+
 # SQLite-backed Durable Objects: the only kind on the free plan
 [[migrations]]
 tag = "v1"
@@ -28,7 +36,7 @@ new_sqlite_classes = ["Lobby", "Directory"]
 # Capacity: game servers that are already running, each behind its own relay (web/relay.js). The relay with
 # RELAY_ID=<id> and the same LOBBY_SECRET accepts this Worker's per-lobby tokens as its party key.
 # A slot is handed to a lobby only while its relay reports 0 peers, so friends already playing there are safe.
-POOL = '[{"id":"raid1","url":"https://csparty.example.com"}]'
+POOL = '[{"id":"raid1","url":"https://csparty.phatt.vip"}]'
 MIN_HUMANS = "2"            # auto-start needs this many ready humans (the host can always start, even alone)
 AUTOSTART_SECS = "5"        # everyone ready this long -> start
 TOKEN_HOURS = "3"           # how long a lobby's party key opens its server

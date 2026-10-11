@@ -1,7 +1,7 @@
 // Lobby servers from pool-agents (#4154) end to end against `wrangler dev` and a real web/relay.js, with this script
 // playing the pool-agent (the real one, web/pool-agent.js, runs Docker; tools/dev/pool_e2e.sh tests that on a host).
 //   relay:   PORT=18096 GAME=127.0.0.1:27999 PARTY_KEY=statickey LOBBY_SECRET=dev-secret-change-me RELAY_ID=fake1 POOL_AGENT=http://127.0.0.1:18097 node web/relay.js
-//   worker:  npx wrangler dev --port 8788 --var 'POOL:[]' --var AUTOSTART_SECS:3
+//   worker:  npx wrangler dev --port 8788 --var 'POOL:[]' --var AUTOSTART_SECS:3   (.dev.vars with LOBBY_SECRET and ADMIN_TOKEN)
 //   node test/pool_test.mjs   [LOBBY=http://127.0.0.1:8788 RELAY=http://127.0.0.1:18096]   (needs web/node_modules)
 import crypto from "node:crypto";
 import http from "node:http";
@@ -12,6 +12,9 @@ const LOBBY = process.env.LOBBY || "http://127.0.0.1:8788";
 const RELAY = process.env.RELAY || "http://127.0.0.1:18096";
 const SECRET = process.env.LOBBY_SECRET || "dev-secret-change-me";
 const HOST = "fake1";
+const ADMIN = process.env.ADMIN_TOKEN || "dev-admin-token-change-me-0123456789";
+const admin = async (op, body) => (await fetch(`${LOBBY}/api/admin/${op}`, body ? { method: "POST", headers: { Authorization: `Bearer ${ADMIN}`, "Content-Type": "application/json" }, body: JSON.stringify(body) }
+  : { headers: { Authorization: `Bearer ${ADMIN}` } })).json();
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = 0;
 const check = (ok, what) => { console.log(`${ok ? "PASS" : "FAIL"}  ${what}`); if (!ok) failed++; };
@@ -94,6 +97,12 @@ check(await relayOpens("statickey") === "open", "static party key still opens th
 // --- match news and the end of the match
 ag.send({ t: "ev", code: A.code, name: "turn", data: { turn: 4, of: 15 }, at: Date.now() });
 check(!!(await A.m.until((s) => s.progress?.turn === 4 && s.progress.of === 15)), "plugin turn event shows in the lobby");
+ag.send({ t: "ev", code: A.code, name: "minigame_picked", data: { mg: "Knife Fight", fmt: "FREE-FOR-ALL", turn: 4 }, at: Date.now() });
+await sleep(500);
+let live = await admin("live");
+const la = live.lobbies?.find((l) => l.code === A.code), ha = live.hosts?.find((x) => x.id === HOST);
+check(la?.slot === HOST && la.round === 4 && la.lastmg === "KnifeFight", `admin: the lobby is on the agent's host, round 4, last minigame from the plugin (${JSON.stringify(la && { slot: la.slot, round: la.round, lastmg: la.lastmg })})`);
+check(ha?.agent && ha.ok && ha.max === 2, `admin: the agent host is listed with the servers (${JSON.stringify(ha && { ok: ha.ok, max: ha.max, running: ha.running })})`);
 ag.send({ t: "ev", code: A.code, name: "match_finished", data: { winner: "GSG-9", secs: 900 }, at: Date.now() });
 check(!!(await A.m.until((s) => s.state === "open" && !s.go)), "match_finished -> lobby open for a rematch");
 await sleep(200); cap = await (await fetch(`${LOBBY}/api/capacity`)).json();
@@ -145,14 +154,22 @@ check(!!(await ag.take((m) => m.t === "stop" && m.code === "ZZZZ9")), "unknown s
 const runner = next.code === C.code ? C : D;
 check(!!(await runner.m.until((s) => s.state === "open" && /restarted/.test(s.error))), "a match the agent no longer has -> lobby open, says the server restarted");
 
-// --- drain: no new lobbies go to a draining host
-ag.send({ t: "cap", running: 0, max: 2, drain: true, load: 1, cpu: 0, upKbps: 0, lobbies: [] });
-await sleep(300);
+// --- drain (the admin's switch): no new lobbies go to a draining host
+check((await admin("action", { action: "drain", id: HOST, on: true })).ok === true, "admin drains the agent host");
 const E = await party("e"); E.m.send({ t: "start" });
 check(!!(await E.m.until((s) => s.state === "queued")), "draining host -> new lobby queues");
 check(!(await ag.take((m) => m.t === "start" && m.code === E.code, 1500)), "draining host isn't asked to start anything");
-ag.send({ t: "cap", running: 0, max: 2, drain: false, load: 1, cpu: 0, upKbps: 0, lobbies: [] });
+check((await admin("action", { action: "drain", id: HOST, on: false })).ok === true, "admin undrains it");
 check(!!(await ag.take((m) => m.t === "start" && m.code === E.code, 15000)), "drain off -> the queued lobby starts");
+// the agent's own drain (DRAIN=1) works the same way
+ag.send({ t: "started", code: E.code, url: RELAY });
+ag.send({ t: "cap", running: 1, max: 2, drain: true, load: 1, cpu: 0, upKbps: 0, lobbies: [] });
+await sleep(300);
+const F = await party("f"); F.m.send({ t: "start" });
+check(!!(await F.m.until((s) => s.state === "queued")) && !(await ag.take((m) => m.t === "start" && m.code === F.code, 1500)), "agent says it is draining -> new lobby queues");
+// the admin closes a lobby whose server is running: the agent is told to stop it
+check((await admin("action", { action: "kill", code: E.code, msg: "test" })).ok === true, "admin closes a lobby with a running server");
+check(!!(await ag.take((m) => m.t === "stop" && m.code === E.code)), "-> agent told to stop its server");
 
 check(syncs > 3, `relay polled the agent (${syncs} syncs)`);
 console.log(failed ? `\n${failed} FAILED` : "\nall passed");

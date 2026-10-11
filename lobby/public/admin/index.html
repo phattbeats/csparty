@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#121411">
+<title>CS Party: admin</title>
+<link rel="icon" href="../art/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="admin.css?v=1">
+</head>
+<body>
+<!-- CS Party lobby admin dashboard (#3991, docs/lobby-design.md section 9). This page holds no data: everything
+     comes from /api/admin/* with the bearer token typed below (kept in this tab's sessionStorage only). -->
+<main>
+  <div class="window-bar"><span>CS PARTY · ADMIN</span><span id="clock" aria-live="off"></span></div>
+
+  <form id="login" class="panel login" hidden>
+    <h1>Admin sign-in</h1>
+    <label>Admin token <input type="password" id="token" autocomplete="current-password" required minlength="24"></label>
+    <button type="submit">Sign in</button>
+    <p id="login-status" class="status err" role="alert"></p>
+  </form>
+
+  <div id="app" hidden>
+    <nav class="toolbar" aria-label="Controls">
+      <label>Range <select id="range"><option value="24h">24 h</option><option value="7d">7 days</option><option value="30d">30 days</option><option value="90d">90 days</option></select></label>
+      <button type="button" id="csv" class="alt">Download CSV</button>
+      <span id="sync" class="muted small" aria-live="polite"></span>
+      <button type="button" id="logout" class="alt">Sign out</button>
+    </nav>
+    <p id="toast" class="status" role="status" aria-live="polite"></p>
+
+    <section class="panel" aria-labelledby="h-live">
+      <h2 id="h-live">Live now</h2>
+      <div id="tiles" class="tiles"></div>
+      <p id="state-line" class="muted small"></p>
+    </section>
+
+    <section class="panel" aria-labelledby="h-switches">
+      <h2 id="h-switches">Switches</h2>
+      <div class="grid3">
+        <form id="f-pause" class="sub">
+          <h3>Pause new parties</h3>
+          <p class="muted small">Creating and quick play are refused and the lobby page shows a maintenance banner. Parties already running carry on.</p>
+          <input type="text" id="pause-msg" maxlength="160" placeholder="Banner (optional)">
+          <button type="submit" id="pause-btn">Pause</button>
+          <p id="pause-state" class="small"></p>
+        </form>
+        <form id="f-broadcast" class="sub">
+          <h3>Broadcast</h3>
+          <p class="muted small">One line shown on every lobby page, open lobbies included.</p>
+          <input type="text" id="bc-msg" maxlength="160" placeholder="Message">
+          <label class="small">Show for <input type="number" id="bc-min" value="30" min="1" max="1440"> minutes</label>
+          <div class="row"><button type="submit">Send</button><button type="button" id="bc-clear" class="alt">Clear</button></div>
+          <p id="bc-state" class="small"></p>
+        </form>
+        <form id="f-caps" class="sub">
+          <h3>Caps</h3>
+          <label class="small">Max lobbies (0 = no cap) <input type="number" id="cap-max" min="0" max="100000"></label>
+          <label class="small">Creates per IP per 10 min <input type="number" id="cap-create" min="1" max="1000"></label>
+          <label class="check small"><input type="checkbox" id="cap-public"> Public listings and quick play off</label>
+          <button type="submit">Save caps</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-hosts">
+      <h2 id="h-hosts">Game servers</h2>
+      <p class="muted small">Drain before a deploy: a drained server gets no new lobbies. Deploy once it shows <b>safe to deploy</b> (no lobby, no players).</p>
+      <div class="scroll"><table id="hosts"><thead><tr><th>Server</th><th>Status</th><th>Lobby</th><th>Players</th><th>Downloads</th><th>Up</th><th>Refused</th><th>Checked</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+
+    <section class="panel" aria-labelledby="h-lobbies">
+      <h2 id="h-lobbies">Lobbies</h2>
+      <div class="scroll"><table id="lobbies"><thead><tr><th>Code</th><th>State</th><th>Host</th><th>Online / in</th><th>Ready</th><th>Listing</th><th>Server</th><th>Round</th><th>Age</th><th>Updated</th></tr></thead><tbody></tbody></table></div>
+      <div id="detail" class="sub" hidden></div>
+    </section>
+
+    <div class="grid2">
+      <section class="panel" aria-labelledby="h-funnel">
+        <h2 id="h-funnel">Funnel</h2>
+        <div id="funnel" class="bars"></div>
+        <h3>Time from party made to first start</h3>
+        <div id="tts" class="bars"></div>
+        <h3>Where people leave</h3>
+        <div class="scroll"><table id="dropoff"><thead><tr><th>Event</th><th>Phase</th><th>Count</th><th>Avg time in lobby</th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="panel" aria-labelledby="h-traffic">
+        <h2 id="h-traffic">Traffic</h2>
+        <h3>Unique players per day</h3>
+        <div id="players" class="bars"></div>
+        <p class="muted small">Players are counted with a salt that changes every day, so "returning" means a second party on the same day.</p>
+        <h3>Lobbies made per hour</h3>
+        <div id="created-series" class="spark" role="img"></div>
+        <h3>Countries</h3>
+        <div class="scroll"><table id="countries"><thead><tr><th>Country</th><th>Joins and creates</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="h-game">
+      <h2 id="h-game">Game</h2>
+      <div id="game-tiles" class="tiles"></div>
+      <h3>Matches started per hour</h3>
+      <div id="started-series" class="spark" role="img"></div>
+      <div class="grid2">
+        <div><h3>Minigames</h3><p class="muted small">Picks, and matches that ended unfinished right after that minigame.</p>
+          <div class="scroll"><table id="minigames"><thead><tr><th>Minigame</th><th>Picked</th><th>Results</th><th>Avg length</th><th>Quit after</th><th>Quit rate</th></tr></thead><tbody></tbody></table></div></div>
+        <div><h3>Winners</h3>
+          <div class="scroll"><table id="winners"><thead><tr><th>Character</th><th>Matches won</th><th>Minigames won</th></tr></thead><tbody></tbody></table></div>
+          <h3>How matches started and ended</h3>
+          <div class="scroll"><table id="modes"><thead><tr><th>What</th><th>Kind</th><th>Count</th></tr></thead><tbody></tbody></table></div></div>
+      </div>
+      <p id="game-note" class="muted small"></p>
+    </section>
+
+    <div class="grid2">
+      <section class="panel" aria-labelledby="h-abuse">
+        <h2 id="h-abuse">Errors and abuse</h2>
+        <div class="scroll"><table id="errors"><thead><tr><th>What</th><th>Kind</th><th>Count</th></tr></thead><tbody></tbody></table></div>
+        <h3>Top creators (24 h, by IP hash)</h3>
+        <div class="scroll"><table id="creators"><thead><tr><th>IP hash</th><th>Lobbies</th><th>Last</th><th></th></tr></thead><tbody></tbody></table></div>
+        <h3>Bans</h3>
+        <div class="scroll"><table id="bans"><thead><tr><th>Key</th><th>Kind</th><th>Until</th><th>Note</th><th></th></tr></thead><tbody></tbody></table></div>
+      </section>
+      <section class="panel" aria-labelledby="h-audit">
+        <h2 id="h-audit">Audit log</h2>
+        <div class="scroll tall"><table id="audit"><thead><tr><th>When</th><th>Action</th><th>Target</th><th>Detail</th><th>By</th></tr></thead><tbody></tbody></table></div>
+      </section>
+    </div>
+
+    <section class="panel" aria-labelledby="h-ae">
+      <h2 id="h-ae">Analytics Engine</h2>
+      <p class="muted small">Raw events, queried with the Analytics Engine SQL API (fixed queries). The panels above read the Worker's own hourly counters.</p>
+      <div class="row"><select id="ae-preset" aria-label="Query"></select><button type="button" id="ae-run" class="alt">Run</button></div>
+      <p id="ae-state" class="small muted"></p>
+      <div class="scroll"><table id="ae"><thead></thead><tbody></tbody></table></div>
+    </section>
+  </div>
+  <div id="tip" class="tip" role="tooltip" hidden></div>
+</main>
+<script src="admin.js?v=1"></script>
+</body>
+</html>

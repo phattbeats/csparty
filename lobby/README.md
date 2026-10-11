@@ -52,13 +52,38 @@ sharing the static `POOL`:
   plugin owns seats by it, so a dropped player gets their own seat back within `csp_seat_grace` (90 s), even with
   two players of the same name.
 - The plugin's `[CSPEV]` lines (turn, minigame picked/result, match started/finished/aborted, humans,
-  reconnect) go to the directory (`events` table, the last 5000; Phase 3 analytics reads them). Turn and minigame
-  show on the lobby page. `match_finished` reopens the lobby, and the game page sends everyone back to it
+  reconnect) go over the agent's socket into the Phase 3 analytics (the same path as `POST /api/events`), with the
+  agent's host id as the server. Turn and minigame show on the lobby page. `match_finished` reopens the lobby, and the game page sends everyone back to it
   (`CSP_BACK_TO_LOBBY`) for the rematch. The agent stops the container once it is empty, at most 2 min later.
 - Failures: a server that doesn't start goes back in line (3 tries, then the lobby reopens with a message); a
   crash or an agent restart that lost it reopens the lobby and says so; an agent gone 10 min writes its matches
-  off; a draining host (agent `DRAIN=1` or `{t:"drain"}`) takes no new lobbies.
-- `GET /api/capacity` shows hosts and the queue length (no lobby codes).
+  off; a draining host (the admin's Drain, agent `DRAIN=1`, or `{t:"drain"}`) takes no new lobbies. The admin's
+  Close stops the lobby's container too.
+- `GET /api/capacity` shows hosts and the queue length (no lobby codes). The admin dashboard lists agent hosts
+  with the static servers.
+
+## Analytics and admin (Phase 3)
+
+- **Events** (`src/analytics.js`, design section 8): lobby made / joined / ready / all ready / left / expired,
+  match started / queued / closed, reconnects, server capacity every minute, and, from the game servers, turns,
+  minigame picks and results and match winners (`POST /api/events`, signed with `LOBBY_SECRET`; the P2
+  pool-agent sends the plugin's `[CSPEV]` lines over its socket into the same path). Every event goes through the directory, which hashes
+  the player id with a random salt it keeps for one UTC day only (`sha256(id + salt)`), then writes it to
+  **Workers Analytics Engine** (dataset `csparty_events`) and to hourly counters in its own SQLite
+  (`rollup`). No IPs, no chat, no cross-day ids. IPs exist only as keyed hashes in the 24 h create log and
+  the ban list.
+- **Dashboard** at `/admin` (design section 9): live lobbies and servers (polled every 3 s while the tab is
+  visible), lobby detail with roster and timeline, funnel, time to start, where people leave, minigames,
+  winners, unique players per day, countries, errors and abuse, audit log, Analytics Engine SQL presets.
+- **Actions**, all audited: close a lobby, kick (optionally ban the browser and IP hash for N hours), ban /
+  unban a hash, pause new parties (maintenance banner), max lobbies, creates per IP, public listings off,
+  drain a server (deploy gate: drain, wait for "safe to deploy", deploy), broadcast a line to every lobby,
+  CSV of the hourly counters.
+- **Auth**: `Authorization: Bearer <ADMIN_TOKEN>` (Worker secret, 24+ characters; unset = admin off). 10
+  wrong tokens in 15 minutes lock that IP hash out for 15 minutes. Optional secrets `AE_ACCOUNT_ID` and
+  `AE_READ_TOKEN` (Account Analytics: Read) turn on the Analytics Engine panel; everything else works without.
+- Closing a lobby frees its server and sends members home. On a static `POOL` server, players already in the
+  game stay until they leave; a pool-agent's lobby server is stopped.
 
 ## Develop and test
 
@@ -68,6 +93,8 @@ cd lobby && npm install && cp .dev.vars.example .dev.vars
 PORT=18095 GAME=127.0.0.1:27999 PARTY_KEY=statickey LOBBY_SECRET=dev-secret-change-me RELAY_ID=raid1 node ../web/relay.js --root ../web/public
 npx wrangler dev --port 8787 --var 'POOL:[{"id":"raid1","url":"http://127.0.0.1:18095"}]' --var AUTOSTART_SECS:3 --var MATCH_GRACE_SECS:0 --var FILL_SECS:3
 node test/lobby_test.mjs           # 40 checks; SLOW=1 adds the server-release path (about 4 minutes)
+# restart wrangler dev with a fresh .wrangler, then (the last check locks the admin API for 15 minutes):
+node test/admin_test.mjs           # 60 checks: events, funnel, game event ingest, every admin action, lockout
 ```
 
 Pool-agent protocol against `wrangler dev` and a real relay (the script plays the agent):
@@ -75,7 +102,7 @@ Pool-agent protocol against `wrangler dev` and a real relay (the script plays th
 ```
 PORT=18096 GAME=127.0.0.1:27999 PARTY_KEY=statickey LOBBY_SECRET=dev-secret-change-me RELAY_ID=fake1 POOL_AGENT=http://127.0.0.1:18097 node ../web/relay.js --root ../web/public
 npx wrangler dev --port 8788 --var 'POOL:[]' --var AUTOSTART_SECS:3
-node test/pool_test.mjs            # 36 checks: auth, start/started, relay routing + 4004, queue order, failures, rematch, drain, agent restart
+node test/pool_test.mjs            # 43 checks: auth, start/started, relay routing + 4004, queue order, failures, rematch, drain, agent restart, admin
 ```
 
 `tools/dev/pool_e2e.js` runs the real thing on a Docker host (relay + agent + `wrangler dev` + two GPU browsers):
@@ -83,6 +110,7 @@ both players named "Alice", both drop and come back in the opposite order, each 
 match ends, both pages return to the lobby, the container goes. `tools/dev/pool_measure.js` measures CPU, memory
 and upload per lobby server.
 
+`tools/dev/admin_e2e.js` drives the dashboard in a real browser against the same setup (screenshots).
 `tools/dev/lobby_e2e.js` runs two real browsers through create, join, ready, the hand-off and the match on a
 real game server, then checks the lobby reopens (see its header).
 
@@ -91,7 +119,8 @@ real game server, then checks the lobby reopens (see its header).
 1. Relay: set `LOBBY_SECRET` (same value as the Worker secret) and `RELAY_ID` (its id in `POOL`) on the relay
    container. The static `PARTY_KEY` keeps working.
 2. Worker (needs a Cloudflare API token with Workers Scripts + Durable Objects edit, or run it yourself):
-   `npx wrangler secret put LOBBY_SECRET`, set `POOL` in `wrangler.toml`, then `npm run deploy`. Add a custom
+   `npx wrangler secret put LOBBY_SECRET` and `npx wrangler secret put ADMIN_TOKEN`, set `POOL` in
+   `wrangler.toml` (or `--var POOL:...`), then `npm run deploy`. Add a custom
    domain (Workers > csparty-lobby > Domains) or use the workers.dev address.
 3. Lobby servers: `deploy/csparty-up.sh agent` on the game host (`LOBBY_WS` and `PUBLIC_URL` in its `.env`), and
    the relay with `POOL_AGENT=http://127.0.0.1:8097`. `GET /api/capacity` should list the host online.
