@@ -206,6 +206,7 @@
   };
   let rejoinTimer = 0;
   const lost = (why, kind = "") => {
+    cardHide();
     if (watch.gaveUp) return; watch.gaveUp = true;
     toast(""); $("loading").hidden = true;
     const k = LOST[kind] || LOST[""];
@@ -223,14 +224,59 @@
       tick(); rejoinTimer = setInterval(tick, 1000);
     }
   };
-  // Minigame index (the plugin's MG_*) -> how-to card, shown over the loading screen while the map loads
-  const HOWTO = {
-    8: "HOW TO SURF\n- Land on the side of a ramp, not the top.\n- Hold A or D toward the ramp.\n- Never press W. Turn the mouse to steer.\n- Fall off and you restart this stage.",
-    9: "HOW TO BHOP\n- Hold JUMP. You hop again every time you land.\n- Steer in the air with A / D and the mouse.\n- Don't hold W while in the air.\n- Lava sends you back to the last checkpoint.",
-    10: "HOW TO CLIMB\n- Ladders: look up and hold W. Jump off with JUMP.\n- High ledges: JUMP, then hold DUCK in the air.\n- Beams are narrow: walk, don't run (hold SHIFT).\n- Fall and you go back to the last checkpoint.",
-    11: "HOW TO MAZE\n- Find the way out. First one out wins.\n- The walls are too tall to jump.\n- Dead ends are common: turn back early.\n- Don't follow the player in front of you.",
-  };
+  // Minigame index (the plugin's MG_*) -> intro card: name, goal, controls per device, scoring. One template for all 13.
+  // Shown over the loading screen for map-change minigames, and as the in-game card on phones (CSP_CARD_<mg>_<fmt>).
+  const SC_SIDE = "Winning side takes the win bonus; the rest get a loss bonus.", SC_ONE = "Winner takes the win bonus; the rest get a loss bonus.", SC_RACE = "First across takes the win bonus; the rest get a loss bonus.";
+  const MG_CARDS = [
+    { n: "Plant the Bomb", g: "T plants and defends the bomb. CT defuses it or wins the fight.", t: "FIRE shoots. Hold FIRE with the bomb out to plant. Hold USE to defuse.", k: "Click shoots. Hold click with the bomb out to plant. Hold E to defuse.", p: "RT shoots. Hold RT with the bomb out to plant. Hold B to defuse.", s: SC_SIDE },
+    { n: "Pistol Round", g: "Last side standing. Pistols, armor and grenades only.", t: "Right button FIRE. Drag the right side to aim.", k: "Click to fire. Ctrl to crouch.", p: "RT fires. Right stick aims.", s: SC_SIDE },
+    { n: "Full Buy", g: "Last side standing with everything you bought.", t: "FIRE shoots. The arrow buttons switch weapons.", k: "Click to fire. Number keys switch weapons.", p: "RT fires. RB switches weapons.", s: SC_SIDE },
+    { n: "Deagle Only", g: "Last one standing. Deagles only.", t: "Right button FIRE. Stand still for the first shot.", k: "Click to fire. Stand still for the first shot.", p: "RT fires. Stand still for the first shot.", s: SC_ONE },
+    { n: "Knife Fight", g: "Last one standing. 35 HP, knives only.", t: "FIRE slashes. Keep moving and jump.", k: "Click slashes, right click stabs. Strafe and jump.", p: "RT slashes, LT stabs. Strafe and jump.", s: SC_ONE },
+    { n: "Scoutzknivez", g: "Last one standing. Scouts and knives in low gravity.", t: "JUMP for big hops. FIRE to shoot.", k: "Space for big hops. Click to shoot.", p: "A for big hops. RT shoots.", s: SC_ONE },
+    { n: "Nades Only", g: "Last side standing. Unlimited HE grenades.", t: "FIRE throws a grenade. Aim high for range.", k: "Click throws a grenade. Aim high for range.", p: "RT throws a grenade. Aim high for range.", s: SC_SIDE },
+    { n: "Hide and Seek", g: "T hides in the dark. CT seeks after 15 s. Stay inside the red fence.", t: "Hiders: stop and crouch. Seekers: FIRE swings the knife.", k: "Hiders: stop and crouch. Seekers: click swings the knife.", p: "Hiders: stop and crouch. Seekers: RT swings the knife.", s: "A hider alive at the buzzer wins the win bonus." },
+    { n: "Surf Race", g: "First to the end of the surf course.", t: "Land on the side of a ramp. Push the stick left or right toward it. Never forward.", k: "Land on the side of a ramp. Hold A or D toward it. Never W.", p: "Land on the side of a ramp. Hold the stick toward it. Never forward.", s: SC_RACE + " A fall restarts the stage." },
+    { n: "Bhop Course", g: "First across the bhop course.", t: "Hold JUMP. Steer left or right in the air. No forward in the air.", k: "Hold Space. Steer with A / D and the mouse. No W in the air.", p: "Hold A. Steer with the stick. No forward in the air.", s: SC_RACE + " Lava = last checkpoint." },
+    { n: "Climb", g: "First to the top.", t: "Ladders: look up and push forward. Ledges: JUMP, then hold DUCK.", k: "Ladders: look up and hold W. Ledges: Space, then hold Ctrl.", p: "Ladders: look up and push forward. Ledges: A, then hold LB.", s: SC_RACE + " A fall = last checkpoint." },
+    { n: "Maze Run", g: "First one out of the maze. The walls are too tall to jump.", t: "Move with the left stick, look with the right side. Turn back from dead ends early.", k: "Move and look. Turn back from dead ends early.", p: "Move and look. Turn back from dead ends early.", s: SC_RACE },
+    { n: "Two Towers", g: "Last side standing. AWPs and Deagles.", t: "FIRE shoots. Tap the scope button to zoom.", k: "Click shoots, right click scopes.", p: "RT shoots, LT scopes.", s: SC_SIDE },
+  ];
+  const FMTS = { 1: "Free-for-all", 2: "2 v 2", 4: "1 v 3", 8: "Duel" };
+  const cardDevice = () => lastPadSeen ? "p" : TOUCH ? "t" : "k";
+  const cardText = (c) => `${c.n.toUpperCase()}\nGoal: ${c.g}\nControls: ${c[cardDevice()]}\nScoring: ${c.s}`;
+  const HOWTO = new Proxy({}, { get: (_, i) => MG_CARDS[+i] ? cardText(MG_CARDS[+i]) : undefined });
   let howto = "";
+
+  // In-game cards for phones (the HUD text is too small there): the plugin's CSP_CARD_<mg>_<fmt> at the minigame intro and the race
+  // start, CSP_RES|winner|placement|change|money at the results. Plain DOM (textContent only), safe-area aware, taps pass through
+  // everywhere except the OK button, so a card never blocks the stick or the buttons.
+  const cardEl = $("mgcard");
+  let cardTimer = 0;
+  const cardHide = () => { clearTimeout(cardTimer); cardEl.hidden = true; cardEl.replaceChildren(); };
+  const cardShow = (parts, ms) => {
+    clearTimeout(cardTimer);
+    const ok = document.createElement("button"); ok.type = "button"; ok.textContent = "OK"; ok.onclick = cardHide;
+    cardEl.replaceChildren(...parts, ok);
+    cardEl.hidden = false;
+    cardTimer = setTimeout(cardHide, ms);
+  };
+  const cardLine = (cls, label, text) => {
+    const d = document.createElement("div"); d.className = cls;
+    if (label) { const b = document.createElement("b"); b.textContent = label + " "; d.append(b); }
+    d.append(text); return d;
+  };
+  const SC_DUEL = "Winner takes the pot (both stakes). A draw returns the stakes.";
+  const showIntroCard = (mg, fmt) => {
+    const c = MG_CARDS[mg]; if (!c) return;
+    cardShow([cardLine("mc-title", "", `${c.n}${FMTS[fmt] ? "  ·  " + FMTS[fmt] : ""}`), cardLine("mc-row", "Goal", c.g),
+      cardLine("mc-row", "Controls", c[cardDevice()]), cardLine("mc-row", "Scoring", fmt === 8 ? SC_DUEL : c.s)], 7000);
+  };
+  const showResultCard = (winner, place, change, money) => {
+    const d = +change, up = d >= 0;
+    cardShow([cardLine("mc-title", "", place), cardLine("mc-row", "Winner", winner),
+      cardLine("mc-big" + (up ? " up" : " down"), "", `${up ? "+" : "-"}$${Math.abs(d)}`), cardLine("mc-row", "You have", `$${money}`)], 3000);
+  };
 
   // Tips: tips.json is the one catalog (the plugin's in-game HUD tips are generated from it by tools/gen_tips.py).
   // They rotate under the progress bar and on the map-change loading screen.
@@ -477,6 +523,7 @@
   };
   const inGame = () => engine && watch.state === 4 && $("overlay").hidden && $("gate").hidden;
   const openPause = () => {
+    cardHide();
     if (!pause.hidden || !inGame()) return;
     if (padNow()?.buttons.some((x, i) => (i === 8 || i === 9) && x.pressed)) lastInput = "pad";   // opened with Start/Back
     showDevice(); pause.hidden = false; $("pz-resume").focus();
@@ -1073,6 +1120,9 @@
           const mp = /CSP_MAP_([\w.\-]+)/.exec(t);
           if (mp) fetchMapPack(mp[1]);
           if (t.includes("CSP_NAV")) navLine(t);
+          const cd = /CSP_CARD_(\d+)_(\d+)/.exec(t), rs = /CSP_RES\|([^|]*)\|([^|]*)\|(-?\d+)\|(-?\d+)/.exec(t);
+          if (cd && (TOUCH || params.has("touch"))) showIntroCard(+cd[1], +cd[2]);
+          if (rs && (TOUCH || params.has("touch"))) showResultCard(rs[1], rs[2], rs[3], rs[4]);
           const hw = /CSP_HOWTO_(\d+)/.exec(t);
           if (hw) howto = HOWTO[+hw[1]] || "";
           else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);
