@@ -150,13 +150,13 @@
     $("overlay").hidden = false; $("pause").hidden = true;
     if (rejoin && document.pointerLockElement) document.exitPointerLock();
   };
-  const hideOverlay = => { $("overlay").hidden = true; };
+  const hideOverlay = () => { $("overlay").hidden = true; };
   let toastTimer = 0;
   const toast = (t, ms = 0) => {
     $("toast").textContent = t; $("toast").hidden = !t;
     clearTimeout(toastTimer); if (t && ms) toastTimer = setTimeout(() => { $("toast").hidden = true; }, ms);
   };
-  $("fs").addEventListener("click", async => {
+  $("fs").addEventListener("click", async () => {
     if (document.fullscreenElement) { document.exitFullscreen(); return; }
     try {
       await document.documentElement.requestFullscreen?.({ navigationUI: "hide" });
@@ -166,12 +166,12 @@
     $("canvas").focus();
   });
   // Chrome/Edge hand Ctrl+W and friends to the page only while the keyboard is locked, and only in fullscreen
-  document.addEventListener("fullscreenchange", => {
+  document.addEventListener("fullscreenchange", () => {
     if (document.fullscreenElement) navigator.keyboard?.lock?.().catch(() => {});
     else navigator.keyboard?.unlock?.();
   });
   let fsTimer = 0;
-  addEventListener("mousemove", => {
+  addEventListener("mousemove", () => {
     if (!$("gate").hidden || document.pointerLockElement) return;
     $("fs").classList.add("show"); clearTimeout(fsTimer); fsTimer = setTimeout(() => $("fs").classList.remove("show"), 2500);
   });
@@ -202,6 +202,7 @@
   };
   let rejoinTimer = 0;
   const lost = (why, kind = "") => {
+    cardHide();
     if (watch.gaveUp) return; watch.gaveUp = true;
     toast(""); $("loading").hidden = true;
     const k = LOST[kind] || LOST[""];
@@ -212,27 +213,72 @@
     $("ov-start").hidden = false;
     if (auto) {
       let left = auto; const note = $("ov-note"); note.hidden = false;
-      const tick = => {
+      const tick = () => {
         note.textContent = `Rejoining in ${left} s…`;
         if (left-- <= 0) { clearInterval(rejoinTimer); try { sessionStorage.setItem("csp_rj_n", String(tries + 1)); } catch {} leave(true); }
       };
       tick(); rejoinTimer = setInterval(tick, 1000);
     }
   };
-  // Minigame index (the plugin's MG_*) -> how-to card, shown over the loading screen while the map loads
-  const HOWTO = {
-    8: "HOW TO SURF\n- Land on the side of a ramp, not the top.\n- Hold A or D toward the ramp.\n- Never press W. Turn the mouse to steer.\n- Fall off and you restart this stage.",
-    9: "HOW TO BHOP\n- Hold JUMP. You hop again every time you land.\n- Steer in the air with A / D and the mouse.\n- Don't hold W while in the air.\n- Lava sends you back to the last checkpoint.",
-    10: "HOW TO CLIMB\n- Ladders: look up and hold W. Jump off with JUMP.\n- High ledges: JUMP, then hold DUCK in the air.\n- Beams are narrow: walk, don't run (hold SHIFT).\n- Fall and you go back to the last checkpoint.",
-    11: "HOW TO MAZE\n- Find the way out. First one out wins.\n- The walls are too tall to jump.\n- Dead ends are common: turn back early.\n- Don't follow the player in front of you.",
-  };
+  // Minigame index (the plugin's MG_*) -> intro card: name, goal, controls per device, scoring. One template for all 13.
+  // Shown over the loading screen for map-change minigames, and as the in-game card on phones (CSP_CARD_<mg>_<fmt>).
+  const SC_SIDE = "Winning side takes the win bonus; the rest get a loss bonus.", SC_ONE = "Winner takes the win bonus; the rest get a loss bonus.", SC_RACE = "First across takes the win bonus; the rest get a loss bonus.";
+  const MG_CARDS = [
+    { n: "Plant the Bomb", g: "T plants and defends the bomb. CT defuses it or wins the fight.", t: "FIRE shoots. Hold FIRE with the bomb out to plant. Hold USE to defuse.", k: "Click shoots. Hold click with the bomb out to plant. Hold E to defuse.", p: "RT shoots. Hold RT with the bomb out to plant. Hold B to defuse.", s: SC_SIDE },
+    { n: "Pistol Round", g: "Last side standing. Pistols, armor and grenades only.", t: "Right button FIRE. Drag the right side to aim.", k: "Click to fire. Ctrl to crouch.", p: "RT fires. Right stick aims.", s: SC_SIDE },
+    { n: "Full Buy", g: "Last side standing with everything you bought.", t: "FIRE shoots. The arrow buttons switch weapons.", k: "Click to fire. Number keys switch weapons.", p: "RT fires. RB switches weapons.", s: SC_SIDE },
+    { n: "Deagle Only", g: "Last one standing. Deagles only.", t: "Right button FIRE. Stand still for the first shot.", k: "Click to fire. Stand still for the first shot.", p: "RT fires. Stand still for the first shot.", s: SC_ONE },
+    { n: "Knife Fight", g: "Last one standing. 35 HP, knives only.", t: "FIRE slashes. Keep moving and jump.", k: "Click slashes, right click stabs. Strafe and jump.", p: "RT slashes, LT stabs. Strafe and jump.", s: SC_ONE },
+    { n: "Scoutzknivez", g: "Last one standing. Scouts and knives in low gravity.", t: "JUMP for big hops. FIRE to shoot.", k: "Space for big hops. Click to shoot.", p: "A for big hops. RT shoots.", s: SC_ONE },
+    { n: "Nades Only", g: "Last side standing. Unlimited HE grenades.", t: "FIRE throws a grenade. Aim high for range.", k: "Click throws a grenade. Aim high for range.", p: "RT throws a grenade. Aim high for range.", s: SC_SIDE },
+    { n: "Hide and Seek", g: "T hides in the dark. CT seeks after 15 s. Stay inside the red fence.", t: "Hiders: stop and crouch. Seekers: FIRE swings the knife.", k: "Hiders: stop and crouch. Seekers: click swings the knife.", p: "Hiders: stop and crouch. Seekers: RT swings the knife.", s: "A hider alive at the buzzer wins the win bonus." },
+    { n: "Surf Race", g: "First to the end of the surf course.", t: "Land on the side of a ramp. Push the stick left or right toward it. Never forward.", k: "Land on the side of a ramp. Hold A or D toward it. Never W.", p: "Land on the side of a ramp. Hold the stick toward it. Never forward.", s: SC_RACE + " A fall restarts the stage." },
+    { n: "Bhop Course", g: "First across the bhop course.", t: "Hold JUMP. Steer left or right in the air. No forward in the air.", k: "Hold Space. Steer with A / D and the mouse. No W in the air.", p: "Hold A. Steer with the stick. No forward in the air.", s: SC_RACE + " Lava = last checkpoint." },
+    { n: "Climb", g: "First to the top.", t: "Ladders: look up and push forward. Ledges: JUMP, then hold DUCK.", k: "Ladders: look up and hold W. Ledges: Space, then hold Ctrl.", p: "Ladders: look up and push forward. Ledges: A, then hold LB.", s: SC_RACE + " A fall = last checkpoint." },
+    { n: "Maze Run", g: "First one out of the maze. The walls are too tall to jump.", t: "Move with the left stick, look with the right side. Turn back from dead ends early.", k: "Move and look. Turn back from dead ends early.", p: "Move and look. Turn back from dead ends early.", s: SC_RACE },
+    { n: "Two Towers", g: "Last side standing. AWPs and Deagles.", t: "FIRE shoots. Tap the scope button to zoom.", k: "Click shoots, right click scopes.", p: "RT shoots, LT scopes.", s: SC_SIDE },
+  ];
+  const FMTS = { 1: "Free-for-all", 2: "2 v 2", 4: "1 v 3", 8: "Duel" };
+  const cardDevice = () => lastPadSeen ? "p" : TOUCH ? "t" : "k";
+  const cardText = (c) => `${c.n.toUpperCase()}\nGoal: ${c.g}\nControls: ${c[cardDevice()]}\nScoring: ${c.s}`;
+  const HOWTO = new Proxy({}, { get: (_, i) => MG_CARDS[+i] ? cardText(MG_CARDS[+i]) : undefined });
   let howto = "";
+
+  // In-game cards for phones (the HUD text is too small there): the plugin's CSP_CARD_<mg>_<fmt> at the minigame intro and the race
+  // start, CSP_RES|winner|placement|change|money at the results. Plain DOM (textContent only), safe-area aware, taps pass through
+  // everywhere except the OK button, so a card never blocks the stick or the buttons.
+  const cardEl = $("mgcard");
+  let cardTimer = 0;
+  const cardHide = () => { clearTimeout(cardTimer); cardEl.hidden = true; cardEl.replaceChildren(); };
+  const cardShow = (parts, ms) => {
+    clearTimeout(cardTimer);
+    const ok = document.createElement("button"); ok.type = "button"; ok.textContent = "OK"; ok.onclick = cardHide;
+    cardEl.replaceChildren(...parts, ok);
+    cardEl.hidden = false;
+    cardTimer = setTimeout(cardHide, ms);
+  };
+  const cardLine = (cls, label, text) => {
+    const d = document.createElement("div"); d.className = cls;
+    if (label) { const b = document.createElement("b"); b.textContent = label + " "; d.append(b); }
+    d.append(text); return d;
+  };
+  const SC_DUEL = "Winner takes the pot (both stakes). A draw returns the stakes.";
+  const showIntroCard = (mg, fmt) => {
+    const c = MG_CARDS[mg]; if (!c) return;
+    cardShow([cardLine("mc-title", "", `${c.n}${FMTS[fmt] ? "  ·  " + FMTS[fmt] : ""}`), cardLine("mc-row", "Goal", c.g),
+      cardLine("mc-row", "Controls", c[cardDevice()]), cardLine("mc-row", "Scoring", fmt === 8 ? SC_DUEL : c.s)], 7000);
+  };
+  const showResultCard = (winner, place, change, money) => {
+    const d = +change, up = d >= 0;
+    cardShow([cardLine("mc-title", "", place), cardLine("mc-row", "Winner", winner),
+      cardLine("mc-big" + (up ? " up" : " down"), "", `${up ? "+" : "-"}$${Math.abs(d)}`), cardLine("mc-row", "You have", `$${money}`)], 3000);
+  };
 
   // Tips: tips.json is the one catalog (the plugin's in-game HUD tips are generated from it by tools/gen_tips.py).
   // They rotate under the progress bar and on the map-change loading screen.
   let tipList = [], tipQueue = [], tipEl = null, tipTimer = 0;
-  const tipDevice = => TOUCH ? "touch" : ([...(navigator.getGamepads?.() || [])].some(Boolean) ? "pad" : "kbd");
-  const tipNext = => {
+  const tipDevice = () => TOUCH ? "touch" : ([...(navigator.getGamepads?.() || [])].some(Boolean) ? "pad" : "kbd");
+  const tipNext = () => {
     if (!tipEl || !tipList.length) return;
     if (!tipQueue.length) {
       const dev = tipDevice();
@@ -247,7 +293,7 @@
     tipStop(); tipEl = el; tipNext();
     tipTimer = setInterval(tipNext, 7000);
   };
-  const tipStop = => { clearInterval(tipTimer); if (tipEl) tipEl.hidden = true; tipEl = null; };
+  const tipStop = () => { clearInterval(tipTimer); if (tipEl) tipEl.hidden = true; tipEl = null; };
   fetch("tips.json", { cache: "no-cache" }).then((r) => r.ok ? r.json() : { tips: [] }).catch(() => ({ tips: [] }))
     .then((j) => { tipList = j.tips || []; if (tipEl) tipNext(); });
   tipStart($("boot-tip"));
@@ -289,7 +335,7 @@
     constructor(...a) {
       super(...a);
       watch.sockets.add(this);
-      this.addEventListener("message", => { watch.lastRx = performance.now(); });
+      this.addEventListener("message", () => { watch.lastRx = performance.now(); });
       this.addEventListener("close", (e) => {
         watch.sockets.delete(this);
         console.log(`[watch] relay socket closed (${e.code} ${e.reason || ""})`);
@@ -343,7 +389,7 @@
   // config.cfg into the in-memory filesystem without a word on screen (asking for a cvar prints it top-left),
   // and the next frame or so the values are read back from there.
   const sliders = {};
-  const readSettings = => {
+  const readSettings = () => {
     consoleCmd("host_writeconfig");
     setTimeout(() => {
       let cfg = ""; try { cfg = engine.FS.readFile(ROOT + "/cstrike/config.cfg", { encoding: "utf8" }); } catch { return; }
@@ -355,8 +401,8 @@
   };
   const slider = (id, key, fmt) => {
     const el = $(id), out = $(id + "-v");
-    (sliders[key] = => { el.value = SETTINGS[key]; out.textContent = fmt(SETTINGS[key]); })();
-    el.addEventListener("input", => {
+    (sliders[key] = () => { el.value = SETTINGS[key]; out.textContent = fmt(SETTINGS[key]); })();
+    el.addEventListener("input", () => {
       SETTINGS[key] = +el.value; savedSettings[key] = +el.value; out.textContent = fmt(+el.value);
       consoleCmd(`${key} ${el.value}`);
       try { localStorage.setItem("csp_settings", JSON.stringify(savedSettings)); } catch {}
@@ -377,13 +423,13 @@
   const BOARD_TRACKS = ["audio/board-server-hum.mp3", "audio/board-crt-arpeggios.mp3"];
   const board = { el: new Audio(), want: false, fade: 0, i: Math.floor(Math.random() * BOARD_TRACKS.length) };
   board.el.preload = "none";
-  const musicSave = => { try { localStorage.setItem("csp_music", JSON.stringify({ vol: music.vol, muted: music.muted })); } catch {} };
+  const musicSave = () => { try { localStorage.setItem("csp_music", JSON.stringify({ vol: music.vol, muted: music.muted })); } catch {} };
   const chanSync = (c) => {
     clearInterval(c.fade); c.el.volume = music.vol;
     if (!c.want || music.muted || !music.vol) c.el.pause();
     else c.el.play().catch(() => {});   // refused until the first interaction; musicKick retries
   };
-  const musicSync = => {
+  const musicSync = () => {
     for (const id of ["music-vol", "pz-music"]) { $(id).value = music.vol; $(id + "-v").textContent = Math.round(music.vol * 100) + "%"; }
     $("music").classList.toggle("muted", music.muted);
     $("music-mute").setAttribute("aria-pressed", String(music.muted));
@@ -415,21 +461,21 @@
   // fades in; near the end it fades out and the other track fades in from its own random point.
   const boardCue = (i) => {
     board.i = i; board.el.src = BOARD_TRACKS[i]; board.cue = true;
-    board.el.addEventListener("loadedmetadata", => {
+    board.el.addEventListener("loadedmetadata", () => {
       const d = board.el.duration; if (d > 90) board.el.currentTime = Math.random() * (d - 60);
     }, { once: true });
   };
-  const boardPlay = => {
+  const boardPlay = () => {
     if (board.want) return;
     if (music.want) musicStop();
     if (!board.el.src || board.el.ended) boardCue(board.i); else if (board.el.duration > 90) board.el.currentTime = Math.random() * (board.el.duration - 60);
     board.want = true; board.cue = false; chanSync(board); fadeIn(board, 3000);
   };
-  const boardNext = => {
+  const boardNext = () => {
     boardCue((board.i + 1) % BOARD_TRACKS.length);
     if (board.want) { board.cue = false; chanSync(board); fadeIn(board, 3000); }
   };
-  board.el.addEventListener("timeupdate", => {
+  board.el.addEventListener("timeupdate", () => {
     const left = board.el.duration - board.el.currentTime;
     if (!board.want || board.cue || !(left < 4)) return;
     board.cue = true; clearInterval(board.fade);   // fade out over the last 3 s, then switch
@@ -439,7 +485,7 @@
       clearInterval(board.fade); boardNext();
     }, 50);
   });
-  board.el.addEventListener("ended", => { clearInterval(board.fade); if (board.want) boardNext(); });
+  board.el.addEventListener("ended", () => { clearInterval(board.fade); if (board.want) boardNext(); });
   // Join screen: the page gets about 20 s to itself before the theme fades in. Touching the music
   // controls (volume, unmute) starts it straight away.
   const MENU_DELAY = 20000;
@@ -447,11 +493,11 @@
     menuTimer = 0; if ($("gate").hidden || music.want) return;
     musicPlay(false); fadeIn(music, 3000);
   }, MENU_DELAY);
-  const menuNow = => { if (menuTimer && !$("gate").hidden) { clearTimeout(menuTimer); menuTimer = 0; music.want = true; music.el.loop = true; } };
+  const menuNow = () => { if (menuTimer && !$("gate").hidden) { clearTimeout(menuTimer); menuTimer = 0; music.want = true; music.el.loop = true; } };
   for (const id of ["music-vol", "pz-music"]) $(id).addEventListener("input", (e) => {
     music.vol = +e.target.value; if (music.vol > 0) music.muted = false; menuNow(); musicSave(); musicSync();
   });
-  $("music-mute").addEventListener("click", => { music.muted = !music.muted; if (!music.muted) menuNow(); musicSave(); musicSync(); });
+  $("music-mute").addEventListener("click", () => { music.muted = !music.muted; if (!music.muted) menuNow(); musicSave(); musicSync(); });
   const musicKick = (e) => {
     if (e.target?.closest?.("#music")) return;   // the mute button decides for itself
     if (!music.muted && ((music.want && music.el.paused) || (board.want && board.el.paused))) musicSync();
@@ -460,18 +506,19 @@
   addEventListener("gamepadconnected", musicKick);
   // Which controls the menu explains: the device used last (touch screen, controller, or keyboard and mouse).
   let lastInput = TOUCH ? "touch" : "kbd";
-  const padNow = => [...(realPads?.() || [])].find(Boolean);
+  const padNow = () => [...(realPads?.() || [])].find(Boolean);
   const seen = (d) => { if (d === lastInput) return; lastInput = d; if (!pause.hidden) showDevice(); };
   addEventListener("pointerdown", (e) => seen(e.pointerType === "touch" ? "touch" : e.pointerType === "mouse" ? "kbd" : lastInput), true);
-  addEventListener("keydown", => seen("kbd"), true);
+  addEventListener("keydown", () => seen("kbd"), true);
   const padActive = (p) => p.buttons.some((x, i) => i !== 8 && i !== 9 && x.pressed) || p.axes.some((v) => Math.abs(v) > 0.6);
-  const showDevice = => {
+  const showDevice = () => {
     const dev = lastInput;
     pause.dataset.dev = dev;
     for (const el of pause.querySelectorAll("[data-dev]")) el.hidden = !el.dataset.dev.split(" ").includes(dev);
   };
-  const inGame = => engine && watch.state === 4 && $("overlay").hidden && $("gate").hidden;
-  const openPause = => {
+  const inGame = () => engine && watch.state === 4 && $("overlay").hidden && $("gate").hidden;
+  const openPause = () => {
+    cardHide();
     if (!pause.hidden || !inGame()) return;
     if (padNow()?.buttons.some((x, i) => (i === 8 || i === 9) && x.pressed)) lastInput = "pad";   // opened with Start/Back
     showDevice(); pause.hidden = false; $("pz-resume").focus();
@@ -496,10 +543,10 @@
     if (!fromClick) toast("Click the game to take the mouse back.", 3000);
     else r?.catch?.(() => toast("Click the game to take the mouse back.", 3000));
   };
-  $("pz-resume").addEventListener("click", => closePause(true));
-  $("pz-fs").addEventListener("click", => $("fs").click());
+  $("pz-resume").addEventListener("click", () => closePause(true));
+  $("pz-fs").addEventListener("click", () => $("fs").click());
   // phones have no Esc: an on-screen button opens the menu (shown on touch screens only)
-  $("pz-open").addEventListener("click", => openPause());
+  $("pz-open").addEventListener("click", () => openPause());
   // Mouse capture lost without the engine asking (Esc while captured, alt-tab): that's a pause.
   // The engine lets go itself on map changes and for its console; those go through exitPointerLock.
   // It also lets go whenever the keyboard leaves the game (chat, console, a menu with a mouse cursor).
@@ -507,12 +554,12 @@
   // and Esc then belongs to the engine (it closes chat and the console), not to our menu.
   let selfUnlock = 0, lastKey = "";
   const nativeExit = Document.prototype.exitPointerLock;
-  Document.prototype.exitPointerLock = function {
+  Document.prototype.exitPointerLock = function () {
     selfUnlock = performance.now();
     if (inGame() && pause.hidden && selfUnlock - watch.since > 1500) typing = lastKey === "Backquote" ? "console" : "chat";
     return nativeExit.call(this);
   };
-  document.addEventListener("pointerlockchange", => {
+  document.addEventListener("pointerlockchange", () => {
     if (document.pointerLockElement) { typing = ""; if (!pause.hidden) document.exitPointerLock(); return; }   // never captured behind the menu
     if (performance.now() - selfUnlock < 1000) return;
     openPause();
@@ -538,7 +585,7 @@
   // (queued on map changes) that fires on the next mouseup anywhere, which would grab the mouse mid-menu.
   // Stopping propagation here leaves the menu's own clicks and slider drags alone (those are default actions).
   for (const t of ["mousedown", "mouseup"]) addEventListener(t, (e) => { if (!pause.hidden) e.stopPropagation(); }, true);
-  const focusables = => [...pause.querySelectorAll("button, input")].filter((el) => !el.closest("[hidden]"));
+  const focusables = () => [...pause.querySelectorAll("button, input")].filter((el) => !el.closest("[hidden]"));
   const moveFocus = (d) => {
     const f = focusables(), i = f.indexOf(document.activeElement);
     const el = f[Math.max(0, Math.min(f.length - 1, i + d))];   // no wrap: Up from the top must not land on Leave
@@ -553,7 +600,7 @@
   // would freeze the server for everyone.
   const UP = { pressed: false, touched: false, value: 0 };
   let padHeld = new Set(), stickHeld = new Set();
-  if (realPads) navigator.getGamepads = => {
+  if (realPads) navigator.getGamepads = () => {
     const pads = realPads();
     if (!engine) return pads;   // join screen
     const t = performance.now(), rest = !pause.hidden;
@@ -605,7 +652,7 @@
 
   // Closing the tab: say goodbye properly, so the server frees the slot now instead of holding a ghost
   // until it times out (and the seat-hold clock starts from the real moment you left).
-  addEventListener("pagehide", => { try { if (engine && watch.state >= 1) engine._CL_Disconnect(); } catch {} });
+  addEventListener("pagehide", () => { try { if (engine && watch.state >= 1) engine._CL_Disconnect(); } catch {} });
   // Ctrl is duck and W is forward, and Ctrl+W closes the tab (so do a mouse's back button and Ctrl+R).
   // Mid-match the browser asks first. Leave and Rejoin are on purpose and skip the question.
   let leaving = false;
@@ -618,8 +665,8 @@
     try { rejoin === true ? sessionStorage.setItem("csp_rejoin", "1") : sessionStorage.removeItem("csp_rejoin"); } catch {}
     location.reload();
   };
-  $("ov-rejoin").addEventListener("click", => leave(true));
-  $("ov-start").addEventListener("click", => { try { sessionStorage.removeItem("csp_rj_n"); } catch {} leave(false); });
+  $("ov-rejoin").addEventListener("click", () => leave(true));
+  $("ov-start").addEventListener("click", () => { try { sessionStorage.removeItem("csp_rj_n"); } catch {} leave(false); });
   // Leave takes two presses, so a stray A/Enter/Space in the menu can't end your party
   let leaveTimer = 0;
   const leaveBtn = $("pz-leave"), leaveText = leaveBtn.textContent;
@@ -628,8 +675,8 @@
     leaveBtn.textContent = on ? "Press again to leave" : leaveText;
     if (on) leaveTimer = setTimeout(() => leaveArm(false), 3000);
   }
-  leaveBtn.addEventListener("click", => { leaveBtn.dataset.armed ? leave(false) : leaveArm(true); });   // pagehide disconnects properly
-  leaveBtn.addEventListener("blur", => leaveArm(false));
+  leaveBtn.addEventListener("click", () => { leaveBtn.dataset.armed ? leave(false) : leaveArm(true); });   // pagehide disconnects properly
+  leaveBtn.addEventListener("blur", () => leaveArm(false));
 
 
   // ------------------------------------------------------------------ character select
@@ -660,8 +707,8 @@
     `<label class="random-tile"><input type="radio" name="char" value="-1" aria-label="Random character"><span class="random-icon" aria-hidden="true">?</span>` +
     `<span class="random-copy"><strong>Random</strong><span>Let the server pick.</span></span><span class="random-check" aria-hidden="true">P1</span></label>`;
   const radios = [...charGrid.querySelectorAll("input")];
-  const pickedChar = => +(charGrid.querySelector("input:checked")?.value ?? -1);
-  const showChar = => {
+  const pickedChar = () => +(charGrid.querySelector("input:checked")?.value ?? -1);
+  const showChar = () => {
     const i = pickedChar(), ch = CHARS[i], detail = document.querySelector("#gate .detail");
     const faces = $("die-faces"); faces.replaceChildren();
     faces.hidden = !ch; document.querySelector("#gate .die-heading").hidden = !ch;
@@ -704,14 +751,14 @@
   const primer = $("primer");
   const JUMP = { kbd: "<b>Space</b>", pad: "<b>A</b>", touch: "the <b>Jump</b> button" };
   const CARDS = [
-    ["Your turn", => `On your turn, ${JUMP[padOrTouch()]} picks "Jump at the crate", then again to roll your character's die. The crate floats over your head. That is the whole turn: two presses.`],
-    ["The spaces", => `Land on a <b>blue</b> space to earn money, a <b>red</b> one to lose some, a <b>?</b> for a random event. Black Markets sell board items. Duel spaces start a fight.`],
-    ["The minigames", => `After everyone has moved, a minigame decides it: a real Counter-Strike round (bomb, pistols, knives) or a race (surf, bhop, maze). Space colours pick the teams. Survive a gear round and you keep your gear.`],
-    ["Stars and money", => `Your money is your CS cash. Reach the hostages and pay <b>$5,000</b> for a <b>star</b>. The hostages move after every rescue. Most stars wins. ${padOrTouch() === "touch" ? "" : `<b>${lastPadSeen ? "Y" : "Tab"}</b> shows the stars.`}`],
+    ["Your turn", () => `On your turn, ${JUMP[padOrTouch()]} picks "Jump at the crate", then again to roll your character's die. The crate floats over your head. That is the whole turn: two presses.`],
+    ["The spaces", () => `Land on a <b>blue</b> space to earn money, a <b>red</b> one to lose some, a <b>?</b> for a random event. Black Markets sell board items. Duel spaces start a fight.`],
+    ["The minigames", () => `After everyone has moved, a minigame decides it: a real Counter-Strike round (bomb, pistols, knives) or a race (surf, bhop, maze). Space colours pick the teams. Survive a gear round and you keep your gear.`],
+    ["Stars and money", () => `Your money is your CS cash. Reach the hostages and pay <b>$5,000</b> for a <b>star</b>. The hostages move after every rescue. Most stars wins. ${padOrTouch() === "touch" ? "" : `<b>${lastPadSeen ? "Y" : "Tab"}</b> shows the stars.`}`],
   ];
   let lastPadSeen = false, prIdx = 0;
-  const padOrTouch = => lastPadSeen ? "pad" : TOUCH ? "touch" : "kbd";
-  const primerRender = => {
+  const padOrTouch = () => lastPadSeen ? "pad" : TOUCH ? "touch" : "kbd";
+  const primerRender = () => {
     const [title, text] = CARDS[prIdx];
     $("pr-num").textContent = `STEP ${prIdx + 1} OF ${CARDS.length}`; $("pr-count").textContent = `${prIdx + 1} / ${CARDS.length}`;
     $("pr-title").textContent = title; $("pr-text").innerHTML = text();
@@ -724,19 +771,19 @@
   const primerOpen = (at) => {
     prIdx = at | 0; primerRender(); primer.hidden = false; $("gate").inert = true; $("pr-next").focus();
   };
-  const primerClose = => {
+  const primerClose = () => {
     if (primer.hidden) return;
     primer.hidden = true; $("gate").inert = false;
     try { localStorage.setItem("csp_primer", "1"); } catch {}
     ($("name").value ? $("go") : $("name")).focus({ preventScroll: true });
   };
   const primerStep = (d) => { if (prIdx + d >= CARDS.length) return primerClose(); prIdx = Math.max(0, prIdx + d); primerRender(); };
-  $("pr-next").addEventListener("click", => primerStep(1));
-  $("pr-back").addEventListener("click", => primerStep(-1));
+  $("pr-next").addEventListener("click", () => primerStep(1));
+  $("pr-back").addEventListener("click", () => primerStep(-1));
   $("pr-skip").addEventListener("click", primerClose);
   primer.addEventListener("pointerdown", (e) => { if (e.target === primer) primerClose(); });
   addEventListener("keydown", (e) => { if (!primer.hidden && e.key === "Escape") { e.preventDefault(); primerClose(); } }, true);
-  $("how-link").addEventListener("click", => primerOpen(0));
+  $("how-link").addEventListener("click", () => primerOpen(0));
   { let seenBefore = false; try { seenBefore = localStorage.getItem("csp_primer") === "1"; } catch {}
     const q = params.get("primer");
     if (q === "1" || (q !== "0" && !seenBefore)) primerOpen(0); }
@@ -747,7 +794,7 @@
     $("pad-hint").hidden = !on;
     const k = document.querySelector("#go .join-key"); k.classList.toggle("pad", on); k.textContent = on ? "A" : "\u21b5";
   };
-  const padGate = => {
+  const padGate = () => {
     if ($("gate").hidden) return;
     const pad = [...(navigator.getGamepads?.() || [])].find(Boolean);
     if (pad) {
@@ -769,7 +816,7 @@
     }
     gRaf = requestAnimationFrame(padGate);
   };
-  addEventListener("gamepadconnected", => { if (!gRaf) padGate(); });
+  addEventListener("gamepadconnected", () => { if (!gRaf) padGate(); });
   if ([...(navigator.getGamepads?.() || [])].some(Boolean)) { lastPadSeen = true; padHint(true); if (!primer.hidden) primerRender(); if (!gRaf) padGate(); }
 
   // ------------------------------------------------------------------ start
@@ -805,6 +852,9 @@
           console.log(t);
           const mp = /CSP_MAP_([\w.\-]+)/.exec(t);
           if (mp) fetchMapPack(mp[1]);
+          const cd = /CSP_CARD_(\d+)_(\d+)/.exec(t), rs = /CSP_RES\|([^|]*)\|([^|]*)\|(-?\d+)\|(-?\d+)/.exec(t);
+          if (cd && (TOUCH || params.has("touch"))) showIntroCard(+cd[1], +cd[2]);
+          if (rs && (TOUCH || params.has("touch"))) showResultCard(rs[1], rs[2], rs[3], rs[4]);
           const hw = /CSP_HOWTO_(\d+)/.exec(t);
           if (hw) howto = HOWTO[+hw[1]] || "";
           else if (t.includes("CSP_THEME_PLAY")) musicPlay(true);

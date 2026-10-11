@@ -132,12 +132,20 @@ new const MG_DESC[MG_COUNT][] = {
 	"AWPs and Deagles on Two Towers. Last side standing." };
 // How-to card for minigames that need a CS movement trick. Shown while everyone loads in, through the
 // countdown and the first seconds of the race. Short on purpose; "" = no card.
-new const MG_TUT[MG_COUNT][] = { "", "", "", "", "", "", "", "", 
-	"HOW TO SURF^n^n- Land on the side of a ramp, not the top.^n- Hold A or D (stick left/right) toward the ramp.^n- Never press W. Turn the mouse to steer.^n- Fall off and you restart this stage.",
-	"HOW TO BHOP^n^n- Hold JUMP. You hop again every time you land.^n- Steer in the air with A / D and the mouse together.^n- Don't hold W while in the air.^n- Lava sends you back to the last checkpoint.",
-	"HOW TO CLIMB^n^n- Ladders: look up and hold W. Jump off with JUMP.^n- High ledges: JUMP, then hold DUCK in the air.^n- Beams are narrow: walk, don't run (hold SHIFT).^n- Fall and you go back to the last checkpoint.",
-	"HOW TO MAZE^n^n- Find the way out. First one out wins.^n- The walls are too tall to jump.^n- Dead ends are common: turn back early.^n- Don't follow the player in front of you.",
-	"" };
+new const MG_TUT[MG_COUNT][] = {
+	"PLANT THE BOMB^nGoal: T plants and defends the bomb, CT defuses or kills.^nControls: fire to shoot, USE (hold) to plant or defuse.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"PISTOL ROUND^nGoal: last side standing, pistols only.^nControls: fire to shoot, crouch behind cover.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"FULL BUY^nGoal: last side standing with everything you bought.^nControls: fire to shoot, grenade key to throw.^nScoring: winners take the win bonus, losers a loss bonus.",
+	"DEAGLE ONLY^nGoal: last one standing, Deagles only.^nControls: fire to shoot. Stop moving for the first shot.^nScoring: winner takes the win bonus, others a loss bonus.",
+	"KNIFE FIGHT^nGoal: last one standing, 35 HP, knives only.^nControls: fire = slash, second fire = stab. Strafe and jump.^nScoring: winner takes the win bonus, others a loss bonus.",
+	"SCOUTZKNIVEZ^nGoal: last one standing, scouts and knives, low gravity.^nControls: JUMP for big hops, fire to shoot.^nScoring: winner takes the win bonus, others a loss bonus.",
+	"NADES ONLY^nGoal: last side standing, unlimited HE grenades.^nControls: fire throws a grenade. Aim high for range.^nScoring: winners take the win bonus, losers a loss bonus.",
+	"HIDE AND SEEK^nGoal: T hides in the dark, CT seeks after 15 s. Stay in the fence.^nControls: move, look, fire (CT knife). Hiders crouch still.^nScoring: a hider alive at the buzzer wins the win bonus.",
+	"SURF RACE^nGoal: first to the end of the course.^nControls: land on the ramp side, hold A or D (stick left/right) toward it. Never W.^nScoring: first finisher takes the win bonus. A fall restarts the stage.",
+	"BHOP COURSE^nGoal: first across the course.^nControls: hold JUMP, steer with A / D and the mouse. No W in the air.^nScoring: first finisher takes the win bonus. Lava = last checkpoint.",
+	"CLIMB^nGoal: first to the top.^nControls: ladders: look up and hold W. Ledges: JUMP then hold DUCK.^nScoring: first to the top takes the win bonus. A fall = last checkpoint.",
+	"MAZE RUN^nGoal: first one out of the maze.^nControls: move and look. The walls are too tall to jump.^nScoring: first out takes the win bonus. Dead ends are common.",
+	"TWO TOWERS^nGoal: last side standing, AWPs and Deagles.^nControls: fire to shoot, scope with the second fire.^nScoring: winning side takes the win bonus, losers a loss bonus." };
 // one line for the countdown, under the banner
 new const MG_TIP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "Hold A or D toward the ramp. Never press W.", "Hold JUMP. Steer in the air with A / D.", "Ladders: look up, hold W. Ledges: JUMP then DUCK.", "Find the way out. The walls are too tall to jump.", "" };
 new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
@@ -2154,13 +2162,14 @@ bool:hud_tutorial()
 {
 	static Float:tutAt, offLeft;
 	new Float:now = get_gametime(), Float:t = (g_state == ST_REMOTE_RACE) ? now - g_raceStart : 0.0;
-	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 25.0) || (g_state == ST_MG_INTRO && MG_MAP[g_mg][0]));
+	new bool:on = MG_TUT[g_mg][0] && (g_state == ST_REMOTE_WAIT || (g_state == ST_REMOTE_RACE && t < 25.0) || g_state == ST_MG_INTRO);
 	if (!on && !offLeft) return false;
 	if (now - tutAt < 2.5 && now >= tutAt && on == (offLeft == 3)) return true;
 	tutAt = now;
 	offLeft = on ? 3 : offLeft - 1;   // blank it three times over (lost packets): it's held for minutes
-	set_hudmessage(255, 232, 90, 0.04, 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);
-	show_hudmessage(0, "%s", on ? MG_TUT[g_mg] : " ");
+	set_hudmessage(255, 232, 90, 0.04, g_state == ST_MG_INTRO ? 0.56 : 0.30, 0, 0.0, HUD_HOLD, 0.0, 0.0, CH_TUT);   // below the intro banner and sides line
+	for (new id = 1; id <= MaxClients; id++)
+		if (is_user_connected(id) && !is_user_bot(id) && !is_touch(id)) show_hudmessage(id, "%s", on ? MG_TUT[g_mg] : " ");   // phones get the page's card (CSP_CARD)
 	return true;
 }
 
@@ -4111,8 +4120,17 @@ begin_minigame()
 	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3) dbg("Sides: %s", sides);
 	if (g_mg == MG_HNS && g_hnsAr >= 0) announce("Minigame: %s (%s) in %s. %s", MG_NAME[g_mg], fn, g_arName[g_hnsAr], MG_DESC[g_mg]);
 	else announce("Minigame: %s (%s). %s", MG_NAME[g_mg], fn, MG_DESC[g_mg]);
-	g_introEnd = get_gametime() + spd(4.0);   // ring dashes drawn now end with the intro
-	set_task(spd(4.0), "flow_minigame_go", TASK_FLOW);
+	new Float:introLen = spd(MG_MAP[g_mg][0] ? 4.0 : 6.0);   // an in-map minigame's card needs a few seconds to read
+	g_introEnd = get_gametime() + introLen;   // ring dashes drawn now end with the intro
+	card_phones();
+	set_task(introLen, "flow_minigame_go", TASK_FLOW);
+}
+
+// the page draws the intro card for phones (touch clients): CSP_CARD_<minigame>_<format>
+card_phones()
+{
+	for (new id = 1; id <= MaxClients; id++)
+		if (is_user_connected(id) && !is_user_bot(id) && is_touch(id)) client_cmd(id, "echo CSP_CARD_%d_%d", g_mg, g_mgFmt);
 }
 
 public flow_minigame_go()
@@ -4788,7 +4806,8 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 
 public flow_minigame_result()
 {
-	new names[96], len;
+	new names[96], len, before[SEATS];
+	for (new s = 0; s < SEATS; s++) before[s] = g_money[s];
 	for (new k = 0; k < g_mgWinnerN; k++) len += formatex(names[len], charsmax(names) - len, "%s%s", k ? ", " : "", g_seatName[g_mgWinners[k]]);
 	if (g_mgFmt == FMT_DUEL && !g_mgWinnerN)
 	{
@@ -4824,7 +4843,35 @@ public flow_minigame_result()
 		mg_voices();
 	}
 	announce("Result: %s", g_mgWinnerN ? names : "draw");
+	results_block(names, before);
 	set_task(spd(4.5), "flow_after_minigame", TASK_FLOW);
+}
+
+// One results block for every minigame, 3 s: the banner names the winner; each human also gets their own
+// placement and money change. Phones: the page's card (CSP_RES|winner|placement|change|money); the rest: a HUD line.
+results_block(const names[], const before[])
+{
+	for (new s = 0; s < SEATS; s++)
+	{
+		new id = g_seatPlayer[s];
+		if (!g_mgIn[s] || g_seatBot[s] || !is_user_connected(id)) continue;
+		new bool:won = false;
+		for (new k = 0; k < g_mgWinnerN; k++) if (g_mgWinners[k] == s) won = true;
+		new place[16]; copy(place, charsmax(place), won ? "WINNER" : (g_mgWinnerN ? "NOT THIS TIME" : "DRAW"));
+		new delta = g_money[s] - before[s];
+		if (g_mgFmt == FMT_DUEL && g_mgWager > 0) delta -= g_mgWager;   // the stake left the purse when the duel was called, before the snapshot
+		if (is_touch(id))
+		{
+			new w[64]; copy(w, charsmax(w), g_mgWinnerN ? names : "Nobody");
+			for (new c = 0; w[c]; c++) if (w[c] == ',') w[c] = '&'; else if (w[c] == '|' || w[c] == '"' || w[c] == ';' || w[c] == '/' || w[c] == '%' || w[c] == 39 || w[c] == '{' || w[c] == '}') w[c] = ' ';
+			client_cmd(id, "echo CSP_RES|%s|%s|%d|%d", w, place, delta, g_money[s]);
+		}
+		else
+		{
+			set_hudmessage(221, 215, 196, -1.0, hud_sub_y(id), 0, 0.0, spd(3.0), 0.1, 0.3, CH_SUB);
+			show_hudmessage(id, "%s   %s$%d   (you have $%d)", place, delta >= 0 ? "+" : "-", abs(delta), g_money[s]);
+		}
+	}
 }
 
 public flow_after_minigame()
@@ -5473,6 +5520,7 @@ public task_countdown()
 	client_cmd(0, "play ^"radio/go.wav^"");
 	g_state = ST_REMOTE_RACE;
 	g_raceStart = get_gametime();
+	card_phones();   // the race map is loaded now: the card again, over the countdown's end
 	for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) unfreeze(g_seatPlayer[s]);
 	set_task(0.1, "task_race", TASK_RACE + 1, _, _, "b");
 }
