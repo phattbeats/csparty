@@ -119,7 +119,7 @@ const server = http.createServer((req, res) => {
 });
 
 const perIp = new Map();
-const wss = new WebSocketServer({ server, path: "/relay", maxPayload: 64 * 1024,
+const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024,
   handleProtocols: (p) => (p.has("binary") ? "binary" : false),
   // A refused handshake reaches the page only as close code 1006, whatever the reason. So the socket is
   // accepted and closed at once with a code the page can explain (4001 key, 4003 full, 4029 per-IP cap).
@@ -185,9 +185,49 @@ wss.on("connection", (ws, req) => {
   }, 15000);
 });
 
+// Voice chat signaling (PHA-4058). Browsers talk to each other over WebRTC (audio never touches this
+// relay); this socket only introduces them: it hands each newcomer the roster and forwards offers, answers
+// and ICE candidates between two peers by id. Same party key as the game socket, one room per relay.
+const MAX_VOICE = +(process.env.MAX_VOICE || 16);
+const voiceClients = new Map();   // id -> { ws, name }
+const vss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
+let vseq = 0;
+const vsend = (ws, o) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(o)); };
+vss.on("connection", (ws, req) => {
+  ws.on("error", () => {});
+  if (!keyOk(req.url)) return ws.close(4001, "party key required");
+  if (voiceClients.size >= MAX_VOICE) return ws.close(4003, "voice full");
+  const id = ++vseq;
+  const me = { ws, name: "", alive: true, last: 0, n: 0 };
+  voiceClients.set(id, me);
+  vsend(ws, { t: "welcome", id, peers: [...voiceClients].filter(([k, v]) => k !== id && v.name).map(([k, v]) => ({ id: k, name: v.name })) });
+  const others = (o) => { for (const [k, v] of voiceClients) if (k !== id && v.name) vsend(v.ws, o); };
+  ws.on("message", (data) => {
+    // a signaling session is a handful of messages; more than 60 a second is a bug or abuse
+    const now = Date.now(); if (now - me.last > 1000) { me.last = now; me.n = 0; } if (++me.n > 60) return;
+    let m; try { m = JSON.parse(data.toString()); } catch { return; }
+    if (m.t === "hello" && !me.name) {
+      me.name = String(m.name || "player").replace(/[\u0000-\u001f]/g, "").slice(0, 31) || "player";
+      others({ t: "join", id, name: me.name });
+    } else if (!me.name) return;
+    else if (m.t === "sig" && voiceClients.has(+m.to)) vsend(voiceClients.get(+m.to).ws, { t: "sig", from: id, data: m.data });
+    else if (m.t === "talk") others({ t: "talk", id, on: !!m.on });
+  });
+  ws.on("pong", () => { me.alive = true; });
+  const beat = setInterval(() => { if (!me.alive) return ws.terminate(); me.alive = false; try { ws.ping(); } catch {} }, 15000);
+  ws.on("close", () => { clearInterval(beat); voiceClients.delete(id); if (me.name) others({ t: "leave", id }); });
+});
+server.on("upgrade", (req, sock, head) => {
+  let path = ""; try { path = new URL(req.url, "http://x").pathname; } catch {}
+  const wsv = path === "/relay" ? wss : path === "/voice" ? vss : null;
+  if (!wsv) { sock.destroy(); return; }
+  sock.on("error", () => {});
+  wsv.handleUpgrade(req, sock, head, (c) => wsv.emit("connection", c, req));
+});
+
 const shutdown = (sig) => {
   log(`${sig}: closing ${stats.peers} peers`);
-  for (const ws of wss.clients) ws.close(1001, "relay restarting");
+  for (const ws of [...wss.clients, ...vss.clients]) ws.close(1001, "relay restarting");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();
 };

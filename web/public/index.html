@@ -123,6 +123,20 @@
   #chat-bar button { flex:none; min-width:48px; height:48px; padding:0 14px; font-size:16px; border-radius:8px; touch-action:manipulation; }
   #chat-bar #chat-mode, #chat-bar #chat-close { background:transparent; color:var(--text); border:1px solid var(--line); }
   #chat-mode[aria-pressed="true"] { color:#8fd0ff; border-color:#8fd0ff; }
+  /* voice (PHA-4058): hold-to-talk mic button next to the chat button; who is talking; per-player mute in the menu */
+  #mic { display:none; position:fixed; z-index:4; left:calc(max(8px, env(safe-area-inset-left)) + 56px); bottom:max(68px, calc(env(safe-area-inset-bottom) + 12px)); width:48px; height:48px; padding:0;
+    background:rgba(26, 29, 24, .85); color:var(--text); border:1px solid var(--line); border-radius:8px; font-size:22px; line-height:1; touch-action:none; -webkit-user-select:none; user-select:none; }
+  .touch.ingame #mic { display:block; }
+  .chatting #mic { display:none !important; }
+  #mic.live { background:#c4452f; border-color:#ff8a6b; }
+  #voice-talk { position:fixed; z-index:4; right:max(8px, env(safe-area-inset-right)); top:max(64px, calc(env(safe-area-inset-top) + 58px)); max-width:40vw; padding:4px 10px; border-radius:6px;
+    background:rgba(10, 12, 9, .78); color:#fff; font:600 16px/1.3 system-ui, sans-serif; pointer-events:none; }
+  #voice-talk[hidden] { display:none; }
+  #voice-box { display:grid; gap:6px; font-size:13px; color:var(--muted); }
+  #voice-box[hidden] { display:none; }
+  #voice-list div { display:flex; align-items:center; justify-content:space-between; gap:10px; color:var(--text); font-size:15px; }
+  #voice-list button { min-height:44px; min-width:84px; }
+  #pause #voice-box { grid-column:1 / -1; }
   #pause { background:rgba(10, 11, 9, .82); backdrop-filter: blur(2px); z-index:5; overflow-y:auto; place-items:safe center; }
   #pause .card { gap:12px; }
   /* phones held sideways (~360 px tall): two columns, sliders and buttons side by side, so it fits without scrolling */
@@ -537,6 +551,7 @@
     <label for="pz-sens" data-dev="kbd">Mouse sensitivity <output id="pz-sens-v"></output><input id="pz-sens" type="range" min="0.5" max="10" step="0.5"></label>
     <label for="pz-vol">Volume <output id="pz-vol-v"></output><input id="pz-vol" type="range" min="0" max="1" step="0.05"></label>
     <label for="pz-music">Music <output id="pz-music-v"></output><input id="pz-music" type="range" min="0" max="1" step="0.05"></label>
+    <div id="voice-box" hidden><b>Voice</b> <span>Hold <b>V</b> or the mic button to talk.</span><div id="voice-list"></div></div>
     <button id="pz-fs" type="button" class="alt">Fullscreen</button>
     <div class="keys" data-dev="kbd"><b>Your turn:</b> <b>Jump</b> picks "Jump at the crate", <b>Jump</b> again rolls. Menus: number keys, or <b>W/S</b> and <b>Space</b> to pick, <b>E</b> to go back. <b>/help</b> in chat for the rules. <b>Tab</b> shows the stars.</div>
     <div class="keys" data-dev="pad" hidden><b>Your turn:</b> <b>A</b> picks "Jump at the crate", <b>A</b> again rolls. Menus: <b>D-pad</b> or stick to move, <b>A</b> to pick, <b>B</b> to go back. <b>Y</b> shows the stars. <b>Start</b> opens this menu.</div>
@@ -560,6 +575,8 @@
 <div id="toast" role="status" aria-live="polite" hidden></div>
 <button id="fs" type="button" aria-label="Toggle fullscreen">Fullscreen</button>
 <button id="pz-open" type="button" aria-label="Open the menu">Menu</button>
+<button id="mic" type="button" aria-label="Hold to talk">&#127897;</button>
+<div id="voice-talk" role="status" aria-live="polite" hidden></div>
 <button id="chat-open" type="button" aria-label="Chat">&#128172;</button>
 <ol id="chat-feed" aria-live="polite" aria-label="Chat"></ol>
 <form id="chat-bar" hidden autocomplete="off">
@@ -571,6 +588,6 @@
 
 <script src="fflate.js"></script>
 <script src="xash.js"></script>
-<script src="boot.js?v=0.4.32"></script>
+<script src="boot.js?v=0.4.33"></script>
 </body>
 </html>
