@@ -422,3 +422,31 @@ Server 0.5.30-vq = 0.5.29-vq + plugin change (CSP_NAV echoes + `csp_nav` command
 index.html/boot.js (option pad; `boot.js?v=0.4.30`), which also ships PHA-4120's layout/text changes. Patch dir
 `patch0530-pha4121/`; rollback containers `cs-party-server-0.5.29-vqold`, `cs-party-relay-0.4.29old`, `csparty-up.sh.pre-0530-pha4121`.
 E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard regression).
+
+## #4154: lobby Phase 2, a game server per lobby (server 0.5.33-vq + relay 0.4.34 + pool-agent, 2026-10-11 ~04:19 UTC)
+
+- **New container `cs-party-agent`** (`csparty-up.sh agent`): the relay image running `node pool-agent.js`. It holds the
+  Docker socket and listens on 127.0.0.1:8097 only. It connects out to the lobby Worker (`LOBBY_WS` in `.env`) and starts
+  one `csp-lobby-<CODE>` container per lobby party from `$SERVER_IMAGE`. Each gets a UDP port from 27100 on 127.0.0.1,
+  a read-only root, caps dropped, 1.5 CPUs / 1 GB, and network `csp-lobbies` (no inter-container traffic).
+  `MAX_LOBBIES=12`. `curl -s 127.0.0.1:8097/status` shows what runs, per-lobby CPU, upload, and the plugin's recent
+  `[CSPEV]` events.
+- **Relay 0.4.34** (`patch-relay34-pha4154`, FROM 0.4.33 + relay.js, pool-agent.js, boot.js, index.html): with
+  `POOL_AGENT` it routes lobby keys signed for `raid1.pool` to that lobby's container (4004 once it is gone). Voice rooms
+  are per lobby. `/healthz` adds `game` (this relay's own server only; the Worker's static pool reads it), `lobbyServers`,
+  and byte counters. `peers` still counts everyone: the deploy gate covers lobby players too.
+- **Server 0.5.33-vq** (`patch0533-pha4154`, FROM 0.5.32-vq + amxx): seats owned by `setinfo _csp_pid` (the game page's
+  `?pid=`), `csp_seat_grace` 90 s (was a fixed 60), `[CSPEV]` event lines on the console, `csp_one_match` (lobby servers
+  only, set by the agent over rcon), and match state moved to `data/csp_state/`. The friends' server behaves as before
+  (no pid there: seats by name).
+- **Deploy gate now:** a relay restart drops lobby players as well (they are in `peers`), and a server restart doesn't
+  touch them. Restarting the agent is safe at any time: containers keep running and the relay keeps its last routes.
+  Before a relay deploy, drain `raid1` in `/admin` (or run the agent with `DRAIN=1`) and wait for "safe to deploy".
+  Lobby containers pick up a new `$SERVER_IMAGE` only for lobbies started after `csparty-up.sh agent`.
+- **Rollback:** containers `cs-party-server-0.5.32-vq-pha4154old` and `cs-party-relay-0.4.33-pha4154old` (stopped),
+  `csparty-up.sh.pre-4154`, `.env.pre-4154`. `docker rm -f cs-party-agent`, remove `POOL_AGENT` from the relay, and the
+  lobby Worker falls back to the static pool on its own.
+- **Worker** version 0537af88 (main + this branch), deployed without the Analytics Engine binding until #4157.
+- Tests: `lobby/test/pool_test.mjs` 43/43 (fake agent), `lobby_test` 40/40, `admin_test` 60/60, and on the isolated RAID
+  stack `tools/dev/pool_e2e.js` 20/20 with two GPU browsers (same-name seats, drop/rejoin in reverse order, back to the
+  lobby after the match, rematch onto a fresh server, host end). Costs and the ceiling: `docs/lobby-design.md` section 13.
