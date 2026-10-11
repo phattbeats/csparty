@@ -801,10 +801,10 @@ public cmd_state()
 	server_print("[CSP] state=%d turn=%d/%d cur=%d hostage=%d", g_state, g_turn, g_maxTurns, g_cur, g_hostage);
 	for (new s = 0; s < SEATS; s++)
 	{
-		new who[32] = "-"; if (g_seatPlayer[s] && is_user_connected(g_seatPlayer[s])) get_user_name(g_seatPlayer[s], who, charsmax(who));
-		server_print("[CSP]  seat%d %s (%s) owner=%s player=%s%s pos=%d $%d *%d W%d items=%d streak=%d", s, g_seatName[s], SKIN_NAME[g_seatSkin[s]],
-			g_seatOwner[s][0] ? g_seatOwner[s] : "-", who, (g_seatPlayer[s] && is_user_connected(g_seatPlayer[s]) && is_user_bot(g_seatPlayer[s])) ? "[bot]" : "",
-			g_pos[s], g_money[s], g_stars[s], g_mgWins[s], g_itemN[s], g_streak[s]);
+		new who[32] = "-", ppid[24] = "-"; if (g_seatPlayer[s] && is_user_connected(g_seatPlayer[s])) { get_user_name(g_seatPlayer[s], who, charsmax(who)); pid_of(g_seatPlayer[s], ppid, charsmax(ppid)); }
+		server_print("[CSP]  seat%d %s (%s) owner=%s pid=%s player=%s%s ppid=%s pos=%d $%d *%d W%d items=%d streak=%d", s, g_seatName[s], SKIN_NAME[g_seatSkin[s]],
+			g_seatOwner[s][0] ? g_seatOwner[s] : "-", g_seatPid[s][0] ? g_seatPid[s] : "-", who, (g_seatPlayer[s] && is_user_connected(g_seatPlayer[s]) && is_user_bot(g_seatPlayer[s])) ? "[bot]" : "",
+			ppid[0] ? ppid : "-", g_pos[s], g_money[s], g_stars[s], g_mgWins[s], g_itemN[s], g_streak[s]);
 	}
 	return PLUGIN_HANDLED;
 }

@@ -16,7 +16,9 @@
 // Env: LOBBY_WS (wss://<worker>/api/agent), LOBBY_SECRET (same as the Worker's and the relay's), RELAY_ID (this
 // host's id, same as the relay's), PUBLIC_URL (the relay URL players open), IMAGE (cs-party-server:<tag>),
 // MAX_LOBBIES (6), PORT_BASE (27100), LISTEN (127.0.0.1:8097), CPUS (1.5), MEMORY_MB (1024), MAP (de_dust2),
-// IDLE_SECS (90), NOSHOW_SECS (240), LINGER_SECS (120), READY_SECS (300), MAX_MATCH_SECS (10800), DRAIN (0).
+// IDLE_SECS (90), NOSHOW_SECS (240), LINGER_SECS (120), READY_SECS (300), MAX_MATCH_SECS (10800), DRAIN (0),
+// EXTRA_CVARS ("csp_turns 1;csp_speed 0.3": set on every lobby server once it is up; tests), RCON_PASSWORD (the
+// same rcon password on every lobby server instead of a random one each; tests).
 import crypto from "node:crypto";
 import dgram from "node:dgram";
 import fs from "node:fs";
@@ -43,6 +45,7 @@ const MAX_MATCH_MS = 1000 * +(env.MAX_MATCH_SECS || 10800);
 const NET = "csp-lobbies";
 const DOCKER_SOCK = env.DOCKER_SOCK || "/var/run/docker.sock";
 let drain = env.DRAIN === "1";
+const EXTRA_CVARS = (env.EXTRA_CVARS || "").split(";").map((c) => c.trim()).filter(Boolean);
 
 const log = (...a) => console.log(new Date().toISOString().slice(0, 19).replace("T", " "), ...a);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -121,11 +124,12 @@ const portFree = (port) => new Promise((resolve) => {
   s.once("error", () => resolve(false));
   s.bind(port, "127.0.0.1", () => s.close(() => resolve(true)));
 });
-const pickPort = async () => {
-  const used = new Set([...lobbies.values()].map((l) => l.port));
-  for (let p = PORT_BASE; p < PORT_BASE + MAX_LOBBIES * 4; p++) if (!used.has(p) && await portFree(p)) return p;
-  return 0;
-};
+// one at a time: two lobbies starting together would otherwise both find the same port free
+let picking = Promise.resolve();
+const pickPort = (l) => (picking = picking.then(async () => {
+  const used = new Set([...lobbies.values()].map((x) => x.port));
+  for (let p = PORT_BASE; p < PORT_BASE + MAX_LOBBIES * 4; p++) if (!used.has(p) && await portFree(p)) { l.port = p; return; }
+}).catch(() => {}));
 
 // Follow a container's console. Docker multiplexes stdout/stderr without a TTY: 8-byte frame headers.
 const tail = async (l, since) => {
@@ -157,19 +161,23 @@ const onLine = (l, line) => {
   if (m[1] === "server_ready") l.onReady?.();
   if (m[1] === "humans") l.humans = data.n;
   if (m[1] === "match_finished") l.finishedAt = Date.now();
+  (l.events ||= []).push({ at: Date.now(), name: m[1], data }); if (l.events.length > 40) l.events.shift();
   send({ t: "ev", code: l.code, name: m[1], data, at: Date.now() });
 };
 
 const startLobby = async (code) => {
-  const have = lobbies.get(code);
+  let have = lobbies.get(code);
+  // a rematch: the Worker stops the finished server and starts a new one; the old one may still be going away
+  if (have?.finishedAt && have.state !== "stopping") stopLobby(have, "rematch", false);
+  if (have?.state === "stopping") { await have.stopped; have = lobbies.get(code); }
   if (have) { if (have.state === "ready") send({ t: "started", code, url: PUBLIC_URL }); return; }   // a repeat: same answer
   if (drain) return send({ t: "start_failed", code, error: "draining" });
   if (lobbies.size >= MAX_LOBBIES) return send({ t: "start_failed", code, error: "full" });
-  const l = { code, port: 0, rcon: crypto.randomBytes(12).toString("hex"), id: "", state: "starting", created: Date.now(),
+  const l = { code, port: 0, rcon: env.RCON_PASSWORD || crypto.randomBytes(12).toString("hex"), id: "", state: "starting", created: Date.now(),
     readyAt: 0, active: false, idleSince: 0, finishedAt: 0, humans: 0, cpu: 0, upKbps: 0, lastDown: 0 };
   lobbies.set(code, l);
   try {
-    l.port = await pickPort();
+    await pickPort(l);
     if (!l.port) throw new Error("no free port");
     await docker("DELETE", `/containers/csp-lobby-${code}?force=1`).catch(() => {});   // left over from a crash
     const c = await docker("POST", `/containers/create?name=csp-lobby-${code}`, containerSpec(l));
@@ -186,7 +194,7 @@ const startLobby = async (code) => {
     await tail(l, since);   // from just before the start: the map takes 10 s or more, so nothing is missed
     await ready;
     // cvars ride rcon: on the command line they run before the plugin has registered them
-    for (const c of ["csp_one_match 1", `hostname "CS Party ${code}"`]) await rcon(l.port, l.rcon, c);
+    for (const c of ["csp_one_match 1", `hostname "CS Party ${code}"`, ...EXTRA_CVARS]) await rcon(l.port, l.rcon, c);
     l.state = "ready"; l.readyAt = Date.now();
     log(`[${code}] ready after ${Math.round((l.readyAt - l.created) / 1000)} s`);
     send({ t: "started", code, url: PUBLIC_URL });
@@ -199,16 +207,18 @@ const startLobby = async (code) => {
 };
 
 // tell: false when the Worker asked for it, or already heard (start_failed)
-const stopLobby = async (l, reason, tell = true) => {
-  if (l.state === "stopping") return;
+const stopLobby = (l, reason, tell = true) => {
+  if (l.state === "stopping") return l.stopped;
   const was = l.state;
   l.state = "stopping"; l.onFail?.(reason);
   log(`[${l.code}] stopping (${reason}, was ${was}, up ${Math.round((Date.now() - l.created) / 1000)} s)`);
   try { l.logs?.destroy(); } catch {}
-  if (l.id) await docker("DELETE", `/containers/${l.id}?force=1`).catch((e) => { if (e.status !== 404) log(`[${l.code}] remove: ${e.message}`); });
-  lobbies.delete(l.code);
-  if (tell) send({ t: "ended", code: l.code, reason });
-  sendCap();
+  return l.stopped = (async () => {
+    if (l.id) await docker("DELETE", `/containers/${l.id}?force=1`).catch((e) => { if (e.status !== 404) log(`[${l.code}] remove: ${e.message}`); });
+    if (lobbies.get(l.code) === l) lobbies.delete(l.code);
+    if (tell) send({ t: "ended", code: l.code, reason });
+    sendCap();
+  })();
 };
 
 // Every 5 s: who can go. The relay's view (peers and game data downloads per lobby) decides "empty"; with no word
@@ -338,7 +348,9 @@ const server = http.createServer((req, res) => {
     });
     return;
   }
-  if (req.method === "GET" && req.url === "/status") return out(200, { ...cap(), worker: ws?.readyState === WebSocket.OPEN, relaySecs: relay.at ? Math.round((Date.now() - relay.at) / 1000) : null });
+  if (req.method === "GET" && req.url === "/status") return out(200, { ...cap(), worker: ws?.readyState === WebSocket.OPEN,
+    relaySecs: relay.at ? Math.round((Date.now() - relay.at) / 1000) : null,
+    detail: [...lobbies.values()].map((l) => ({ code: l.code, port: l.port, state: l.state, ageSecs: Math.round((Date.now() - l.created) / 1000), events: l.events || [] })) });
   out(404, { error: "not found" });
 });
 

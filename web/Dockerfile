@@ -5,9 +5,10 @@ FROM ${BASE}
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund --silent
-COPY relay.js ./
+COPY relay.js pool-agent.js ./
 COPY public/ ./public/
 ENV PORT=8080 GAME=127.0.0.1:27015 ROOT=/app/public
 EXPOSE 8080
 USER node
+# the same image runs the pool-agent (lobby servers, #4154): node pool-agent.js, with the Docker socket
 CMD ["node", "relay.js"]
