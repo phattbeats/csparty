@@ -12,6 +12,16 @@ $bodygroup "part"
  studio "glow2"
  studio "glow3"
  studio "glow4"
+ studio "num0"
+ studio "num1"
+ studio "num2"
+ studio "num3"
+ studio "num4"
+ studio "num5"
+ studio "num6"
+ studio "num7"
+ studio "num8"
+ studio "num9"
 }
 $texturegroup skins
 {

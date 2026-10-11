@@ -231,8 +231,8 @@ new g_msgScoreInfo;
 #define REEL_WIN   30
 #define REEL_TIME  1.9     // seconds for the first reel; menu pick to result is 0.2 + 1.9 + 0.9 = 3.0 s, inside the old jump roll (bots 2.4-3.1 s, humans 2-4 s)
 #define REEL_STAG  0.3
-#define REEL_WINDOW (3 * REEL_SLOTS)   // after the cards: per reel a smoked backing strip, the gold centre marker and the winner's glow
-new g_diceEnt[3 * REEL_SLOTS + 9], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelV[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2], Float:g_reelT[3];
+#define REEL_WINDOW (3 * REEL_SLOTS)   // after the cards: per reel a smoked backing strip, the gold centre marker, the winner's glow and the rolled number
+new g_diceEnt[3 * REEL_SLOTS + 12], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelV[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2], Float:g_reelT[3];
 
 
 // cvars
@@ -563,11 +563,12 @@ spawn_board_entities()
 		entity_set_int(e, EV_INT_movetype, MOVETYPE_NOCLIP);
 		entity_set_int(e, EV_INT_rendermode, kRenderTransTexture);
 		entity_set_int(e, EV_INT_effects, EF_NODRAW);
-		if (k >= REEL_WINDOW) switch ((k - REEL_WINDOW) % 3)   // csp_case.mdl bodies: 1 strip, 2 marker, 3-7 glow by rarity
+		if (k >= REEL_WINDOW) switch ((k - REEL_WINDOW) % 4)   // csp_case.mdl bodies: 1 strip, 2 marker, 3-7 glow by rarity, 8-17 the number 0-9
 		{
 			case 0: { entity_set_int(e, EV_INT_body, 1); entity_set_float(e, EV_FL_renderamt, 225.0); }
 			case 1: { entity_set_int(e, EV_INT_body, 2); entity_set_int(e, EV_INT_rendermode, kRenderNormal); }
 			case 2: { entity_set_int(e, EV_INT_body, 3); entity_set_int(e, EV_INT_rendermode, kRenderTransAdd); }
+			case 3: { entity_set_int(e, EV_INT_body, 8); entity_set_int(e, EV_INT_rendermode, kRenderNormal); }
 		}
 		g_diceEnt[k] = e;
 	}
@@ -2737,6 +2738,7 @@ new const RAR_SKIN[5][4][] = {
 	{ "AWP | Dragon Lore", "AK-47 | Fire Serpent", "M4A4 | Howl", "Desert Eagle | Blaze" },
 	{ "Karambit | Fade", "Butterfly Knife | Doppler", "M9 Bayonet | Crimson Web", "Bayonet | Tiger Tooth" }
 };
+new const RAR_HIDDEN[] = "* Rare Special Item *";   // a knife's name (and number) until it turns over
 new g_reelSkin[3], g_reelNm[3][48];
 
 // 4 (gold) is the character's top value; the rest spread up from 0 (blue) by rank among the die's distinct
@@ -2768,7 +2770,7 @@ Float:reel_time(r) { return REEL_TIME + float(r) * REEL_STAG; }
 // csp_case.mdl card skins: 1-16 the named skins (rarity * 4 + RAR_SKIN index), 17 the gold "Rare Special Item" card a
 // knife hides behind until it lands, 18-21 the knives themselves
 card_skin(rar, v, bool:shown) { return rar < 4 ? 1 + rar * 4 + v : (shown ? 18 + v : 17); }
-win_ent(r, part) { return g_diceEnt[REEL_WINDOW + r * 3 + part]; }   // 0 strip, 1 marker, 2 glow
+win_ent(r, part) { return g_diceEnt[REEL_WINDOW + r * 4 + part]; }   // 0 strip, 1 marker, 2 glow, 3 number
 
 // Case text sits clear of the reel: the title above it, the pulls below the lowest reel (the reel itself hangs
 // a little under the middle of the frame, see reel_anchor)
@@ -2826,7 +2828,7 @@ public flow_roll()
 			if (g_reelR[r][REEL_WIN] < 4 && random(100) < 40) g_reelR[r][REEL_WIN + 1] = 4;
 			g_reelV[r][REEL_WIN] = g_reelSkin[r];   // the card that lands is the item named on the reveal
 		}
-		for (new p = 0; p < 3; p++) if (is_valid_ent(win_ent(r, p))) entity_set_int(win_ent(r, p), EV_INT_effects, EF_NODRAW);   // up once the camera has cut
+		for (new p = 0; p < 4; p++) if (is_valid_ent(win_ent(r, p))) entity_set_int(win_ent(r, p), EV_INT_effects, EF_NODRAW);   // up once the camera has cut
 		for (new k = 0; k < REEL_SLOTS; k++)
 		{
 			new e = g_diceEnt[r * REEL_SLOTS + k];
@@ -2908,7 +2910,7 @@ reel_anchor()
 			for (new k = 0; k < 3; k++) o[k] = g_reelC[r][k] + g_reelT[k] * d;
 			entity_set_origin(e, o); entity_set_vector(e, EV_VEC_angles, face); entity_set_int(e, EV_INT_effects, 0);
 		}
-		if (is_valid_ent(win_ent(r, 2))) entity_set_vector(win_ent(r, 2), EV_VEC_angles, face);
+		for (new p = 2; p < 4; p++) if (is_valid_ent(win_ent(r, p))) entity_set_vector(win_ent(r, p), EV_VEC_angles, face);
 	}
 }
 
@@ -3002,7 +3004,7 @@ reel_land(r)
 		reel_flash(rar, 90, 0.35);   // a hit, not a wash: the reveal has to stay readable
 		reel_shake(12.0, 1.0);
 		reel_burst(c, rar, 150, 8);   // a gold kick on the street, gone before the result banner
-		set_task(0.22, "task_knife_pulse", TASK_DICE + 1 + r);   // the gold card turns into the knife
+		set_task(0.22, "task_knife_pulse", TASK_DICE + 1 + r);   // the gold card turns into the knife, and only then shows its number
 	}
 	else if (rar >= 2)
 	{
@@ -3011,12 +3013,25 @@ reel_land(r)
 		if (rar >= 3) { reel_shake(4.0, 0.5); reel_burst(c, rar, 110, 5); }
 	}
 	else client_cmd(0, "play ^"csp/case_land.wav^"");
-	reel_name(r, rar, rar >= 4 ? "* Rare Special Item *" : RAR_SKIN[rar][g_reelSkin[r]]);
+	if (rar < 4) reel_number(r);
+	reel_name(r, rar, rar >= 4 ? RAR_HIDDEN : RAR_SKIN[rar][g_reelSkin[r]]);
 	dbg("%s case %d: %d (%s, %s)", g_seatName[g_cur], r + 1, g_diceVal[r], RAR_NAME[rar], RAR_SKIN[rar][g_reelSkin[r]]);
 }
 
-// the pulls so far, one line per case, under the reels; tinted by the latest (lifted toward white: Mil-Spec blue
-// was unreadable on dark maps)
+// the rolled number on a gold coin over the winning card's corner, just in front of the lifted card
+reel_number(r)
+{
+	new e = win_ent(r, 3);
+	if (!is_valid_ent(e)) return;
+	new Float:p[3]; for (new k = 0; k < 3; k++) p[k] = g_reelC[r][k] + g_reelT[k] * 26.0;
+	entity_set_origin(e, p);
+	entity_set_int(e, EV_INT_body, 8 + clamp(g_diceVal[r], 0, 9));
+	entity_set_int(e, EV_INT_effects, 0);
+}
+
+// the pulls so far, one line per case, under the reels, each led by the number it rolled ("+6  Butterfly Knife | Doppler"
+// fits the 30-character wrap; a knife's number waits for it to turn over); tinted by the latest (lifted toward white:
+// Mil-Spec blue was unreadable on dark maps)
 reel_name(r, rar, const nm[])
 {
 	copy(g_reelNm[r], charsmax(g_reelNm[]), nm);
@@ -3024,8 +3039,8 @@ reel_name(r, rar, const nm[])
 	for (new k = 0; k < g_diceN; k++)
 	{
 		if (!g_reelDone[k] || !g_reelNm[k][0]) continue;
-		if (g_diceN > 1) format(msg, charsmax(msg), "%s%s%d. %s", msg, msg[0] ? "^n" : "", k + 1, g_reelNm[k]);   // short: a wrapped knife name ran off the bottom
-		else copy(msg, charsmax(msg), g_reelNm[k]);
+		new n[8]; n[0] = 0; if (!equal(g_reelNm[k], RAR_HIDDEN)) formatex(n, charsmax(n), "+%d  ", g_diceVal[k]);
+		format(msg, charsmax(msg), "%s%s%s%s", msg, msg[0] ? "^n" : "", n, g_reelNm[k]);   // short: a wrapped knife name ran off the bottom
 	}
 	new tc[3]; for (new k = 0; k < 3; k++) tc[k] = RAR_RGB[rar][k] + (255 - RAR_RGB[rar][k]) * 2 / 5;
 	case_text(CH_SUB, tc[0], tc[1], tc[2], true, spd(2.0), msg);
@@ -3038,7 +3053,8 @@ public task_knife_pulse(t)
 	if (r < 0 || r > 2) return;
 	new e = g_diceEnt[r * REEL_SLOTS + REEL_WIN % REEL_SLOTS];
 	if (is_valid_ent(e)) entity_set_int(e, EV_INT_skin, card_skin(4, g_reelSkin[r], true));
-	new nm[48]; formatex(nm, charsmax(nm), "* %s *", RAR_SKIN[4][g_reelSkin[r]]); reel_name(r, 4, nm);
+	reel_number(r);
+	reel_name(r, 4, RAR_SKIN[4][g_reelSkin[r]]);
 	reel_flash(4, 70, 0.3);
 	new Float:c[3]; c = g_reelC[r];
 	for (new k = 0; k < 6; k++)

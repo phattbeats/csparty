@@ -7,7 +7,8 @@ Body "card" (body 0) is a flat 35x27 card facing +X. Its skins:
   17      the gold "Rare Special Item" star card that stands in for a knife while the reel spins
   18..21  the four knives, swapped in when a gold card lands
 Bodies 1..7 are the case window around the reel: 1 = smoked backing strip, 2 = gold centre marker,
-3..7 = additive rarity glow behind the winner (blue, purple, pink, red, gold).
+3..7 = additive rarity glow behind the winner (blue, purple, pink, red, gold), 8..17 = the rolled number 0..9 on a
+gold-rimmed coin that sits on the winning card's top-right corner.
 Every texture is flagged fullbright, so the reel reads the same in a dark tunnel as in the sun.
 
 usage: build_case.py <studiomdl> <outdir>   (studiomdl needs i386 libs; see tools/dev/README-studiomdl.md)
@@ -39,7 +40,7 @@ def mix(a, b, t):
     t = np.clip(np.asarray(t, np.float32), 0, 1)
     return a * (1 - t[..., None]) + b * t[..., None] if t.ndim else a * (1 - t) + b * t
 def lerp_cols(stops, t):
-    t = np.clip(t, 0, 1); out = np.zeros(t.shape + (3), np.float32)
+    t = np.clip(t, 0, 1); out = np.zeros(t.shape + (3,), np.float32)
     for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
         m = (t >= t0) & (t <= t1); u = ((t - t0) / max(t1 - t0, 1e-6))[..., None]
         out[m] = (rgb(*c0) * (1 - u) + rgb(*c1) * u)[m]
@@ -278,6 +279,26 @@ def glow_tex(color, path):
     g = np.clip(1 - np.hypot((xx - w / 2) / (w / 2), (yy - h / 2) / (h / 2)), 0, 1) ** 1.4
     save8(np.array(color, np.float32)[None, None, :] / 255 * g[..., None] * 1.1 + g[..., None] ** 3 * 0.35, path)
 
+def num_tex(n, path):
+    """the rolled number: a big cream digit on a dark coin with a gold rim (the disc geometry crops it round)"""
+    S = 64 * K
+    yy, xx = np.mgrid[0:S, 0:S].astype(np.float32)
+    r = np.hypot(xx - S / 2, yy - S / 2) / (S / 2)
+    def flat(*c): return np.broadcast_to(rgb(*c), (S, S, 3))
+    img = mix(flat(255, 228, 130), flat(176, 112, 10), yy / S)   # rim, light at the top
+    inner = mix(flat(46, 38, 26), flat(14, 11, 8), r / 0.8)
+    img = np.where((r < 0.80)[..., None], inner, img)
+    img = np.where(((r >= 0.80) & (r < 0.85))[..., None], img * 0.55, img)                          # a dark line inside the rim
+    if FONT:
+        t = Image.new("L", (S, S)); d = ImageDraw.Draw(t)
+        f = ImageFont.truetype(FONT, 46 * K); s = str(n); bb = d.textbbox((0, 0), s, font=f)
+        d.text(((S - (bb[2] - bb[0])) / 2 - bb[0], (S - (bb[3] - bb[1])) / 2 - bb[1]), s, font=f, fill=255)
+        img = mix(img, flat(0, 0, 0), farr(t.filter(ImageFilter.MaxFilter(2 * K + 1))) * 0.9)
+        img = mix(img, mix(flat(255, 252, 236), flat(255, 214, 120), yy / S), farr(t))
+    im = fimg(img).resize((64, 64), Image.LANCZOS)
+    im.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(path)
+    return im
+
 # ---------------------------------------------------------------- geometry --
 # studiomdl turns the model 90 degrees about Z, so the source is drawn facing -Y with screen-right along +X:
 # compiled, the card faces +X (the entity's yaw) with screen-right along +Y
@@ -289,6 +310,15 @@ def quad(tex, x, y0, y1, z0, z1):
 
 def tri(tex, x, pts):
     return [tex] + [f"0 {y:.4f} {-x:.4f} {z:.4f} 0 -1 0 0.5000 0.5000" for y, z in pts]
+
+def disc(tex, x, cy, cz, R, n=28):
+    """a round badge at depth x centred on (cy, cz), the texture mapped across it"""
+    out = []
+    def vtx(y, z): return f"0 {y:.4f} {-x:.4f} {z:.4f} 0 -1 0 {0.5 + (y - cy) / (2 * R):.4f} {0.5 + (z - cz) / (2 * R):.4f}"
+    for i in range(n):
+        a0, a1 = 2 * math.pi * i / n, 2 * math.pi * (i + 1) / n
+        out += [tex, vtx(cy, cz), vtx(cy + R * math.cos(a0), cz + R * math.sin(a0)), vtx(cy + R * math.cos(a1), cz + R * math.sin(a1))]
+    return out
 
 def smd(path, tris):
     open(path, "w").write("\n".join(["version 1", "nodes", '  0 "card" -1', "end", "skeleton", "time 0", "  0 0 0 0 0 0 0", "end", "triangles"] + tris + ["end"]) + "\n")
@@ -316,6 +346,7 @@ if __name__ == "__main__":
         names.append(f"card{i + 18:02d}.bmp"); sheet.append(weapon_card(4, parts, pat, os.path.join(work, names[-1])))
     panel_tex(os.path.join(work, "panel.bmp")); marker_tex(os.path.join(work, "marker.bmp"))
     for r in range(5): glow_tex(RAR[r], os.path.join(work, f"glow{r}.bmp"))
+    nums = [num_tex(n, os.path.join(work, f"num{n}.bmp")) for n in range(10)]
 
     smd(os.path.join(work, "card.smd"), quad(names[0], 0, -CW / 2, CW / 2, -CH / 2, CH / 2))
     PW, PH = 276.0, 35.0
@@ -325,15 +356,19 @@ if __name__ == "__main__":
     mk += tri("marker.bmp", 0, [(-3.2, -PH / 2 - 1.5), (3.2, -PH / 2 - 1.5), (0, -PH / 2 + 3.0)])
     smd(os.path.join(work, "marker.smd"), mk)
     for r in range(5): smd(os.path.join(work, f"glow{r}.smd"), quad(f"glow{r}.bmp", 0, -80, 80, -42, 42))
+    for n in range(10): smd(os.path.join(work, f"num{n}.smd"), disc(f"num{n}.bmp", 0, CW / 2 - 1.0, CH / 2 - 1.0, 8.5))   # over the top-right corner
     open(os.path.join(work, "idle.smd"), "w").write('version 1\nnodes\n  0 "card" -1\nend\nskeleton\ntime 0\n  0 0 0 0 0 0 0\nend\n')
     qc = ['$modelname "csp_case.mdl"', '$cd "."', '$cdtexture "."', '$scale 1.0',
-          '$bodygroup "part"', "{", ' studio "card"', ' studio "panel"', ' studio "marker"'] + [f' studio "glow{r}"' for r in range(5)] + ["}",
+          '$bodygroup "part"', "{", ' studio "card"', ' studio "panel"', ' studio "marker"'] + [f' studio "glow{r}"' for r in range(5)] + [f' studio "num{n}"' for n in range(10)] + ["}",
           "$texturegroup skins", "{"] + ['{ "%s" }' % n for n in names] + ["}", '$sequence idle "idle" fps 1 loop']
     open(os.path.join(work, "case.qc"), "w").write("\n".join(qc) + "\n")
     cols = 6; rows = (len(sheet) + cols - 1) // cols
     out = Image.new("RGB", (cols * (W + 6) + 6, rows * (H + 6) + 6), (12, 13, 16))
     for i, im in enumerate(sheet): out.paste(im.convert("RGB"), (6 + (i % cols) * (W + 6), 6 + (i // cols) * (H + 6)))
     out.save(os.path.join(outdir, "case_skins.png"))
+    sh = Image.new("RGB", (10 * 70 + 6, 76), (12, 13, 16))
+    for i, im in enumerate(nums): sh.paste(im.convert("RGB"), (6 + i * 70, 6))
+    sh.save(os.path.join(outdir, "case_numbers.png"))
     if studiomdl == "-": sys.exit(0)        # art only
     r = subprocess.run(studiomdl.split() + ["case.qc"], cwd=work, capture_output=True, text=True)
     print(r.stdout[-600:], r.stderr[-400:])
