@@ -76,3 +76,4 @@ footer { margin-top:16px; }
   .char-grid { grid-template-columns:repeat(3, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+.banner { margin:12px -8px 0; padding:10px 14px; background:#4a3a12; border:1px solid var(--amber); color:var(--cream); font-weight:bold; }

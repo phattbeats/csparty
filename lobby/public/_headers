@@ -1,0 +1,6 @@
+# Workers static assets: extra headers for the admin page (it holds no data, but keep it unframeable and unindexed)
+/admin/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
+  X-Frame-Options: DENY
+  X-Robots-Tag: noindex, nofollow
+  Referrer-Policy: no-referrer

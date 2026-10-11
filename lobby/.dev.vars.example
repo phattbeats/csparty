@@ -1,2 +1,4 @@
 # copy to .dev.vars for wrangler dev; live: npx wrangler secret put LOBBY_SECRET (same value as the relay's LOBBY_SECRET)
 LOBBY_SECRET=dev-secret-change-me
+# admin dashboard at /admin (any 24+ characters locally)
+ADMIN_TOKEN=dev-admin-token-change-me-0123456789

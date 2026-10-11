@@ -1,6 +1,9 @@
 # CS Party lobby API (#3989, design: docs/lobby-design.md).
 # Local:  npm run dev   (wrangler dev; secrets from .dev.vars)
 # Live:   npx wrangler secret put LOBBY_SECRET   then   npm run deploy   (needs a Workers/DO-scoped API token)
+# Admin dashboard (/admin, #3991): npx wrangler secret put ADMIN_TOKEN   (24+ random characters; unset = admin off)
+# Optional, for the dashboard's Analytics Engine SQL panel: secrets AE_ACCOUNT_ID and AE_READ_TOKEN (an API token
+# with Account Analytics: Read). Everything else on the dashboard works without them.
 name = "csparty-lobby"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
@@ -18,6 +21,11 @@ class_name = "Lobby"
 [[durable_objects.bindings]]
 name = "DIRECTORY"
 class_name = "Directory"
+
+# Analytics events (src/analytics.js): one datapoint per event, read with the Analytics Engine SQL API
+[[analytics_engine_datasets]]
+binding = "EVENTS"
+dataset = "csparty_events"
 
 # SQLite-backed Durable Objects: the only kind on the free plan
 [[migrations]]
