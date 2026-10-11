@@ -9,7 +9,7 @@
 set -euo pipefail
 D=/srv/cs-party
 . "$D/.env"   # PARTY_KEY, RCON_PASSWORD, LOBBY_SECRET (same value as the lobby Worker's secret), LOBBY_WS, PUBLIC_URL
-SERVER_IMAGE=cs-party-server:0.5.33-vq
+SERVER_IMAGE=cs-party-server:0.5.34-vq
 RELAY_IMAGE=cs-party-relay:0.4.34
 
 up_server() {

@@ -450,3 +450,14 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - Tests: `lobby/test/pool_test.mjs` 43/43 (fake agent), `lobby_test` 40/40, `admin_test` 60/60, and on the isolated RAID
   stack `tools/dev/pool_e2e.js` 20/20 with two GPU browsers (same-name seats, drop/rejoin in reverse order, back to the
   lobby after the match, rematch onto a fresh server, host end). Costs and the ceiling: `docs/lobby-design.md` section 13.
+
+## #3985 follow-up: the rolled number on the case reveal (server 0.5.34-vq + gamedata 0.5.34, 2026-10-11 ~13:19 UTC)
+- A gold coin with the number lands on the winning card's corner (csp_case.mdl bodies 8-17 = 0-9, built by
+  `tools/build_case.py`), and each pull line under the reel leads with it (`+6  Butterfly Knife | Doppler`).
+- 0.5.34-vq = 0.5.33-vq + `patch0534-pha3985/` (cs_party.amxx, models/csp_case.mdl). gamedata.zip = the live zip with the
+  new csp_case.mdl (+28 KB). The agent was recreated too, so new lobbies start from 0.5.34-vq. Relay unchanged (0.4.34).
+- Script `deploy0534-pha3985.sh` gates on peers 0, 0 humans, 0 running lobbies and live 0.5.33-vq.
+- Rollback: container `cs-party-server-0.5.33-vq-pha3985old`, `csparty-up.sh.pre-0534-pha3985`, `gamedata.zip.pre-0534`
+  (`cat gamedata.zip.pre-0534 > gamedata.zip`), then `./csparty-up.sh agent`.
+- The playwright image used by `spot3985/` was pruned on the host; the live check ran through browserless instead. Browserless
+  hangs network requests made from blob workers, so the check routes boot.js to a copy that inlines fflate (test only).
