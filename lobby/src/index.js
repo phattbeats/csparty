@@ -9,7 +9,13 @@
 //   GET  /api/lobbies/:code      -> {code, state, players, public}  (404 if no such lobby)
 //   GET  /api/lobbies/:code/ws?pid=&name=&char=   WebSocket: roster, ready, start (see Lobby.webSocketMessage)
 //   GET  /api/public             -> open public lobbies
+//   GET  /api/capacity           -> lobby servers: hosts (running/max/load), queue length. No lobby codes.
+//   GET  /api/agent?host=ID      WebSocket for a pool-agent (web/pool-agent.js), "Authorization: CSP-Agent ts.sig"
 //   GET  /healthz
+//
+// Phase 2 (#4154): pool-agents on game hosts connect out to the directory and start one game server container
+// per lobby. A lobby goes to a pool-agent first, then to a free static POOL server, else it queues (first come,
+// first served, with its place in line shown).
 import { DurableObject } from "cloudflare:workers";
 
 const SEATS = 4;
@@ -23,6 +29,10 @@ const QUEUE_RETRY_MS = 10e3;          // no free server: try again this often
 const QUICK_FRESH_MS = 10 * 60e3;     // quick play only joins lobbies that changed this recently
 const CREATES_PER_10MIN = 10;         // per IP
 const MATCH_MAX_MS = 3 * 3600e3;      // hard cap on how long a lobby holds a server
+const START_TIMEOUT_MS = 7 * 60e3;    // a lobby server that hasn't come up by now isn't going to
+const HOST_STALE_MS = 90e3;           // a pool-agent heard from less recently than this takes no new lobbies
+const ORPHAN_MS = 10 * 60e3;          // its agent gone this long: the lobby's match is written off
+const START_FAILS = 3;                // lobby servers failing to start in a row before the lobby gives up
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } });
@@ -39,6 +49,17 @@ const hmac = async (secret, msg) => {
 export const lobbyToken = async (secret, slotId, code, exp) =>
   `${code}.${exp}.${b64url((await hmac(secret, `csp-lobby|${slotId}|${code}|${exp}`)).slice(0, 18))}`;
 const sha = async (s) => b64url(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s))).slice(0, 16);
+// A pool-agent proves it holds LOBBY_SECRET: "CSP-Agent <ts>.<sig>", sig = HMAC("csp-agent|<host>|<ts>"), ts within 5 min.
+const agentAuthOk = async (env, host, auth) => {
+  const m = /^CSP-Agent (\d{9,11})\.([\w-]{43})$/.exec(auth || "");
+  if (!env.LOBBY_SECRET || !/^[\w-]{1,32}$/.test(host) || !m || Math.abs(Date.now() / 1000 - +m[1]) > 300) return false;
+  const want = new TextEncoder().encode(b64url(await hmac(env.LOBBY_SECRET, `csp-agent|${host}|${m[1]}`)));
+  const got = new TextEncoder().encode(m[2]);
+  return want.byteLength === got.byteLength && crypto.subtle.timingSafeEqual(want, got);
+};
+// the id a member's game client carries (setinfo _csp_pid): their seat across a dropped connection. Not their
+// lobby player id, which never leaves the lobby.
+const gamePid = () => b64url(crypto.getRandomValues(new Uint8Array(9)));
 
 // What a relay's /healthz says: connected browser peers, game data downloads in flight, seconds since either.
 // null if it doesn't answer. Cache-busted: Cloudflare cached probes before.
@@ -47,7 +68,8 @@ const relayHealth = async (url) => {
     const r = await fetch(`${url.replace(/\/$/, "")}/healthz?t=${Date.now()}`, { cf: { cacheTtl: 0 }, signal: AbortSignal.timeout(4000) });
     if (!r.ok) return null;
     const h = await r.json();
-    return Number.isInteger(h.peers) ? { peers: h.peers, downloads: h.downloads || 0, idleSecs: h.idleSecs ?? Infinity } : null;
+    const g = h.game || h;   // relays with lobby servers (#4154) count their own server's players apart
+    return Number.isInteger(g.peers) ? { peers: g.peers, downloads: g.downloads || 0, idleSecs: g.idleSecs ?? Infinity } : null;
   } catch { return null; }
 };
 const isFree = (h) => !!h && h.peers === 0 && h.downloads === 0;
@@ -82,6 +104,14 @@ export default {
       return makeLobby(body, true, true);
     }
     if (p === "/api/public" && req.method === "GET") return json({ lobbies: await dir.listPublic() });
+    if (p === "/api/capacity" && req.method === "GET") return json(await dir.capacity());
+    if (p === "/api/agent") {
+      if (req.headers.get("Upgrade") !== "websocket") return json({ error: "websocket only" }, 426);
+      const host = url.searchParams.get("host") || "";
+      if (!(await agentAuthOk(env, host, req.headers.get("Authorization")))) return json({ error: "unauthorized" }, 401);
+      const fwd = new Request(req); fwd.headers.set("X-CSP-Agent-Host", host);
+      return dir.fetch(fwd);
+    }
     const m = /^\/api\/lobbies\/([^/]+)(\/ws)?$/.exec(p);
     if (m) {
       const code = m[1].toUpperCase();
@@ -131,11 +161,11 @@ export class Lobby extends DurableObject {
   addMember(pid, name, char) {
     const s = this.s;
     if (!s.members[pid]) {
-      s.members[pid] = { n: s.nextN++, name, char: -1, ready: false, joined: Date.now(), gone: 0 };
+      s.members[pid] = { n: s.nextN++, name, char: -1, ready: false, joined: Date.now(), gone: 0, gpid: gamePid() };
       s.order.push(pid);
     }
     const m = s.members[pid];
-    m.name = name; m.gone = 0;
+    m.name = name; m.gone = 0; m.gpid ||= gamePid();
     if (char >= 0 && !this.charTaken(char, pid)) m.char = char;
     return m;
   }
@@ -247,24 +277,69 @@ export class Lobby extends DurableObject {
     s.state = "starting"; s.readyAt = 0; s.fillAt = 0; s.startMode = mode;
     await this.save(); this.broadcast();
     const slot = await this.dir().claimSlot(s.code);
-    if (!slot) {
-      s.state = "queued"; s.queuedAt ||= Date.now();
-      s.error = "Every server is busy. Waiting for one to free up…";
+    if (slot?.pending) {
+      // a pool-agent is starting this lobby's own server; the directory calls matchReady when it's up
+      s.state = "starting"; s.startingSince ||= Date.now(); s.queuedAt = 0; s.queuePos = 0; s.error = "";
       return this.changed();
     }
+    if (!slot?.url) {
+      s.state = "queued"; s.queuedAt ||= Date.now(); s.queuePos = slot?.position || 0; s.startingSince = 0;
+      s.error = s.queuePos ? `Every server is busy. You're number ${s.queuePos} in line…` : "Every server is busy. Waiting for one to free up…";
+      return this.changed();
+    }
+    return this.inMatch(slot.id, slot.url);
+  }
+
+  async inMatch(slotId, url, pool = false) {
+    const s = this.s;
     const exp = Math.floor(Date.now() / 1000) + 3600 * +(this.env.TOKEN_HOURS || 3);
-    const key = await lobbyToken(this.env.LOBBY_SECRET || "", slot.id, s.code, exp);
-    s.match = { slot: slot.id, url: slot.url.replace(/\/$/, ""), key, started: Date.now(), mode };
-    s.state = "in_match"; s.queuedAt = 0; s.error = "";
+    const key = await lobbyToken(this.env.LOBBY_SECRET || "", slotId, s.code, exp);
+    s.match = { slot: slotId, url: url.replace(/\/$/, ""), key, started: Date.now(), mode: s.startMode, pool, progress: null };
+    s.state = "in_match"; s.queuedAt = 0; s.queuePos = 0; s.startingSince = 0; s.startFails = 0; s.error = "";
     for (const m of Object.values(s.members)) m.ready = false;
-    await this.changed();
+    await this.changed(!pool);   // pool: the directory is the caller
+  }
+
+  // ----- called by the directory (they never call back into it: a call cycle stalls both objects)
+  // This lobby's server is up. false: the lobby has moved on (host ended it, expired), so the server should go.
+  async matchReady(host, url) {
+    const s = this.s;
+    if (!s || s.state !== "starting") return false;
+    await this.inMatch(`${host}.pool`, url, true);
+    return true;
+  }
+  // The server didn't come up: try again from the queue, a few times
+  async matchFailed(error, counts = true) {
+    const s = this.s;
+    if (!s || (s.state !== "starting" && s.state !== "in_match")) return;
+    s.match = null; s.startingSince = 0;
+    if (counts) s.startFails = (s.startFails || 0) + 1;
+    if (s.startFails >= START_FAILS) {
+      s.state = "open"; s.startFails = 0; s.error = "Couldn't start a game server. Try again in a minute.";
+    } else {
+      s.state = "queued"; s.queuedAt = Date.now(); s.queuePos = 0; s.error = "The game server didn't start. Trying again…";
+    }
+    console.log(`lobby ${s.code}: server failed (${error})`);
+    await this.changed(false);
+  }
+  // match news from the plugin ([CSPEV] lines via the pool-agent), for the "match in progress" view
+  async progress(name, data) {
+    const s = this.s;
+    if (!s?.match) return;
+    const p = s.match.progress ||= {};
+    if (name === "turn") { p.turn = data.turn; p.of = data.of; }
+    else if (name === "match_started") { p.turn = 1; p.of = data.turns; }
+    else if (name === "minigame_picked") p.mg = data.mg;
+    else if (name === "humans") p.humans = data.n;
+    else return;
+    await this.save(); this.broadcast();
   }
 
   // the directory saw the server empty out (or the host ended it): back to the lobby for a rematch
-  async matchEnded(fromDirectory = false) {
+  async matchEnded(fromDirectory = false, error = "") {
     if (!this.s) return;
     const s = this.s;
-    s.state = "open"; s.match = null; s.queuedAt = 0; s.readyAt = 0; s.fillAt = 0;
+    s.state = "open"; s.match = null; s.queuedAt = 0; s.readyAt = 0; s.fillAt = 0; s.startingSince = 0; s.error = error;
     // members still in the game have no lobby socket: they get the usual seat grace from now to come back
     const on = this.online();
     for (const [pid, m] of Object.entries(s.members)) { m.ready = false; if (!on.has(pid)) m.gone = Date.now(); }
@@ -276,6 +351,7 @@ export class Lobby extends DurableObject {
     const s = this.s, t = [];
     if (this.startAt()) t.push(this.startAt());
     if (s.state === "queued") t.push(Date.now() + QUEUE_RETRY_MS);
+    if (s.state === "starting" && s.startingSince) t.push(s.startingSince + START_TIMEOUT_MS);
     if (s.state === "open") for (const m of Object.values(s.members)) if (m.gone) t.push(m.gone + SEAT_GRACE_MS);
     if (s.emptySince && s.state !== "in_match") t.push(s.emptySince + EXPIRE_MS);
     if (t.length) await this.ctx.storage.setAlarm(Math.min(...t)); else await this.ctx.storage.deleteAlarm();
@@ -292,6 +368,10 @@ export class Lobby extends DurableObject {
       return;
     }
     if (s.state === "queued") return this.start(s.startMode || "queued");
+    if (s.state === "starting" && s.startingSince && now >= s.startingSince + START_TIMEOUT_MS) {
+      await this.dir().releaseSlot(s.code);
+      return this.matchEnded(false, "The game server didn't start. Try again.");
+    }
     if (s.state === "open") {
       for (const [pid, m] of Object.entries(s.members)) if (m.gone && now >= m.gone + SEAT_GRACE_MS) this.removeMember(pid);
       this.tick();
@@ -306,13 +386,14 @@ export class Lobby extends DurableObject {
     const at = this.startAt(), startsIn = at ? Math.max(0, at - Date.now()) : 0, fill = !!at && !s.readyAt;
     let go = null;
     if (s.match && me) {
-      const q = new URLSearchParams({ key: s.match.key, name: me.name, lobby: `${s.origin}/?code=${s.code}` });
+      const q = new URLSearchParams({ key: s.match.key, name: me.name, lobby: `${s.origin}/?code=${s.code}`, pid: me.gpid || "" });
       if (me.char >= 0) q.set("char", String(me.char));
       go = `${s.match.url}/?${q}`;
     }
     return {
       t: "state", code: s.code, state: s.state, public: s.public, seeking: s.seeking, fill, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
       you: me?.n ?? 0, host: s.members[s.host]?.n ?? 0, startsIn, error: s.error, go,
+      queuePos: s.state === "queued" ? s.queuePos || 0 : 0, progress: s.match?.progress || null,
       members: s.order.map((p, i) => {
         const m = s.members[p];
         return { n: m.n, name: m.name, char: m.char, ready: m.ready, online: on.has(p), role: i < SEATS ? "player" : "spectator" };
@@ -336,9 +417,18 @@ export class Directory extends DurableObject {
     this.sql = ctx.storage.sql;
     this.sql.exec(`CREATE TABLE IF NOT EXISTS lobbies(code TEXT PRIMARY KEY, state TEXT, public INTEGER, players INTEGER, updated INTEGER, seeking INTEGER DEFAULT 0);
       CREATE TABLE IF NOT EXISTS slots(id TEXT PRIMARY KEY, code TEXT NOT NULL, since INTEGER, empty INTEGER DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS creates(ip TEXT, at INTEGER);`);
+      CREATE TABLE IF NOT EXISTS creates(ip TEXT, at INTEGER);
+      CREATE TABLE IF NOT EXISTS hosts(id TEXT PRIMARY KEY, url TEXT DEFAULT '', max INTEGER DEFAULT 0, running INTEGER DEFAULT 0,
+        drain INTEGER DEFAULT 0, load REAL DEFAULT 0, cpu REAL DEFAULT 0, up_kbps INTEGER DEFAULT 0, version TEXT DEFAULT '',
+        beat INTEGER DEFAULT 0, connected INTEGER DEFAULT 0, gone INTEGER DEFAULT 0, info TEXT DEFAULT '{}');
+      CREATE TABLE IF NOT EXISTS pmatch(code TEXT PRIMARY KEY, host TEXT NOT NULL, state TEXT NOT NULL, since INTEGER, url TEXT);
+      CREATE TABLE IF NOT EXISTS queue(code TEXT PRIMARY KEY, at INTEGER, seen INTEGER);
+      CREATE TABLE IF NOT EXISTS events(id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER, host TEXT, code TEXT, name TEXT, data TEXT);`);
     try { this.sql.exec("ALTER TABLE lobbies ADD COLUMN seeking INTEGER DEFAULT 0"); } catch {}   // table from before quick play
+    this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair("ping", "pong"));   // agent keepalive, no wake-up
   }
+  lobby(code) { return this.env.LOBBY.get(this.env.LOBBY.idFromName(code)); }
+  async ensureAlarm() { if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 60e3); }
 
   reserveCode(ipHash) {
     const now = Date.now();
@@ -372,33 +462,193 @@ export class Directory extends DurableObject {
   remove(code) {
     this.sql.exec("DELETE FROM lobbies WHERE code = ?", code);
     this.sql.exec("DELETE FROM slots WHERE code = ?", code);
+    this.dropPool(code);
+  }
+  // the lobby doesn't want its pool server (or its place in line) any more
+  dropPool(code) {
+    const pm = this.sql.exec("SELECT host FROM pmatch WHERE code = ?", code).toArray()[0];
+    if (pm) { this.sendHost(pm.host, { t: "stop", code, reason: "lobby" }); this.sql.exec("DELETE FROM pmatch WHERE code = ?", code); }
+    this.sql.exec("DELETE FROM queue WHERE code = ?", code);
   }
   listPublic() {
     return this.sql.exec("SELECT code, players, seeking FROM lobbies WHERE public = 1 AND state = 'open' AND players < ? AND updated > ? ORDER BY seeking DESC, updated DESC LIMIT 20",
       SEATS, Date.now() - 30 * 60e3).toArray();
   }
 
-  // A free pool server for this lobby, or null. The slot row is written before the health probe: other calls
-  // run while we await the fetch, and must not pick the same server.
+  // Where this lobby plays: {pending, host} a pool-agent is starting a server of its own (the lobby's matchReady
+  // follows), {id, url} a free static POOL server, {position} its place in line. Rows are written before any
+  // await: other calls run while one is awaiting, and must not take the same capacity.
   async claimSlot(code) {
-    const held = this.sql.exec("SELECT id FROM slots WHERE code = ?", code).toArray()[0];
+    const now = Date.now();
+    const pm = this.sql.exec("SELECT host, state FROM pmatch WHERE code = ?", code).toArray()[0];
+    if (pm && pm.state !== "finished") return { pending: true, host: pm.host };
+    if (pm) { this.sendHost(pm.host, { t: "stop", code, reason: "rematch" }); this.sql.exec("DELETE FROM pmatch WHERE code = ?", code); }
     const servers = pool(this.env);
-    if (held) return servers.find((s) => s.id === held.id) || null;
-    for (const srv of servers) {
+    const held = this.sql.exec("SELECT id FROM slots WHERE code = ?", code).toArray()[0];
+    if (held && servers.some((s) => s.id === held.id)) return servers.find((s) => s.id === held.id);
+    // first come, first served: a lobby that asked earlier (and still asks, every 10 s) goes first
+    this.sql.exec("DELETE FROM queue WHERE seen < ?", now - 60e3);
+    this.sql.exec("INSERT INTO queue (code, at, seen) VALUES (?, ?, ?) ON CONFLICT(code) DO UPDATE SET seen = excluded.seen", code, now, now);
+    const at = this.sql.exec("SELECT at FROM queue WHERE code = ?", code).one().at;
+    const ahead = this.sql.exec("SELECT COUNT(*) AS n FROM queue WHERE at < ? OR (at = ? AND code < ?)", at, at, code).one().n;
+    const hosts = this.freeHosts();
+    if (ahead < hosts.reduce((a, h) => a + h.free, 0)) {
+      for (const h of hosts) {
+        if (!this.sendHost(h.id, { t: "start", code })) continue;
+        this.sql.exec("INSERT INTO pmatch (code, host, state, since, url) VALUES (?, ?, 'starting', ?, ?)", code, h.id, now, h.url);
+        this.sql.exec("DELETE FROM queue WHERE code = ?", code);
+        await this.ensureAlarm();
+        return { pending: true, host: h.id };
+      }
+    }
+    // no lobby server free: a static pool server nobody is on, for whoever is first in line
+    if (ahead === 0) for (const srv of servers) {
       if (this.sql.exec("SELECT 1 FROM slots WHERE id = ?", srv.id).toArray().length) continue;
       this.sql.exec("INSERT INTO slots (id, code, since) VALUES (?, ?, ?)", srv.id, code, Date.now());
       if (isFree(await relayHealth(srv.url))) {
-        if (!(await this.ctx.storage.getAlarm())) await this.ctx.storage.setAlarm(Date.now() + 60e3);
+        this.sql.exec("DELETE FROM queue WHERE code = ?", code);
+        await this.ensureAlarm();
         return srv;
       }
       this.sql.exec("DELETE FROM slots WHERE id = ? AND code = ?", srv.id, code);   // busy (friends on it) or down
     }
-    return null;
+    await this.ensureAlarm();
+    return { position: ahead + 1 };
   }
-  releaseSlot(code) { this.sql.exec("DELETE FROM slots WHERE code = ?", code); }
+  releaseSlot(code) { this.sql.exec("DELETE FROM slots WHERE code = ?", code); this.dropPool(code); }
+
+  // ------------------------------------------------------------------ pool-agents (web/pool-agent.js)
+  // Hosts taking lobbies now, most room first: connected, heard from lately, not draining, below their cap.
+  freeHosts() {
+    const now = Date.now();
+    return this.sql.exec("SELECT id, url, max, running, drain FROM hosts WHERE connected = 1 AND beat > ?", now - HOST_STALE_MS).toArray()
+      .filter((h) => !h.drain && h.url && this.ctx.getWebSockets(`host:${h.id}`).length)
+      .map((h) => ({ ...h, free: h.max - Math.max(h.running, this.sql.exec("SELECT COUNT(*) AS n FROM pmatch WHERE host = ?", h.id).one().n) }))
+      .filter((h) => h.free > 0).sort((a, b) => b.free - a.free);
+  }
+  sendHost(host, o) {
+    for (const ws of this.ctx.getWebSockets(`host:${host}`)) { try { ws.send(JSON.stringify(o)); return true; } catch {} }
+    return false;
+  }
+  capacity() {
+    const now = Date.now();
+    return {
+      hosts: this.sql.exec("SELECT * FROM hosts").toArray().map((h) => ({ id: h.id, online: !!h.connected && now - h.beat < HOST_STALE_MS,
+        running: h.running, max: h.max, drain: !!h.drain, load: h.load, cpu: h.cpu, upKbps: h.up_kbps, version: h.version,
+        beatSecs: h.beat ? Math.round((now - h.beat) / 1000) : null })),
+      queued: this.sql.exec("SELECT COUNT(*) AS n FROM queue WHERE seen > ?", now - 60e3).one().n,
+      static: pool(this.env).length,
+    };
+  }
+
+  // a pool-agent connecting (the Worker checked its signature and passes the host id)
+  async fetch(req) {
+    const host = req.headers.get("X-CSP-Agent-Host");
+    if (!host) return new Response("not found", { status: 404 });
+    for (const ws of this.ctx.getWebSockets(`host:${host}`)) try { ws.close(4000, "replaced by a new connection"); } catch {}
+    const [client, server] = Object.values(new WebSocketPair());
+    this.ctx.acceptWebSocket(server, [`host:${host}`]);
+    server.serializeAttachment({ host });
+    this.sql.exec("INSERT INTO hosts (id, connected, beat) VALUES (?, 1, ?) ON CONFLICT(id) DO UPDATE SET connected = 1, beat = excluded.beat, gone = 0", host, Date.now());
+    await this.ensureAlarm();
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  async webSocketMessage(ws, raw) {
+    const host = ws.deserializeAttachment()?.host;
+    if (!host || typeof raw !== "string" || raw.length > 65536) return;
+    let m; try { m = JSON.parse(raw); } catch { return; }
+    const now = Date.now();
+    this.sql.exec("UPDATE hosts SET beat = ?, connected = 1, gone = 0 WHERE id = ?", now, host);
+    const code = /^[A-Z2-9]{5}$/.test(m.code || "") ? m.code : "";
+    const row = code ? this.sql.exec("SELECT * FROM pmatch WHERE code = ? AND host = ?", code, host).toArray()[0] : null;
+    switch (m.t) {
+      case "hello": case "cap": {
+        const h = this.sql.exec("SELECT * FROM hosts WHERE id = ?", host).one();
+        this.sql.exec("UPDATE hosts SET url = ?, max = ?, drain = ?, running = ?, load = ?, cpu = ?, up_kbps = ?, version = ?, info = ? WHERE id = ?",
+          String(m.url ?? h.url).slice(0, 200), +(m.max ?? h.max) || 0, m.drain ? 1 : 0, +(m.running ?? m.lobbies?.length ?? h.running) || 0,
+          +(m.load ?? h.load) || 0, +(m.cpu ?? h.cpu) || 0, +(m.upKbps ?? h.up_kbps) || 0, String(m.version ?? h.version).slice(0, 20),
+          m.t === "cap" ? JSON.stringify(m.lobbies || []).slice(0, 8000) : h.info, host);
+        if (m.t === "hello") await this.reconcile(host, m.lobbies || []);
+        break;
+      }
+      case "started": {
+        if (!row) { this.sendHost(host, { t: "stop", code, reason: "no such lobby match" }); break; }
+        const url = String(row.url || m.url);
+        this.sql.exec("UPDATE pmatch SET state = 'running', since = ? WHERE code = ?", now, code);
+        this.sql.exec("UPDATE lobbies SET state = 'in_match', updated = ? WHERE code = ?", now, code);
+        if (!(await this.lobby(code).matchReady(host, url))) {
+          this.sendHost(host, { t: "stop", code, reason: "lobby moved on" });
+          this.sql.exec("DELETE FROM pmatch WHERE code = ?", code);
+        }
+        break;
+      }
+      case "start_failed":
+        if (!row) break;
+        this.sql.exec("DELETE FROM pmatch WHERE code = ?", code);
+        // a full or draining host isn't the lobby's fault: it just goes back in line
+        await this.lobby(code).matchFailed(String(m.error), m.error !== "full" && m.error !== "draining");
+        break;
+      case "ended":
+        if (!row) break;
+        this.sql.exec("DELETE FROM pmatch WHERE code = ?", code);
+        if (row.state === "starting") await this.lobby(code).matchFailed(String(m.reason));
+        else if (row.state === "running") await this.lobby(code).matchEnded(true, m.reason === "crashed" ? "The game server stopped unexpectedly." : "");
+        break;   // finished: the lobby reopened when the match did
+      case "ev": {
+        const name = String(m.name || "").slice(0, 32);
+        this.sql.exec("INSERT INTO events (at, host, code, name, data) VALUES (?, ?, ?, ?, ?)", +m.at || now, host, code, name, JSON.stringify(m.data || {}).slice(0, 2000));
+        if (!row) break;
+        if (name === "match_finished" && row.state === "running") {
+          // back to the lobby for a rematch; the server lingers on the results (the agent stops it)
+          this.sql.exec("UPDATE pmatch SET state = 'finished' WHERE code = ?", code);
+          this.sql.exec("UPDATE lobbies SET state = 'open', updated = ? WHERE code = ?", now, code);
+          await this.lobby(code).matchEnded(true);
+        } else if (row.state === "running") await this.lobby(code).progress(name, m.data || {});
+        break;
+      }
+    }
+  }
+
+  // An agent (re)connected and says what it runs. Matches it no longer has are over; servers we know nothing of go.
+  async reconcile(host, list) {
+    const running = new Set(list.map((l) => l.code));
+    for (const row of this.sql.exec("SELECT * FROM pmatch WHERE host = ?", host).toArray()) {
+      if (running.has(row.code)) continue;
+      this.sql.exec("DELETE FROM pmatch WHERE code = ?", row.code);
+      if (row.state === "starting") await this.lobby(row.code).matchFailed("agent restarted", false);
+      else if (row.state === "running") await this.lobby(row.code).matchEnded(true, "The game server restarted. Start again when you're ready.");
+    }
+    for (const code of running)
+      if (!this.sql.exec("SELECT 1 FROM pmatch WHERE code = ? AND host = ?", code, host).toArray().length) this.sendHost(host, { t: "stop", code, reason: "unknown" });
+  }
+
+  async webSocketClose(ws) {
+    try { ws.close(1000); } catch {}
+    const host = ws.deserializeAttachment()?.host;
+    if (!host || this.ctx.getWebSockets(`host:${host}`).some((w) => w !== ws)) return;   // replaced by a newer one
+    this.sql.exec("UPDATE hosts SET connected = 0, gone = ? WHERE id = ?", Date.now(), host);
+  }
+  async webSocketError(ws) { return this.webSocketClose(ws); }
 
   async alarm() {
     const now = Date.now();
+    // pool-agents: silent ones take no new lobbies; matches whose server never came up, or whose agent is long gone, end
+    this.sql.exec("UPDATE hosts SET connected = 0, gone = ? WHERE connected = 1 AND beat < ?", now, now - HOST_STALE_MS);
+    for (const row of this.sql.exec("SELECT p.*, h.connected, h.gone FROM pmatch p LEFT JOIN hosts h ON h.id = p.host").toArray()) {
+      const lost = !row.connected && now - (row.gone || 0) > ORPHAN_MS;
+      if (row.state === "starting" && now - row.since > START_TIMEOUT_MS) {
+        this.sendHost(row.host, { t: "stop", code: row.code, reason: "start timeout" });
+        this.sql.exec("DELETE FROM pmatch WHERE code = ?", row.code);
+        await this.lobby(row.code).matchFailed("start timeout");
+      } else if (lost || now - row.since > MATCH_MAX_MS) {
+        this.sendHost(row.host, { t: "stop", code: row.code, reason: lost ? "orphaned" : "max time" });
+        this.sql.exec("DELETE FROM pmatch WHERE code = ?", row.code);
+        if (row.state !== "finished") await this.lobby(row.code).matchEnded(true, lost ? "Lost the game server." : "");
+      }
+    }
+    this.sql.exec("DELETE FROM queue WHERE seen < ?", now - 60e3);
+    this.sql.exec("DELETE FROM events WHERE id <= (SELECT MAX(id) FROM events) - 5000");
     const servers = pool(this.env);
     // a started server isn't checked for "everyone left" before this (downloads, map load)
     const grace = 1000 * +(this.env.MATCH_GRACE_SECS ?? 240);
@@ -418,6 +668,8 @@ export class Directory extends DurableObject {
       }
     }
     this.sql.exec("DELETE FROM lobbies WHERE updated < ?", now - 24 * 3600e3);
-    if (this.sql.exec("SELECT COUNT(*) AS n FROM slots").one().n) await this.ctx.storage.setAlarm(now + 60e3);
+    const busy = this.sql.exec(`SELECT (SELECT COUNT(*) FROM slots) + (SELECT COUNT(*) FROM pmatch) + (SELECT COUNT(*) FROM queue)
+      + (SELECT COUNT(*) FROM hosts WHERE connected = 1) AS n`).one().n;
+    if (busy) await this.ctx.storage.setAlarm(now + 60e3);
   }
 }

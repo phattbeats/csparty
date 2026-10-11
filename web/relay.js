@@ -13,7 +13,8 @@
 // gamedata.zip is Valve's content, packed from your install for your friends, not for the world.
 //
 // Env knobs: MAX_PEERS (32), MAX_PER_IP (6), IDLE_SECS (120: no game traffic either way -> close),
-// LOBBY_SECRET + RELAY_ID (also accept the lobby Worker's per-lobby keys; see lobbyKeyOk).
+// LOBBY_SECRET + RELAY_ID (also accept the lobby Worker's per-lobby keys; see lobbyKey),
+// POOL_AGENT (http://127.0.0.1:8097: lobby servers started by web/pool-agent.js; see syncPool).
 import crypto from "node:crypto";
 import http from "node:http";
 import dgram from "node:dgram";
@@ -36,20 +37,27 @@ const PROTECTED_FILES = new Set([path.join(ROOT, "gamedata.zip")]);
 // Lobby party keys (#3989, lobby/): the lobby Worker gives each lobby it sends here CODE.EXPIRY.SIG, an
 // HMAC-SHA256 over this relay's RELAY_ID with the LOBBY_SECRET both sides share. Accepted next to --key.
 const LOBBY_SECRET = process.env.LOBBY_SECRET || "", RELAY_ID = process.env.RELAY_ID || "";
-const lobbyKeyOk = (k) => {
+// Signed over "RELAY_ID" the key opens this relay's own game server (GAME). Signed over "RELAY_ID.pool" it opens
+// that lobby's own server, a container the pool-agent started for it (#4154): {code, pool: true}.
+const lobbyKey = (k) => {
   const m = LOBBY_SECRET && RELAY_ID && /^([A-Z2-9]{5})\.(\d{9,11})\.([\w-]{24})$/.exec(k);
-  if (!m || +m[2] < Date.now() / 1000) return false;
-  const want = Buffer.from(crypto.createHmac("sha256", LOBBY_SECRET).update(`csp-lobby|${RELAY_ID}|${m[1]}|${m[2]}`).digest().subarray(0, 18).toString("base64url"));
+  if (!m || +m[2] < Date.now() / 1000) return null;
   const got = Buffer.from(m[3]);
-  return got.length === want.length && crypto.timingSafeEqual(got, want);
+  for (const [slot, pool] of [[RELAY_ID, false], [`${RELAY_ID}.pool`, true]]) {
+    const want = Buffer.from(crypto.createHmac("sha256", LOBBY_SECRET).update(`csp-lobby|${slot}|${m[1]}|${m[2]}`).digest().subarray(0, 18).toString("base64url"));
+    if (got.length === want.length && crypto.timingSafeEqual(got, want)) return { code: m[1], pool };
+  }
+  return null;
 };
-const keyOk = (reqUrl) => {
-  if (!KEY) return true;
-  let q; try { q = new URL(reqUrl || "/", "http://x").searchParams.get("key") || ""; } catch { return false; }
-  if (lobbyKeyOk(q)) return true;
+// What a request's ?key= opens: {code, pool} ("" code: the static party key, or none needed), null if nothing.
+const keyInfo = (reqUrl) => {
+  let q; try { q = new URL(reqUrl || "/", "http://x").searchParams.get("key") || ""; } catch { return null; }
+  const lk = lobbyKey(q);
+  if (lk) return lk;
+  if (!KEY) return { code: "", pool: false };
   const got = Buffer.from(q);
   const want = Buffer.from(KEY);
-  return got.length === want.length && crypto.timingSafeEqual(got, want);
+  return got.length === want.length && crypto.timingSafeEqual(got, want) ? { code: "", pool: false } : null;
 };
 // Test hook, only with RELAY_DEV=1: GET /dev/blackhole?secs=N drops server->browser packets for N seconds,
 // which is what a client that misses a map change sees. tools/dev/web_e2e.py --stall uses it.
@@ -66,10 +74,44 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".so": "application/wasm", ".zip": "application/zip", ".pk3": "application/zip", ".css": "text/css",
   ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg", ".webmanifest": "application/manifest+json" };
 
-const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0, downloads: 0 };
+const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0, downloads: 0, upBytes: 0, downBytes: 0 };
 // Last time anyone was here (a peer, or a game data download). The lobby Worker frees this server for the next
 // party only when it has been empty a while: a first visit spends minutes downloading with no peer open.
 let lastActive = Date.now();
+// The same per game server: "" is GAME, anything else a lobby code on a pool server. Never on the public /healthz
+// (a code is all it takes to join a lobby); the pool-agent reads it over loopback (syncPool).
+const games = new Map();
+const gameOf = (code) => {
+  let g = games.get(code);
+  if (!g) games.set(code, g = { peers: 0, downloads: 0, lastActive: Date.now(), upBytes: 0, downBytes: 0, socks: new Set() });
+  return g;
+};
+const idleOf = (g) => (g.peers || g.downloads ? 0 : Math.round((Date.now() - g.lastActive) / 1000));
+
+// Lobby servers: the pool-agent (web/pool-agent.js) starts one game server container per lobby on a port of its
+// own, reachable on loopback only. Every 2 s the relay posts its per-lobby counts there and gets back which lobby
+// is on which port. An agent that is down or restarting leaves the last routes in place: players keep playing.
+const POOL_AGENT = (process.env.POOL_AGENT || "").replace(/\/$/, "");
+let routes = new Map(), syncing = null;
+const syncPool = () => syncing ||= (async () => {
+  if (!POOL_AGENT) return;
+  const lobbies = {};
+  for (const [code, g] of games) if (code) lobbies[code] = { peers: g.peers, downloads: g.downloads, idleSecs: idleOf(g), upBytes: g.upBytes, downBytes: g.downBytes };
+  try {
+    const r = await fetch(`${POOL_AGENT}/sync`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lobbies, upBytes: stats.upBytes, downBytes: stats.downBytes, peers: stats.peers }), signal: AbortSignal.timeout(1500) });
+    if (!r.ok) return;
+    const j = await r.json();
+    routes = new Map(Object.entries(j.routes || {}).filter(([, port]) => Number.isInteger(port) && port > 0 && port < 65536));
+    // a lobby whose server is gone: its players' sockets would only time out
+    for (const [code, g] of games) {
+      if (!code) continue;
+      if (!routes.has(code)) for (const close of g.socks) close("lobby server gone", 4004);
+      if (!routes.has(code) && !g.peers && !g.downloads) games.delete(code);
+    }
+  } catch {} finally { syncing = null; }
+})();
+if (POOL_AGENT) setInterval(syncPool, 2000).unref();
 
 const server = http.createServer((req, res) => {
   let url;
@@ -78,7 +120,10 @@ const server = http.createServer((req, res) => {
   if (url === "/healthz") {
     res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
     const idleSecs = stats.peers || stats.downloads ? 0 : Math.round((Date.now() - lastActive) / 1000);
-    res.end(JSON.stringify({ ok: true, ...stats, idleSecs, uptime: Math.round((Date.now() - stats.started) / 1000) }) + "\n");
+    // game: this relay's own server only (lobby servers' players aren't on it); the lobby Worker's static pool reads it
+    const g = gameOf("");
+    res.end(JSON.stringify({ ok: true, ...stats, idleSecs, uptime: Math.round((Date.now() - stats.started) / 1000),
+      game: { peers: g.peers, downloads: g.downloads, idleSecs: idleOf(g) }, lobbyServers: routes.size }) + "\n");
     return;
   }
   if (DEV && url === "/dev/blackhole") {
@@ -92,8 +137,10 @@ const server = http.createServer((req, res) => {
   // check the file actually served: "//gamedata.zip" or "/x/..%2Fgamedata.zip" resolve to it too
   // race map packs hold slices of Valve's WADs too
   const isProtected = PROTECTED_FILES.has(file) || file.startsWith(path.join(ROOT, "mappacks") + path.sep);
-  if (isProtected && !keyOk(req.url)) { res.writeHead(403).end("party key required\n"); return; }
-  if (isProtected) lastActive = Date.now();   // a cached client only checks the ETag
+  const key = isProtected ? keyInfo(req.url) : null;
+  if (isProtected && !key) { res.writeHead(403).end("party key required\n"); return; }
+  const game = key ? gameOf(key.pool ? key.code : "") : null;
+  if (isProtected) lastActive = game.lastActive = Date.now();   // a cached client only checks the ETag
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404).end("not found"); return; }
     const ext = path.extname(file);
@@ -111,8 +158,8 @@ const server = http.createServer((req, res) => {
     const stream = fs.createReadStream(file);
     stream.on("error", () => res.destroy());
     if (isProtected) {
-      stats.downloads++;
-      res.on("close", () => { stats.downloads--; lastActive = Date.now(); });
+      stats.downloads++; game.downloads++;
+      res.on("close", () => { stats.downloads--; game.downloads--; lastActive = game.lastActive = Date.now(); });
     }
     stream.pipe(res);
   });
@@ -123,10 +170,14 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024,
   handleProtocols: (p) => (p.has("binary") ? "binary" : false),
   // A refused handshake reaches the page only as close code 1006, whatever the reason. So the socket is
   // accepted and closed at once with a code the page can explain (4001 key, 4003 full, 4029 per-IP cap).
-  verifyClient: ({ req }, cb) => {
+  // 4004: a lobby key for a lobby server that isn't running (any more).
+  verifyClient: async ({ req }, cb) => {
     const ip = clientIp(req);
-    req.refuse = !keyOk(req.url) ? [4001, "party key required"] : stats.peers >= MAX_PEERS ? [4003, "relay full"]
-      : (perIp.get(ip) || 0) >= MAX_PER_IP ? [4029, "too many connections"] : null;
+    const key = req.key = keyInfo(req.url);
+    if (key?.pool && !routes.has(key.code)) await syncPool();   // it may have come up in the last 2 s
+    req.refuse = !key ? [4001, "party key required"] : stats.peers >= MAX_PEERS ? [4003, "relay full"]
+      : (perIp.get(ip) || 0) >= MAX_PER_IP ? [4029, "too many connections"]
+      : key.pool && !routes.has(key.code) ? [4004, "lobby server not running"] : null;
     if (req.refuse) stats.rejected++;
     cb(true);
   } });
@@ -135,32 +186,40 @@ let seq = 0;
 wss.on("connection", (ws, req) => {
   // a refused socket still gets an error listener: one malformed frame on it was an unhandled error that killed the relay
   if (req.refuse) { ws.on("error", () => {}); log(`refused ${clientIp(req)}: ${req.refuse[1]}`); ws.close(...req.refuse); return; }
-  const id = ++seq, who = clientIp(req);
+  const id = ++seq, who = clientIp(req), code = req.key.pool ? req.key.code : "";
+  // where this browser's packets go: our own server, or its lobby's (port fixed for the connection's life)
+  const [toHost, toPort] = req.key.pool ? ["127.0.0.1", routes.get(code)] : [GAME_HOST, +GAME_PORT];
+  const checkFrom = req.key.pool || GAME_IS_IP;
+  const game = gameOf(code);
   perIp.set(who, (perIp.get(who) || 0) + 1);
-  stats.peers++; stats.totalPeers++;
+  stats.peers++; stats.totalPeers++; game.peers++;
   const udp = dgram.createSocket("udp4");
   let first = true, up = 0, down = 0, dropped = 0, alive = true, lastTraffic = Date.now(), closed = false;
 
-  const close = (why) => {
+  const close = (why, code4 = 0) => {
     if (closed) return; closed = true;
     clearInterval(beat);
     try { udp.close(); } catch {}
-    if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.terminate();
+    if (code4 && ws.readyState === ws.OPEN) ws.close(code4, why);
+    else if (ws.readyState === ws.OPEN || ws.readyState === ws.CONNECTING) ws.terminate();
     stats.peers--; perIp.set(who, perIp.get(who) - 1); if (!perIp.get(who)) perIp.delete(who);
-    lastActive = Date.now();
+    game.peers--; game.socks.delete(close);
+    lastActive = game.lastActive = Date.now();
     log(`[${id}] closed: ${why} (${up} up / ${down} down${dropped ? ` / ${dropped} dropped` : ""})`);
   };
+  game.socks.add(close);
 
   udp.on("message", (msg, from) => {
     if (closed || ws.readyState !== ws.OPEN) return;
-    if (GAME_IS_IP && (from.address !== GAME_HOST || from.port !== +GAME_PORT)) return;   // only the game server talks to browsers
+    if (checkFrom && (from.address !== toHost || from.port !== toPort)) return;   // only the game server talks to browsers
     if (blackholeUntil && Date.now() < blackholeUntil) { dropped++; return; }
     // UDP semantics end to end: a browser that can't keep up loses packets instead of growing a queue
     if (ws.bufferedAmount > BACKLOG_MAX) { dropped++; stats.dropped++; return; }
     ws.send(msg, { binary: true }); down++; stats.down++; lastTraffic = Date.now();
+    stats.downBytes += msg.length; game.downBytes += msg.length;
   });
   udp.on("error", (e) => close(`udp error ${e.message}`));
-  udp.bind(0, () => log(`[${id}] ${who} -> udp :${udp.address().port} -> ${GAME_HOST}:${GAME_PORT}`));
+  udp.bind(0, () => log(`[${id}] ${who} -> udp :${udp.address().port} -> ${toHost}:${toPort}${code ? ` (lobby ${code})` : ""}`));
 
   ws.on("message", (data) => {
     if (closed) return;
@@ -168,8 +227,9 @@ wss.on("connection", (ws, req) => {
     // Emscripten's first message on a bound datagram socket announces its local port; not game traffic
     if (first && buf.length === 10 && buf.readUInt32BE(0) === 0xffffffff && buf.toString("latin1", 4, 8) === "port") { first = false; return; }
     first = false;
-    try { udp.send(buf, +GAME_PORT, GAME_HOST); } catch (e) { return close(`udp send ${e.code || e.message}`); }
+    try { udp.send(buf, toPort, toHost); } catch (e) { return close(`udp send ${e.code || e.message}`); }
     up++; stats.up++; lastTraffic = Date.now();
+    stats.upBytes += buf.length; game.upBytes += buf.length;
   });
   ws.on("pong", () => { alive = true; });
   ws.on("close", (code) => close(`browser closed (${code})`));
@@ -187,15 +247,20 @@ wss.on("connection", (ws, req) => {
 
 // Voice chat signaling (PHA-4058). Browsers talk to each other over WebRTC (audio never touches this
 // relay); this socket only introduces them: it hands each newcomer the roster and forwards offers, answers
-// and ICE candidates between two peers by id. Same party key as the game socket, one room per relay.
+// and ICE candidates between two peers by id. Same party key as the game socket, one room per game server (this
+// relay's own, or a lobby's).
 const MAX_VOICE = +(process.env.MAX_VOICE || 16);
-const voiceClients = new Map();   // id -> { ws, name }
+const voiceRooms = new Map();   // room ("" or a lobby code) -> Map(id -> { ws, name })
 const vss = new WebSocketServer({ noServer: true, maxPayload: 16 * 1024 });
 let vseq = 0;
 const vsend = (ws, o) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(o)); };
 vss.on("connection", (ws, req) => {
   ws.on("error", () => {});
-  if (!keyOk(req.url)) return ws.close(4001, "party key required");
+  const key = keyInfo(req.url);
+  if (!key) return ws.close(4001, "party key required");
+  const room = key.pool ? key.code : "";
+  if (!voiceRooms.has(room)) voiceRooms.set(room, new Map());
+  const voiceClients = voiceRooms.get(room);
   if (voiceClients.size >= MAX_VOICE) return ws.close(4003, "voice full");
   const id = ++vseq;
   const me = { ws, name: "", alive: true, last: 0, n: 0 };
@@ -215,7 +280,7 @@ vss.on("connection", (ws, req) => {
   });
   ws.on("pong", () => { me.alive = true; });
   const beat = setInterval(() => { if (!me.alive) return ws.terminate(); me.alive = false; try { ws.ping(); } catch {} }, 15000);
-  ws.on("close", () => { clearInterval(beat); voiceClients.delete(id); if (me.name) others({ t: "leave", id }); });
+  ws.on("close", () => { clearInterval(beat); voiceClients.delete(id); if (!voiceClients.size) voiceRooms.delete(room); if (me.name) others({ t: "leave", id }); });
 });
 server.on("upgrade", (req, sock, head) => {
   let path = ""; try { path = new URL(req.url, "http://x").pathname; } catch {}
@@ -237,4 +302,4 @@ process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
 server.on("clientError", (e, sock) => { try { sock.destroy(); } catch {} });
 process.on("SIGINT", () => shutdown("SIGINT"));
 
-server.listen(PORT, () => log(`CS Party relay: http://0.0.0.0:${PORT}  ->  ${GAME_HOST}:${GAME_PORT}  (root ${ROOT})${KEY ? "  [party key on]" : ""}`));
+server.listen(PORT, () => log(`CS Party relay: http://0.0.0.0:${PORT}  ->  ${GAME_HOST}:${GAME_PORT}  (root ${ROOT})${KEY ? "  [party key on]" : ""}${POOL_AGENT ? `  [lobby servers via ${POOL_AGENT}]` : ""}`));

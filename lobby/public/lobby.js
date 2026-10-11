@@ -190,9 +190,12 @@
       const ready = players.filter((m) => m.ready && m.online).length, online = players.filter((m) => m.online).length;
       lobbyStatus(online < s.minHumans ? `Waiting for friends (${online}/${s.minHumans} to auto-start). ${isHost ? "Or start now with bots." : ""}`
         : `${ready}/${online} ready.`);
-    } else if (s.state === "starting") lobbyStatus("Finding a server…");
-    else if (s.state === "queued") lobbyStatus("Every server is busy. Waiting for one to free up…");
-    else if (inMatch) lobbyStatus(sawStart ? "Server ready. Joining…" : "Match in progress.");
+    } else if (s.state === "starting") lobbyStatus("Starting your party's server… (up to a minute or two)");
+    else if (s.state === "queued") lobbyStatus(s.queuePos ? `Every server is busy. You're number ${s.queuePos} in line…` : "Every server is busy. Waiting for one to free up…");
+    else if (inMatch) {
+      const p = s.progress;   // from the game server: turn and minigame
+      lobbyStatus(sawStart ? "Server ready. Joining…" : `Match in progress${p?.turn ? `: turn ${p.turn} of ${p.of}` : ""}${p?.mg ? `, last minigame ${p.mg}` : ""}.`);
+    }
 
     // Started while we watched: go. Came back to a lobby mid-match: offer the button, don't bounce them.
     if (inMatch && prev && prev.state !== "in_match") sawStart = true;

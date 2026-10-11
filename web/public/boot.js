@@ -42,6 +42,9 @@
   const HUD_ARGS = [...(params.get("hud") ? ["+hud_scale", params.get("hud")] : []),
     "+hud_fontscale", FONT_SCALE, "+con_notifytime", params.get("notify") || "0", "+scr_conspeed", "100000"];
   const TOUCH_ARGS = TOUCH || params.has("touch") ? ["+touch_enable", "1", "+setinfo", "_csp_touch", "1"] : [];
+  // The lobby's seat id for this player (lobby/ hands it over as ?pid=): a dropped player gets their own seat back
+  // even if someone else in the party has the same name. Keys starting with _ never reach other clients.
+  const PID_ARGS = /^[\w-]{6,24}$/.test(params.get("pid") || "") ? ["+setinfo", "_csp_pid", params.get("pid")] : [];
 
   // engine pieces that live next to the page; written into the engine's filesystem before start
   const LIBS = {
@@ -193,11 +196,12 @@
   // What each way of losing the party means for the player, and whether the page can fix it by itself.
   // auto: seconds until the page rejoins on its own (a reload that submits the join form; max 5 tries in a row).
   const LOST = {
-    restart: { title: "Server restarting", help: "Your seat is held for a minute.", auto: 8 },
-    drop: { title: "Connection lost", help: "Your seat is held for a minute.", auto: 6 },
+    restart: { title: "Server restarting", help: "Your seat is held for 90 seconds.", auto: 8 },
+    drop: { title: "Connection lost", help: "Your seat is held for 90 seconds.", auto: 6 },
     full: { title: "The party is full", help: "All four seats are taken. Spectating isn't open yet.", auto: 20 },
     key: { title: "Invite link needed", help: "Ask whoever invited you for the full link.", auto: 0 },
     cap: { title: "Too many tabs", help: "Close your other CS Party tabs, then rejoin.", auto: 0 },
+    ended: { title: "This match is over", help: "Its server has closed. Go back to the lobby to play again.", auto: 0 },
     "": { title: "Lost the party", help: "", auto: 8 },
   };
   let rejoinTimer = 0;
@@ -282,8 +286,9 @@
     4001: "The party key was refused.",
     4003: "No free seats right now.",
     4029: "Too many players are already connected from your network.",
+    4004: "This party's game server has closed.",
   };
-  const REFUSED_KIND = { 4001: "key", 4003: "full", 4029: "cap" };
+  const REFUSED_KIND = { 4001: "key", 4003: "full", 4029: "cap", 4004: "ended" };
   const NativeWS = window.WebSocket;
   class WatchedWS extends NativeWS {
     constructor(...a) {
@@ -1074,6 +1079,7 @@
           else if (t.includes("CSP_THEME_STOP") && music.want) musicStop();
           else if (t.includes("CSP_MUSIC_BOARD")) boardPlay();
           else if (t.includes("CSP_MUSIC_OFF") && board.want) fadeOut(board, 1500);
+          else if (t.includes("CSP_BACK_TO_LOBBY")) backToLobby();
           const m = /Server issued disconnect\. Reason: (.*)/.exec(t) || /(Server connection timed out)/.exec(t);
           if (m) watch.reason = m[1].replace(/\^\d/g, "").trim();
         },
@@ -1107,7 +1113,7 @@
       const server = params.get("server") || "10.27.0.1:27015";
       em.callMain(["-game", "cstrike", "+cl_advertise_engine_in_name", "0", "-windowed", "-ref", "gles3compat", "-noip6",
         ...(params.has("dev") ? ["-dev", "2", "-log"] : []), ...(params.has("nosound") ? ["-nosound"] : []),
-        ...GFX_ARGS, ...TOUCH_ARGS, ...HUD_ARGS, "+exec", "csp_keys.cfg", "+name", name, ...(char >= 0 ? ["+setinfo", "_csp_char", String(char)] : []), "+connect", server, "gs"]);
+        ...GFX_ARGS, ...TOUCH_ARGS, ...HUD_ARGS, "+exec", "csp_keys.cfg", "+name", name, ...(char >= 0 ? ["+setinfo", "_csp_char", String(char)] : []), ...PID_ARGS, "+connect", server, "gs"]);
     } catch (err) {
       console.error(err);
       $("gate").hidden = false; hideOverlay(); musicPlay(false); phase(0);
@@ -1124,13 +1130,24 @@
     }
   } catch {}
 
+  // Lobby servers play one match (csp_one_match); then the plugin prints CSP_BACK_TO_LOBBY and everyone goes back
+  // to the lobby page for the rematch. Without a lobby link there is nowhere to go: stay on the results.
+  let backing = false;
+  function backToLobby() {
+    if (!lobbyUrl || backing) return; backing = true;
+    watch.gaveUp = true;   // the server closing behind us isn't a lost connection
+    overlay("Match over", "Back to the lobby…", { spin: true });
+    setTimeout(() => { location.href = lobbyUrl.href; }, 6000);
+  }
+
   // ------------------------------------------------------------------ lobby hand-off (lobby/, #3989)
   // The lobby page sends everyone here with ?key= (that lobby's party key), ?name=, ?char= and ?lobby= (the
   // lobby page, to go back to). The first arrival joins at once: the server's countdown starts with the first
   // player in, so the party should land together. A reload (Leave) stays on this screen.
   let lobbyUrl = null;
   try { lobbyUrl = new URL(params.get("lobby") || ""); } catch {}
-  if (lobbyUrl && /^https?:$/.test(lobbyUrl.protocol)) {
+  if (lobbyUrl && !/^https?:$/.test(lobbyUrl.protocol)) lobbyUrl = null;
+  if (lobbyUrl) {
     if (params.get("name")) $("name").value = params.get("name").slice(0, 31);
     const back = document.createElement("div"); back.className = "note";
     const a = document.createElement("a"); a.href = lobbyUrl.href; a.textContent = "Back to the lobby"; a.style.color = "inherit";

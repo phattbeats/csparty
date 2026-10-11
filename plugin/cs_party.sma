@@ -168,6 +168,7 @@ new g_candidates[MAX_NODES], g_candCount;
 // seats
 new g_seatPlayer[SEATS], g_seatName[SEATS][32], bool:g_seatBot[SEATS], g_seatSkin[SEATS];
 new g_seatOwner[SEATS][32];
+new g_seatPid[SEATS][24];   // lobby player id (setinfo _csp_pid) of the human who owns the seat; "" = own it by name
 #define NAV_MAX 10
 new g_navMenu[33], g_navPos[33], g_navN[33], g_navOld[33], Float:g_navNext[33];   // cursor menus; g_navMenu = handle + 1
 new g_navSeq[33], g_navSeqCtr, g_navPosSent[33];   // touch mirror: a fresh number per menu shown, so a late tap can't land on the next menu
@@ -235,6 +236,7 @@ new g_diceEnt[3 * REEL_SLOTS + 9], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], 
 
 
 // cvars
+new c_grace, c_onematch, bool:g_matchOver, g_matchBegan, g_mgBegan;
 new c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice;
 new g_targetPurpose, g_shopSide;
 
@@ -291,6 +293,8 @@ public plugin_init()
 	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
 	c_pawnlight = register_cvar("csp_pawnlight", "1");   // board pawns carry a steady entity light (see pawn_lights)
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
+	c_grace = register_cvar("csp_seat_grace", "90");   // s a dropped human's seat waits for them (same _csp_pid, or same name) before a bot takes it over
+	c_onematch = register_cvar("csp_one_match", "0");   // 1 on lobby servers (pool-agent): one match, then everyone goes back to the lobby page
 	c_autojoin = register_cvar("csp_autojoin", "1");   // put new humans on a team without the team/class menus   // 1 = old every-turn buy menu as well as the buy zones
 
 	register_srvcmd("csp_start", "cmd_start");
@@ -805,6 +809,21 @@ public cmd_state()
 	return PLUGIN_HANDLED;
 }
 
+// [CSPEV] <name> <json>: match events for the pool-agent (web/pool-agent.js), which tails this server's console
+// (docker logs) and ships them to the lobby Worker. No names or ids in them, characters only. Frees o.
+csp_event(const name[], JSON:o)
+{
+	new buf[400]; json_serial_to_string(o, buf, charsmax(buf)); json_free(o);
+	server_print("[CSPEV] %s %s", name, buf);
+}
+// humans on the server now, not counting `leaving` (client_disconnected runs while they still count as connected)
+humans_event(leaving)
+{
+	new n = 0; for (new p = 1; p <= MaxClients; p++) if (p != leaving && is_user_connected(p) && !is_user_bot(p)) n++;
+	new JSON:o = json_init_object(); jnum(o, "n", n); csp_event("humans", o);
+}
+public task_back_to_lobby(taskid) { new id = taskid - TASK_RACE - 340; if (is_user_connected(id)) client_cmd(id, "echo CSP_BACK_TO_LOBBY"); }
+
 match_start()
 {
 	if (g_nodeCount == 0) { server_print("[CSP] No board for this map."); return; }
@@ -823,8 +842,8 @@ match_start()
 			if (tm != TEAM_TERRORIST && tm != TEAM_CT) continue;   // spectators watch, they don't get a seat
 			g_seatPlayer[seat] = id; g_seatBot[seat] = bool:is_user_bot(id);
 			get_user_name(id, g_seatName[seat], charsmax(g_seatName[]));
-			if (is_user_bot(id)) g_seatOwner[seat][0] = 0;
-			else { name_key(g_seatName[seat], g_seatOwner[seat], charsmax(g_seatOwner[])); copy(g_seatName[seat], charsmax(g_seatName[]), g_seatOwner[seat]); }
+			if (is_user_bot(id)) { g_seatOwner[seat][0] = 0; g_seatPid[seat][0] = 0; }
+			else { seat_own(seat, id); copy(g_seatName[seat], charsmax(g_seatName[]), g_seatOwner[seat]); }
 			seat++;
 		}
 	}
@@ -867,6 +886,12 @@ match_start()
 	for (new s = 0; s < SEATS; s++) announce("%s plays %s.", g_seatName[s], SKIN_NAME[g_seatSkin[s]]);
 	enter_board();
 	set_task(spd(4.0), "flow_begin_seat", TASK_FLOW);
+	g_matchBegan = get_systime();
+	new JSON:o = json_init_object(), JSON:ch = json_init_array(), humans = 0;
+	for (new s = 0; s < SEATS; s++) { json_array_append_string(ch, SKIN_NAME[g_seatSkin[s]]); if (!g_seatBot[s]) humans++; }
+	json_object_set_string(o, "board", g_boardMap); jnum(o, "humans", humans); jnum(o, "bots", SEATS - humans); jnum(o, "turns", g_maxTurns);
+	json_object_set_value(o, "chars", ch); json_free(ch);
+	csp_event("match_started", o);
 }
 
 apply_match_cvars()
@@ -883,6 +908,7 @@ apply_match_cvars()
 match_abort()
 {
 	if (g_state == ST_IDLE) return;
+	if (g_state != ST_END) { new JSON:o = json_init_object(); jnum(o, "turn", g_turn); jnum(o, "secs", g_matchBegan ? get_systime() - g_matchBegan : -1); csp_event("match_aborted", o); }
 	remove_task(TASK_FLOW); remove_task(TASK_CAM); remove_task(TASK_DICE); for (new k = 1; k <= 3; k++) remove_task(TASK_DICE + k); remove_task(TASK_RACE); g_hopActive = false;
 	remove_task(TASK_RACE + 1); remove_task(TASK_RACE + 2);   // a running race and its changelevel
 	for (new k = 0; k < SEATS; k++) { g_waitKind[k] = W_NONE; g_waitLast[k] = W_NONE; }
@@ -950,6 +976,8 @@ public client_putinserver(id)
 	set_task(0.5, "task_name_fix", id + TASK_RACE + 140);
 	set_task(2.0, "task_hudscale", id);
 	set_task(4.0, "task_music_cue", id + TASK_RACE + 220);
+	humans_event(0);
+	if (g_matchOver) set_task(2.0, "task_back_to_lobby", id + TASK_RACE + 340);
 	if (!get_pcvar_num(c_autojoin)) return;
 	set_task(3.0, "task_autojoin", id + TASK_RACE + 100);
 }
@@ -1054,7 +1082,7 @@ public task_autojoin(taskid)
 // a party server never plays plain CS: the first human opens a frozen lobby that counts down into the match
 lobby_open()
 {
-	if (g_lobby) return;
+	if (g_lobby || g_matchOver) return;   // csp_one_match: the lobby page runs the rematch, not this server
 	g_lobby = true; g_lobbyLeft = get_pcvar_num(c_autostart);
 	set_cvar_num("bot_stop", 1);
 	set_task(1.0, "task_lobby", TASK_LOBBY, _, _, "b");
@@ -1118,6 +1146,7 @@ new bool:g_standin[SEATS], g_standinTries[SEATS], Float:g_dropAt[SEATS][3], Floa
 
 public client_disconnected(id)
 {
+	if (!is_user_bot(id)) humans_event(id);
 	g_xhHidden[id] = false;
 	g_navMenu[id] = 0; g_navThawed[id] = false; g_navMove[id] = 0.0; g_lateSpec[id] = false;
 	for (new s = 0; s < SEATS; s++)
@@ -1177,8 +1206,8 @@ public task_fight_standin(taskid)
 	else dbg("%s is back in the fight (seat %d).", nm, s);
 }
 
-// a human seat is held for 60 seconds before a bot can take it over
-bool:seat_held(s) { return !g_seatBot[s] && g_seatLeftAt[s] > 0.0 && get_gametime() - g_seatLeftAt[s] < 60.0; }
+// a human seat is held for csp_seat_grace seconds (90) before a bot can take it over
+bool:seat_held(s) { return !g_seatBot[s] && g_seatLeftAt[s] > 0.0 && get_gametime() - g_seatLeftAt[s] < get_pcvar_float(c_grace); }
 
 // Who makes this seat's board decisions. g_seatBot says whose seat it is (a held human seat stays false while a
 // stand-in plays it); a stand-in bot, or nobody at all, can't answer a menu, so the bot logic decides. Without
@@ -1261,7 +1290,7 @@ bool:take_bot_seat(id)
 		if (g_state == ST_BOARD && s == g_cur) continue;   // not in the middle of that bot's turn
 		new nm[32]; get_user_name(id, nm, charsmax(nm));
 		announce("%s takes over %s's seat.", nm, g_seatName[s]);
-		player_key(id, g_seatOwner[s], charsmax(g_seatOwner[]));
+		seat_own(s, id);
 		g_lateSpec[id] = false;
 		reclaim_seat(s, id, false);
 		return true;
@@ -1303,18 +1332,31 @@ seat_settle(id)
 	if (is_user_alive(id) && !g_navThawed[id]) rg_reset_maxspeed(id);
 }
 
-// the human who owns this seat by name, if they're back
+// The human who owns this seat, if they're back: by lobby player id when the seat has one (two lobby members can
+// both be called "Player", and a name alone would hand one of them the other's seat), else by name.
 seat_owner_back(s)
 {
-	if (!g_seatOwner[s][0]) return 0;
+	if (!g_seatOwner[s][0] && !g_seatPid[s][0]) return 0;
 	for (new id = 1; id <= MaxClients; id++)
 	{
 		if (!is_user_connected(id) || is_user_bot(id) || seat_of(id) >= 0) continue;
+		if (g_seatPid[s][0]) { new pid[24]; pid_of(id, pid, charsmax(pid)); if (equal(pid, g_seatPid[s])) return id; continue; }
 		new key[32]; player_key(id, key, charsmax(key));
 		if (equal(key, g_seatOwner[s])) return id;
 	}
 	return 0;
 }
+
+// The lobby page's player id for this browser (boot.js: setinfo _csp_pid), letters, digits, - and _ only; "" if none.
+// Keys starting with _ stay on the server: other clients never see them.
+pid_of(id, out[], len)
+{
+	new v[32], n = 0; get_user_info(id, "_csp_pid", v, charsmax(v));
+	for (new i = 0; v[i] && n < len; i++) if (isalnum(v[i]) || v[i] == '-' || v[i] == '_') out[n++] = v[i];
+	out[n] = 0;
+	if (n < 6) out[0] = 0;
+}
+seat_own(s, id) { player_key(id, g_seatOwner[s], charsmax(g_seatOwner[])); pid_of(id, g_seatPid[s], charsmax(g_seatPid[])); }
 
 // Names, as seats see them. The engine renames a second "Alex" to "(1)Alex", and bots standing in
 // for someone are "Alex (bot)"; both are still Alex's seat.
@@ -1366,11 +1408,17 @@ stand_in_name(s, out[], len)
 // The owner of seat s is connected again: give them the seat back, whoever is keeping it.
 reclaim_seat(s, id, bool:back = true)
 {
-	new old = g_seatPlayer[s];
+	new old = g_seatPlayer[s], Float:leftAt = g_seatLeftAt[s];
+	if (g_seatPid[s][0]) player_key(id, g_seatOwner[s], charsmax(g_seatOwner[]));   // back under their id, maybe renamed in the lobby
 	g_seatPlayer[s] = id; g_seatBot[s] = false; g_seatLeftAt[s] = 0.0;
 	copy(g_seatName[s], charsmax(g_seatName[]), g_seatOwner[s]);
 	if (old && old != id && is_user_connected(old) && is_user_bot(old)) set_user_info(old, "name", "Stand-in");
-	if (back) announce("%s is back.", g_seatName[s]);
+	if (back)
+	{
+		announce("%s is back.", g_seatName[s]);
+		new JSON:o = json_init_object(); json_object_set_string(o, "outcome", "reattached"); jnum(o, "seat", s);
+		jnum(o, "gap_s", leftAt > 0.0 ? floatround(get_gametime() - leftAt) : -1); csp_event("reconnect", o);
+	}
 	set_task(0.2, "task_seat_settle", TASK_RACE + 260 + id);
 	new TeamName:tm = get_member(id, m_iTeam);
 	new TeamName:want = seat_team(s);
@@ -1422,7 +1470,12 @@ refill_seats()
 		new back = seat_owner_back(s);
 		if (back) { reclaim_seat(s, back); continue; }
 		if (seat_held(s)) continue;
-		if (!g_seatBot[s]) { g_seatBot[s] = true; dbg("%s didn't come back; seat %d goes to a bot.", g_seatName[s], s); }
+		if (!g_seatBot[s])
+		{
+			g_seatBot[s] = true; dbg("%s didn't come back; seat %d goes to a bot.", g_seatName[s], s);
+			new JSON:o = json_init_object(); json_object_set_string(o, "outcome", "expired"); jnum(o, "seat", s);
+			jnum(o, "gap_s", g_seatLeftAt[s] > 0.0 ? floatround(get_gametime() - g_seatLeftAt[s]) : -1); csp_event("reconnect", o);
+		}
 		for (new id = 1; id <= MaxClients; id++)
 		{
 			if (!is_user_connected(id) || seat_of(id) >= 0) continue;
@@ -1435,7 +1488,7 @@ refill_seats()
 			else get_user_name(id, nm, charsmax(nm));
 			if (!equal(nm, g_seatName[s])) announce("%s takes over %s's seat.", nm, g_seatName[s]);
 			copy(g_seatName[s], charsmax(g_seatName[]), nm);
-			if (!is_user_bot(id)) player_key(id, g_seatOwner[s], charsmax(g_seatOwner[]));   // a human taking over owns it now
+			if (!is_user_bot(id)) seat_own(s, id);   // a human taking over owns it now
 			if (g_state == ST_BOARD && is_user_alive(id)) { rg_remove_all_items(id); rg_set_user_model(id, SKIN_MODEL[g_seatSkin[s]]); place_pawn(s); freeze(id); sync_money(s); sync_score(s); }
 			break;
 		}
@@ -4159,6 +4212,13 @@ begin_minigame()
 	g_state = ST_MG_INTRO;
 	g_raceMap[0] = 0;
 	if (MG_MAP[g_mg][0]) choose_race_map(g_mg);
+	g_mgBegan = get_systime();
+	{
+		new JSON:o = json_init_object(), f[16]; fmt_name(g_mgFmt, f, charsmax(f));
+		json_object_set_string(o, "mg", MG_NAME[g_mg]); json_object_set_string(o, "fmt", f); jnum(o, "turn", g_turn);
+		if (g_raceMap[0]) json_object_set_string(o, "map", g_raceMap);
+		csp_event("minigame_picked", o);
+	}
 	board_music(false);
 	cam_shot(CAM_WIDE);
 	new fn[16]; fmt_name(g_mgFmt, fn, charsmax(fn));
@@ -4922,6 +4982,12 @@ public flow_minigame_result()
 	}
 	announce("Result: %s", g_mgWinnerN ? names : "draw");
 	set_task(spd(4.5), "flow_after_minigame", TASK_FLOW);
+	new JSON:o = json_init_object(), JSON:w = json_init_array(), n = 0;
+	for (new k = 0; k < g_mgWinnerN; k++) json_array_append_string(w, SKIN_NAME[g_seatSkin[g_mgWinners[k]]]);
+	for (new k = 0; k < SEATS; k++) if (g_mgIn[k]) n++;
+	json_object_set_string(o, "mg", MG_NAME[g_mg]); json_object_set_value(o, "winners", w); json_free(w);
+	jnum(o, "participants", n); jnum(o, "turn", g_turn); jnum(o, "secs", g_mgBegan ? get_systime() - g_mgBegan : -1);
+	csp_event("minigame_result", o);
 }
 
 public flow_after_minigame()
@@ -4930,6 +4996,7 @@ public flow_after_minigame()
 	if (g_cont == CONT_NEXT_SEAT) { set_task(spd(2.0), "flow_end_seat", TASK_FLOW); return; }
 	if (g_turn >= g_maxTurns) { set_task(spd(2.0), "flow_finish", TASK_FLOW); return; }
 	g_turn++;
+	{ new JSON:o = json_init_object(); jnum(o, "turn", g_turn); jnum(o, "of", g_maxTurns); csp_event("turn", o); }
 	if (get_pcvar_num(c_ot) > 0 && g_turn == g_maxTurns - get_pcvar_num(c_ot) + 1) announce("Overtime. Spaces pay and cost double for the last %d turns.", get_pcvar_num(c_ot));
 	g_cur = 0;
 	set_task(spd(2.5), "flow_begin_seat", TASK_FLOW);
@@ -4953,6 +5020,13 @@ public flow_finish()
 	g_cur = order[0];
 	g_camSnap = true; cam_shot(CAM_INTRO);   // the winner, front-on (it was left on the last minigame's wide shot)
 	banner("%s wins CS Party!", g_seatName[order[0]]);
+	{
+		new JSON:o = json_init_object(), humans = 0; for (new s = 0; s < SEATS; s++) if (!g_seatBot[s]) humans++;
+		json_object_set_string(o, "winner", SKIN_NAME[g_seatSkin[order[0]]]); json_object_set_bool(o, "winner_bot", g_seatBot[order[0]]);
+		jnum(o, "stars", g_stars[order[0]]); jnum(o, "turns", g_turn); jnum(o, "humans", humans); jnum(o, "awards", g_awardN);
+		jnum(o, "secs", g_matchBegan ? get_systime() - g_matchBegan : -1);
+		csp_event("match_finished", o);
+	}
 	client_cmd(0, "echo CSP_THEME_PLAY");   // the browser page plays the theme over the results
 	for (new i = 0; i < SEATS; i++) { new s = order[i]; announce("%d. %s  %d stars  $%d  (%d minigame wins)", i + 1, g_seatName[s], g_stars[s], g_money[s], g_mgWins[s]); sync_score(s); }
 	set_task(spd(15.0), "flow_reset", TASK_FLOW);
@@ -5009,7 +5083,13 @@ award(cat, bool:cash)
 	announce("Bonus %s - %s (%s): %s", cash ? "$3000" : "star", AW_NAME[cat], AW_WHY[cat], names);
 }
 
-public flow_reset() { match_abort(); }
+public flow_reset()
+{
+	// lobby servers play one match: the page takes everyone back to the lobby for the rematch (boot.js)
+	if (get_pcvar_num(c_onematch)) { g_matchOver = true; client_cmd(0, "echo CSP_BACK_TO_LOBBY"); }
+	match_abort();
+	if (g_matchOver) for (new id = 1; id <= MaxClients; id++) if (is_user_connected(id) && !is_user_bot(id)) center_print(id, "Match over. Back to the lobby...");
+}
 
 // ================================================================ own-map minigames ==
 // The board map hands off to a CS Party map (csp_surf, csp_bhop, csp_climb, csp_maze) for a race and gets the
@@ -5018,7 +5098,8 @@ public flow_reset() { match_abort(); }
 
 new Float:g_zStart[2][3], Float:g_zFinish[2][3], bool:g_zonesOk, bool:g_raceOver;
 
-state_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, len, "%s/cs_party_state.json", d); }
+// in a directory of its own: lobby servers run with a read-only root and a tmpfs mounted here (web/pool-agent.js)
+state_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, len, "%s/csp_state", d); if (!dir_exists(out)) mkdir(out); formatex(out, len, "%s/csp_state/cs_party_state.json", d); }
 delete_state() { new p[128]; state_path(p, charsmax(p)); if (file_exists(p)) delete_file(p); }
 
 // game.cfg also sets bot_join_after_player 1, and with it the bot quota drops to zero whenever no human is on a team
@@ -5032,6 +5113,7 @@ public task_no_rotation()
 public plugin_cfg()
 {
 	get_mapname(g_boardMap, charsmax(g_boardMap));
+	{ new JSON:o = json_init_object(); json_object_set_string(o, "map", g_boardMap); csp_event("server_ready", o); }
 	scan_pools();
 	set_task(2.0, "task_no_rotation");   // after game.cfg, which ReGameDLL runs late and sets mp_timelimit 20
 	set_cvar_num("pausable", 0);   // any client's "pause" (a controller's Back button is bound to it) would freeze the party
@@ -5063,7 +5145,7 @@ save_state(phase)
 	for (new s = 0; s < SEATS; s++)
 	{
 		new JSON:q = json_init_object();
-		json_object_set_string(q, "name", g_seatName[s]); json_object_set_bool(q, "bot", g_seatBot[s]); json_object_set_string(q, "owner", g_seatOwner[s]);
+		json_object_set_string(q, "name", g_seatName[s]); json_object_set_bool(q, "bot", g_seatBot[s]); json_object_set_string(q, "owner", g_seatOwner[s]); json_object_set_string(q, "pid", g_seatPid[s]);
 		jnum(q, "skin", g_seatSkin[s]); jnum(q, "money", g_money[s]); jnum(q, "stars", g_stars[s]); jnum(q, "streak", g_streak[s]);
 		jnum(q, "mgWins", g_mgWins[s]); jnum(q, "reds", g_reds[s]); jnum(q, "maxMoney", g_maxMoney[s]); jnum(q, "pos", g_pos[s]);
 		jnum(q, "lastColor", g_lastColor[s]); jnum(q, "flashed", g_flashed[s]); json_object_set_bool(q, "smoke", g_smoke[s]);
@@ -5092,7 +5174,7 @@ save_state(phase)
 	}
 	new JSON:w = json_init_array(); for (new k = 0; k < g_mgWinnerN; k++) json_array_append_number(w, g_mgWinners[k]);
 	json_object_set_value(o, "winners", w); json_free(w);
-	jnum(o, "mgLast", g_mgLast);
+	jnum(o, "mgLast", g_mgLast); jnum(o, "matchBegan", g_matchBegan); jnum(o, "mgBegan", g_mgBegan);
 	json_object_set_string(o, "raceMap", g_raceMap); json_object_set_string(o, "mapsUsed", g_mapsUsed);
 	new JSON:pl = json_init_array(); for (new m = 0; m < MG_COUNT; m++) json_array_append_number(pl, g_mgPlayed[m]);
 	json_object_set_value(o, "mgPlayed", pl); json_free(pl);
@@ -5122,6 +5204,7 @@ load_state()
 		json_object_get_string(q, "name", g_seatName[s], charsmax(g_seatName[])); g_seatBot[s] = json_object_get_bool(q, "bot");
 		g_seatOwner[s][0] = 0; if (json_object_has_value(q, "owner")) json_object_get_string(q, "owner", g_seatOwner[s], charsmax(g_seatOwner[]));
 		if (g_seatOwner[s][0]) copy(g_seatName[s], charsmax(g_seatName[]), g_seatOwner[s]);
+		g_seatPid[s][0] = 0; if (json_object_has_value(q, "pid")) json_object_get_string(q, "pid", g_seatPid[s], charsmax(g_seatPid[]));
 		g_seatSkin[s] = json_object_get_number(q, "skin"); g_money[s] = json_object_get_number(q, "money"); g_stars[s] = json_object_get_number(q, "stars");
 		g_streak[s] = json_object_get_number(q, "streak"); g_mgWins[s] = json_object_get_number(q, "mgWins"); g_reds[s] = json_object_get_number(q, "reds");
 		g_maxMoney[s] = json_object_get_number(q, "maxMoney"); g_pos[s] = json_object_get_number(q, "pos"); g_lastColor[s] = json_object_get_number(q, "lastColor");
@@ -5158,6 +5241,8 @@ load_state()
 	for (new k = 0; k < g_mgWinnerN; k++) g_mgWinners[k] = json_array_get_number(w, k);
 	json_free(w);
 	g_mgLast = json_object_has_value(o, "mgLast") ? json_object_get_number(o, "mgLast") : -1;
+	g_matchBegan = json_object_has_value(o, "matchBegan") ? json_object_get_number(o, "matchBegan") : 0;
+	g_mgBegan = json_object_has_value(o, "mgBegan") ? json_object_get_number(o, "mgBegan") : 0;
 	g_raceMap[0] = 0; g_mapsUsed[0] = 0;
 	if (json_object_has_value(o, "raceMap")) json_object_get_string(o, "raceMap", g_raceMap, charsmax(g_raceMap));
 	if (json_object_has_value(o, "mapsUsed")) json_object_get_string(o, "mapsUsed", g_mapsUsed, charsmax(g_mapsUsed));
