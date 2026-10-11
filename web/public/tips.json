@@ -70,7 +70,7 @@
   },
   {
    "id": "item-smoke",
-   "text": "Smoke ($400): C4 traps and the Camper can't hurt you this turn."
+   "text": "Smoke ($400): blocks C4, Camper, Negotiator and weapon drops until your next turn."
   },
   {
    "id": "item-c4",
@@ -227,7 +227,7 @@
   },
   {
    "id": "mg-hns",
-   "text": "Hide and Seek: T hides. CT seeks with a knife after 20 seconds in the dark.",
+   "text": "Hide and Seek: T hides. CT seeks with a knife after 15 seconds in the dark.",
    "when": [
     "wait"
    ]

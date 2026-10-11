@@ -14,7 +14,7 @@ Status: v0.5, playable start to finish with bots and humans, from CS 1.6, a desk
 - **Minigames** after everyone moves: space colors decide CT vs T (4-0 FFA, 2-2, 3-1). Real CS rounds on the board map: Plant the Bomb, Pistol Round, Full Buy, Deagle Only, Knife Fight, Scoutzknivez, Nades Only, Hide and Seek. Survive a gear round and keep your gear. Die and lose it. Loot counts.
 - **Characters:** eight, one per CS 1.6 model, each with its own die (Mario Party style). Browser players pick from a grid on the join screen (mouse, touch, arrows or a controller; the pick is remembered). The pick travels as `setinfo _csp_char 0-7`, so CS 1.6 players can set it in the console too. At match start picks are honoured first come, first served in seat order; bots and anyone whose pick was taken get a random one of the rest.
 - **Boards:** de_dust2, de_inferno, de_aztec, de_cbble. The board is the map the server is on; between matches anyone can switch with `say /board`.
-- **Map-change minigames:** Surf Race (`csp_surf`), Bhop Course (`csp_bhop`), Climb (`csp_climb`: step jumps, a ladder wall, narrow beams, checkpoints over a pit) and Maze Run (`csp_maze` plus seven generated variants from 8x8 to 16x16, brick/hedge/metal/rust and two dark ones; walls too tall to jump). Two Towers (`csp_towers`, Murray's community sniper map) is a deathmatch minigame. The server changes map, everyone races start to finish, and the match resumes on the board where it left off (state in `data/cs_party_state.json`). Human seats are held 60 s across the change.
+- **Map-change minigames:** Surf Race (`csp_surf`), Bhop Course (`csp_bhop`), Climb (`csp_climb`: step jumps, a ladder wall, narrow beams, checkpoints over a pit) and Maze Run (`csp_maze` plus seven generated variants from 8x8 to 16x16, brick/hedge/metal/rust and two dark ones; walls too tall to jump). Two Towers (`csp_towers`, Murray's community sniper map) is a deathmatch minigame. The server changes map, everyone races start to finish, and the match resumes on the board where it left off (state in `data/cs_party_state.json`). Human seats are held 60 s on the same map; across a map change the race waits 45 s for a human and starts by 50 s.
 - **Bonus stars** (`csp_awards 1`): two are drawn from six at match start and announced, with live leaders on the HUD: Top Fragger, Max Money, Eco Round, Big Spender, Rusher, Bomb Squad. Hidden end-of-game awards flipped about half of all winners in simulation; announcing two makes them goals to play for instead of a coin flip at the end.
 - CS money HUD shows board money; TAB score shows stars.
 
@@ -105,6 +105,11 @@ Remote: `RCON_PASSWORD=... tools/rcon.py csp_start` (set `rcon_password` on the 
 | `csp_buy_anywhere` | 0 | 1 = Black Market in the turn menu too |
 | `csp_speed` | 1.0 | delay multiplier (0.25 for fast bot tests) |
 | `csp_debug` | 1 | 2 = crate and jump tracing |
+| `csp_voice` | 50 | % chance a character barks a voice line on spaces, events and minigame results |
+| `csp_hud_scale` | 0 | client `hud_scale` pushed to humans (0 = leave alone) |
+| `csp_autobhop` | 1 | Bhop Course: hold jump to hop |
+| `csp_pawnlight` | 1 | board pawns carry a steady entity light |
+| `csp_autostart` | 20 | seconds of frozen lobby after the first human joins, then the match starts itself (0 = wait for `/party`) |
 
 ## Play in a browser
 

@@ -4833,7 +4833,7 @@ public flow_after_minigame()
 	if (g_cont == CONT_NEXT_SEAT) { set_task(spd(2.0), "flow_end_seat", TASK_FLOW); return; }
 	if (g_turn >= g_maxTurns) { set_task(spd(2.0), "flow_finish", TASK_FLOW); return; }
 	g_turn++;
-	if (get_pcvar_num(c_ot) > 0 && g_turn == g_maxTurns - get_pcvar_num(c_ot) + 1) announce("Overtime. Spaces pay and cost double for the last %d turns.", get_pcvar_num(c_ot));
+	if (get_pcvar_num(c_ot) > 0 && g_turn == g_maxTurns - get_pcvar_num(c_ot) + 1) announce("Overtime. Blue and red spaces pay and cost double for the last %d turns.", get_pcvar_num(c_ot));
 	g_cur = 0;
 	set_task(spd(2.5), "flow_begin_seat", TASK_FLOW);
 }

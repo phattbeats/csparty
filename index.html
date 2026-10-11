@@ -468,7 +468,7 @@ class Game {
   }
   async playAll(agent){
     for(this.turn=1;this.turn<=this.P.turns;this.turn++){
-      if(this.P.overtimeTurns>0&&this.turn===this.P.turns-this.P.overtimeTurns+1) this.log(`Overtime. Spaces pay and cost double for the last ${this.P.overtimeTurns} turns.`,'t');
+      if(this.P.overtimeTurns>0&&this.turn===this.P.turns-this.P.overtimeTurns+1) this.log(`Overtime. Blue and red spaces pay and cost double for the last ${this.P.overtimeTurns} turns.`,'t');
       for(const p of this.players) await this.takeTurn(p,agent);
       await this.minigameRound(agent);
       agent.endTurn&&await agent.endTurn(this);
