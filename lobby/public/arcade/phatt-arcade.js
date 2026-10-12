@@ -3,7 +3,7 @@
  * file (and any new logo) to the sibling repos; tools/check_arcade_sync.sh in csparty verifies the copies match.
  *
  * Use:  a script tag, src="/arcade/phatt-arcade.js" data-game="csparty" defer
- * Options: data-mount="#selector" puts the button there (default: first child of <body>),
+ * Options: data-mount="#selector" puts the button first inside that element (default: first child of body),
  *          data-base="/arcade/" overrides where logos load from (default: next to this script).
  * Guard:   PhattArcade.setGuard(() => "You're in a match." | "")  a non-empty string makes a game tile ask
  *          before it navigates away, so the selector never drops a player from a live game by accident.
@@ -161,7 +161,8 @@
     var host = build();
     var sel = script && script.dataset.mount;
     var target = sel && document.querySelector(sel);
-    if (target) target.appendChild(host); else document.body.insertBefore(host, document.body.firstChild);
+    var parent = target || document.body;
+    parent.insertBefore(host, parent.firstChild);
   }
   window.PhattArcade = { games: GAMES, setGuard: function (fn) { guard = fn || function () { return ""; }; } };
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount); else mount();
