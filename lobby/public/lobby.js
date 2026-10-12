@@ -228,3 +228,6 @@
   if (q) { $("code").value = q.toUpperCase(); tryJoin(q, "link"); } else loadPublic();
   loadStatus();
 })();
+
+// PHATT GAMING ARCADE selector: ask before it takes someone out of a party they are sitting in
+if (window.PhattArcade) PhattArcade.setGuard(() => (document.getElementById("lobby") && !document.getElementById("lobby").hidden) ? "You are in a party, and leaving drops your seat." : "");
