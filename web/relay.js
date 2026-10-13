@@ -74,6 +74,8 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
   ".so": "application/wasm", ".zip": "application/zip", ".pk3": "application/zip", ".css": "text/css",
   ".png": "image/png", ".webp": "image/webp", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg", ".webmanifest": "application/manifest+json" };
 
+const HASHED = /\.[0-9a-f]{10}\.(wasm|so|pk3|js)$/;   // names written by hash_assets.js
+
 const stats = { started: Date.now(), peers: 0, totalPeers: 0, up: 0, down: 0, dropped: 0, rejected: 0, downloads: 0, upBytes: 0, downBytes: 0 };
 // Last time anyone was here (a peer, or a game data download). The lobby Worker frees this server for the next
 // party only when it has been empty a while: a first visit spends minutes downloading with no peer open.
@@ -147,12 +149,18 @@ const server = http.createServer((req, res) => {
     // ETag lets the page keep game data in its own cache and check it with one HEAD request
     const etag = `"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"`;
     const headers = { "Content-Type": TYPES[ext] || "application/octet-stream", "Content-Length": st.size, ETag: etag,
-      // everything revalidates by ETag (a 304 is cheap): fixed-name engine files cached for a week could pair
-      // a new xash.js with an old xash.wasm after an engine rebuild
-      // the key-protected game data is Valve's content: never on a shared cache (Cloudflare kept serving a
+      // Content-hashed build files (hash_assets.js: xash.<hash>.wasm) never change under that name: a year, immutable.
+      // Everything else keeps its name across builds and revalidates by ETag (a 304 is cheap): the page, the
+      // manifests and assets.json always, so a new build is seen on the next visit.
+      // The key-protected game data is Valve's content: never on a shared cache (Cloudflare kept serving a
       // week-old copy after updates). Browsers keep it in their own Cache Storage, checked by ETag.
-      "Cache-Control": isProtected ? "private, no-cache" : "no-cache" };
-    if (req.headers["if-none-match"] === etag) { res.writeHead(304, { ETag: etag }).end(); return; }
+      "Cache-Control": isProtected ? "private, no-cache" : HASHED.test(file) ? "public, max-age=31536000, immutable" : "no-cache" };
+    // weak comparison (RFC 9110): Cloudflare turns our ETag into W/"..." when it compresses a response, and the
+    // browser then sends that back. A strict compare never matched and every revisit re-downloaded the wasm.
+    const inm = req.headers["if-none-match"];
+    if (inm && (inm.trim() === "*" || inm.split(",").some((t) => t.trim().replace(/^W\//, "") === etag))) {
+      res.writeHead(304, { ETag: etag, "Cache-Control": headers["Cache-Control"] }).end(); return;
+    }
     res.writeHead(200, headers);
     if (req.method === "HEAD") { res.end(); return; }
     const stream = fs.createReadStream(file);

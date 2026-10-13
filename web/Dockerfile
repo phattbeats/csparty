@@ -6,7 +6,10 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund --silent
 COPY relay.js pool-agent.js ./
+COPY hash_assets.js ./
 COPY public/ ./public/
+# content-hash the engine/code files (relay.js then serves them immutable); gamedata.zip is mounted later
+RUN node hash_assets.js ./public
 ENV PORT=8080 GAME=127.0.0.1:27015 ROOT=/app/public
 EXPOSE 8080
 USER node

@@ -472,3 +472,10 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - Rollback: containers `cs-party-{server,relay,agent}-pha4095old`, `csparty-up.sh.pre-0535-pha4095`, then `./csparty-up.sh all`.
 - Pre-deploy check on the isolated test stack (:27084 / :8184) with a phone and a desktop GPU client: Nades Only intro card
   and results card on the phone, HUD how-to and `WINNER +$1500 (you have $2300)` line on the desktop.
+
+## Caching (PHA-4234)
+- `web/hash_assets.js` runs in the relay Dockerfile and renames `xash.wasm`, `xash.js`, `fflate.js`, `boot.js`, every `*.so` and `*.pk3` to `<name>.<sha256[:10]>.<ext>`. It writes `assets.json` and inlines the same map into `index.html` as `window.__ASSETS`; `boot.js` resolves every engine file through it (`ASSET()`), including the unzip worker's `fflate.js`. Dev trees stay unhashed.
+- The relay sends `public, max-age=31536000, immutable` for hashed names, `no-cache` + ETag for everything else (HTML, manifest, `assets.json`, art, audio), and `private, no-cache` + ETag for `gamedata.zip` and `mappacks/` (key-gated, never on a shared cache). ETag matching is weak-tolerant: Cloudflare rewrites a compressed response's ETag to `W/"..."`, and a strict compare used to re-download every compressed file on every revisit.
+- `gamedata.zip` keeps its name: the page stores it in Cache Storage keyed by ETag (one HEAD per visit also checks the party key) and asks the browser for persistent storage so it is not evicted.
+- No service worker: immutable HTTP caching plus Cache Storage covers repeat visits, and a worker would add an update path to get wrong.
+- After deploy check: `curl -sI https://csparty.example.com/xash.<hash>.wasm` shows the immutable header (Cloudflare's Browser Cache TTL only raises shorter lifetimes, it does not cut a year).

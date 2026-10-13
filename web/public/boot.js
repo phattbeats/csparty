@@ -58,7 +58,9 @@
     "valve/extras.pk3": "extras_engine.pk3",       // Xash3D's own: console fonts, FiraSans for the menus
     "cstrike/extras.pk3": "extras_cs16.pk3",       // cs16-client's menu art and touch layouts (trimmed)
   };
-  const ENGINE_V = "2";   // bump when any of these files changes (2: menu module's own gpGlobals)
+  // hash_assets.js (Docker build) renames these to <name>.<hash>.<ext> and fills window.__ASSETS; the relay serves
+  // a hashed name as immutable. Unhashed (dev, tools/dev/sync) the names stay as they are and revalidate by ETag.
+  const ASSET = (f) => (window.__ASSETS || {})[f] || f;
 
   // ------------------------------------------------------------------ game data (cached in the browser)
   const CACHE = "csp-gamedata-v1";
@@ -97,6 +99,8 @@
       try {
         for (const k of await cache.keys()) await cache.delete(k);
         await cache.put(cacheKey, new Response(new Blob([data]), { headers: { ETag: gotTag, "Content-Type": "application/zip" } }));
+        // 44 MB of Cache Storage is first in line for eviction under disk pressure; ask the browser to keep it
+        navigator.storage?.persist?.().catch(() => {});
       } catch (e) { console.warn("[boot] couldn't save game data", e); }   // quota: fine, next visit downloads again
     }
     return data;
@@ -105,7 +109,7 @@
   // one worker, synchronous unzip: ~6 s for the game data, and the page stays responsive.
   // (fflate's async unzip spawns a worker per file, which locks the page up on 5,000+ files.)
   function unzipInWorker(zip) {
-    const src = `importScripts(${JSON.stringify(new URL("fflate.js", location.href).href)});
+    const src = `importScripts(${JSON.stringify(new URL(ASSET("fflate.js"), location.href).href)});
       onmessage = (e) => { try { const f = fflate.unzipSync(new Uint8Array(e.data));
         postMessage({ files: f }, Object.values(f).map((a) => a.buffer)); } catch (err) { postMessage({ error: String(err) }); } };`;
     const w = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })));
@@ -1103,7 +1107,7 @@
       phase(3); status("Loading engine…");
       const libs = {};
       await Promise.all(Object.entries(LIBS).map(async ([dest, src]) => {
-        const r = await fetch(src + "?v=" + ENGINE_V); if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
+        const r = await fetch(ASSET(src)); if (!r.ok) throw new Error(`${src}: HTTP ${r.status}`);
         libs[dest] = new Uint8Array(await r.arrayBuffer());
       }));
 
@@ -1113,7 +1117,7 @@
         canvas: $("canvas"),
         // every UDP destination the engine talks to becomes a WebSocket to our relay
         websocket: { url: `${proto}://${location.host}/relay${keyQuery}`, subprotocol: "binary" },
-        locateFile: (f) => f,
+        locateFile: (f) => ASSET(f),
         print: (t) => {
           console.log(t);
           chatLine(t);
