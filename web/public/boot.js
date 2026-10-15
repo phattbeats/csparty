@@ -382,7 +382,7 @@
     const quiet = (now - watch.lastRx) / 1000, inState = (now - watch.since) / 1000;
     // In game but nothing from the server: a map change the client never heard about (seen with slow
     // clients: it sits on the old map while the server waits). "retry" reconnects to the same server; the
-    // server holds the seat for 60 s and hands it back by name.
+    // server holds the seat for 90 s (csp_seat_grace) and hands it back by name.
     const stalledInGame = watch.state === 4 && quiet > 15;
     const stalledLoading = watch.state >= 1 && watch.state <= 3 && inState > 45 && quiet > 15;   // slow is fine; silent isn't
     if ((stalledInGame || stalledLoading) && watch.retried < 2 && (now - (watch.retriedAt || 0)) / 1000 > 20) {
@@ -1029,7 +1029,7 @@
   const primer = $("primer");
   const JUMP = { kbd: "<b>Space</b>", pad: "<b>A</b>", touch: "the <b>Jump</b> button" };
   const CARDS = [
-    ["Your turn", () => `On your turn, ${JUMP[padOrTouch()]} picks "Jump at the crate", then again to roll your character's die. The crate floats over your head. That is the whole turn: two presses.`],
+    ["Your turn", () => `On your turn, ${JUMP[padOrTouch()]} picks "Open a case". The reels spin themselves and your character's die lands on a face. That is the whole turn: one press.`],
     ["The spaces", () => `Land on a <b>blue</b> space to earn money, a <b>red</b> one to lose some, a <b>?</b> for a random event. Black Markets sell board items. Duel spaces start a fight.`],
     ["The minigames", () => `After everyone has moved, a minigame decides it: a real Counter-Strike round (bomb, pistols, knives) or a race (surf, bhop, maze). Space colours pick the teams. Survive a gear round and you keep your gear.`],
     ["Stars and money", () => `Your money is your CS cash. Reach the hostages and pay <b>$5,000</b> for a <b>star</b>. The hostages move after every rescue. Most stars wins. ${padOrTouch() === "touch" ? "" : `<b>${lastPadSeen ? "Y" : "Tab"}</b> shows the stars.`}`],

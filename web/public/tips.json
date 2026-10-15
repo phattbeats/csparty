@@ -47,18 +47,18 @@
   },
   {
    "id": "item-use",
-   "text": "Use items from your turn menu, before you jump at the crate.",
+   "text": "Use items from your turn menu, before you open your case.",
    "when": [
     "turn"
    ]
   },
   {
    "id": "item-knife",
-   "text": "Knife Out ($500): two dice crates on your next roll."
+   "text": "Knife Out ($500): two cases on your next roll."
   },
   {
    "id": "item-bhop",
-   "text": "Bhop Script ($1200): three dice crates on your next roll."
+   "text": "Bhop Script ($1200): three cases on your next roll."
   },
   {
    "id": "item-rigged",
@@ -70,7 +70,7 @@
   },
   {
    "id": "item-smoke",
-   "text": "Smoke ($400): C4 traps and the Camper can't hurt you this turn."
+   "text": "Smoke ($400): blocks C4, Camper, Negotiator and weapon drops until your next turn."
   },
   {
    "id": "item-c4",
@@ -266,15 +266,15 @@
    "text": "Elite Crew and GSG-9 can roll a 0 and stand still, or a 7 and fly."
   },
   {
-   "id": "dice-crate",
-   "text": "Jump into the floating crate to stop it. It lands on the face showing.",
+   "id": "dice-case",
+   "text": "Open a case and the reels spin themselves. Your die stops on the face showing.",
    "when": [
     "turn"
    ]
   },
   {
    "id": "ctl-kbd",
-   "text": "Space picks menu items and jumps at the crate. E goes back. Number keys work too.",
+   "text": "Space picks menu items and opens your case. E goes back. Number keys work too.",
    "when": [
     "turn"
    ],
