@@ -502,3 +502,24 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   would have failed); re-tagged before the deploy.
 - Rollback: containers `cs-party-{server,relay,agent}-pha3865old` (stopped), `csparty-up.sh.pre-pha3865`, then
   `./csparty-up.sh all`.
+
+## #4365 board stingers (server 0.5.37-vq, 2026-10-19 ~05:58 UTC)
+- **Less dead air on the board.** Every buy, item use and most board moments now play a short stock CS/HL sound to
+  everyone (`sfx()`; the shared camera means a sound on the pawn can be out of earshot). `csp_sfx 0` mutes them.
+  - Gear buys: the weapon's own bolt/slide/pump (`GEAR_SND`); kevlar/helmet `items/tr_kevlar`, nades `weapons/pinpull`,
+    kit `items/gunpickup2`. Black Market buys and Armory grabs: `items/gunpickup2`; sold for cash: `items/9mmclip2`.
+  - Item use (`ITEM_SND`): Knife Out knife deploy, Bhop jump, Rigged Crate C4 click, Fake Call "Enemy spotted" radio,
+    Smoke pop, C4 plant, Rotate whoosh (knife slash), Intel night-vision on.
+  - `?` spaces: Deagle deploy / knife deploy / cash, flashbang, round bonus ammo pickup, team kill `friend_died`, bhop
+    jump, admin slap whoosh, hostages moved (a random `hostage/hos1-5`), weapon drop.
+  - Camper verdict a beat after the AWP shot (headshot, weapon drop, ricochet, smoke block); C4 fizzling in smoke;
+    duel called (M3 pump); VIP reel result and Negotiator star (bell); Negotiator cash; turn start (`events/tutor_msg`).
+  - Menus, to the player only: cursor move / pick / "Can't buy that" (`common/wpn_moveselect|select|denyselect`).
+    The old buyer-only `gunpickup1` on gear buys is gone (the buy sound now goes to everyone).
+- All of them are precached (~45 more sounds), so a browser client without one downloads it on join. Test server
+  `cs-party-test4365` (port 27046): boots with no precache overflow, 10 min of an all-bot match at `csp_speed 0.25`
+  (35 buys, Fake Call, Rigged Crate, C4, Negotiator, several minigames) with 0 run time errors. Not heard in a browser yet.
+- `deploy0537-pha4365.sh` gates on peers 0, 0 humans, 0 lobbies, live 0.5.36-vq; swaps server + agent (relay untouched).
+  Its agent line prints only `IMAGE=` (the 0536 script's `grep "agent\|^IMAGE="` also printed `LOBBY_SECRET`).
+- Rollback: containers `cs-party-{server,agent}-pha4365old` (stopped), `csparty-up.sh.pre-pha4365`, then
+  `./csparty-up.sh server && ./csparty-up.sh agent`, or keep 0.5.37 and set `csp_sfx 0`.

@@ -45,6 +45,7 @@
 #define TASK_LOBBY  48000
 #define TASK_SEATWATCH 50000
 #define TASK_VOICE  51000
+#define TASK_SFX    54000      // a board stinger held back a beat (sfx with a delay)
 #define TASK_HNSB   52000      // Hide and Seek boundary check (repeating)
 #define TASK_HNSF   52001      // Hide and Seek fence redraw (repeating)
 
@@ -111,6 +112,36 @@ new const VO_LINES[][][] = {
 	{ "radio/bot/whoo.wav", "radio/bot/yesss.wav", "radio/bot/whos_the_man.wav", "radio/bot/we_owned_them.wav", "radio/bot/and_thats_how_its_done.wav", "radio/bot/owned.wav", "radio/bot/yea_baby.wav", "radio/enemydown.wav", "radio/bot/ruined_his_day.wav", "radio/bot/made_him_cry.wav", "radio/ctwin.wav", "radio/terwin.wav" },
 	{ "radio/bot/aww_man.wav", "radio/bot/oh_no_sad.wav", "radio/bot/aw_hell.wav", "radio/bot/noo.wav", "radio/bot/that_was_a_close_one.wav", "radio/bot/oh_man.wav", "radio/bot/thats_not_good.wav", "radio/bot/i_got_nothing.wav", "radio/negative.wav", "radio/bot/uh_oh.wav", "radio/bot/ow.wav", "radio/bot/no.wav" }
 };
+// Board stingers (PHA-4365): buying, items, ? spaces and the rest each make a sound, so the board isn't dead air.
+// Stock CS / HL files, all precached so a browser client missing one fetches it on join. csp_sfx 0 mutes them.
+new const GEAR_SND[GEAR_N][] = { "weapons/slideback1.wav", "weapons/usp_slideback.wav", "weapons/p228_slidepull.wav", "weapons/de_deploy.wav",
+	"weapons/fiveseven_slidepull.wav", "weapons/elite_deploy.wav", "weapons/m3_pump.wav", "weapons/m3_pump.wav", "weapons/clipin1.wav",
+	"weapons/mac10_boltpull.wav", "weapons/mp5_slideback.wav", "weapons/ump45_boltslap.wav", "weapons/p90_boltpull.wav", "weapons/galil_boltpull.wav",
+	"weapons/famas_forearm.wav", "weapons/ak47_boltpull.wav", "weapons/m4a1_deploy.wav", "weapons/sg552_boltpull.wav", "weapons/aug_boltpull.wav",
+	"weapons/scout_bolt.wav", "weapons/awp_deploy.wav", "weapons/m249_chain.wav" };
+new const EQ_SND[EQ_COUNT][] = { "items/tr_kevlar.wav", "items/tr_kevlar.wav", "weapons/pinpull.wav", "weapons/pinpull.wav", "weapons/pinpull.wav", "items/gunpickup2.wav" };
+// on use: Knife Out, Bhop Script, Rigged Crate, Fake Call, Smoke, C4, Rotate, Intel
+new const ITEM_SND[IT_COUNT][] = { "weapons/knife_deploy1.wav", "player/pl_jump1.wav", "weapons/c4_click.wav", "radio/ct_enemys.wav",
+	"weapons/sg_explode.wav", "weapons/c4_plant.wav", "weapons/knife_slash1.wav", "items/nvg_on.wav" };
+#define SFX_GET     "items/gunpickup2.wav"      // a Black Market buy, an Armory grab
+#define SFX_CASH    "items/9mmclip2.wav"        // money changes hands
+#define SFX_BONUS   "items/ammopickup2.wav"
+#define SFX_DROP    "items/weapondrop1.wav"
+#define SFX_SWAP    "weapons/knife_slash1.wav"  // a whoosh: two pawns trade places
+#define SFX_FLASH   "weapons/flashbang-1.wav"
+#define SFX_TK      "events/friend_died.wav"
+#define SFX_HEADSHOT "player/headshot1.wav"
+#define SFX_RIC     "weapons/ric_metal-1.wav"
+#define SFX_BLOCK   "weapons/ric_conc-1.wav"
+#define SFX_FIZZLE  "weapons/c4_disarmed.wav"
+#define SFX_TURN    "events/tutor_msg.wav"
+#define SFX_DUEL    "weapons/m3_pump.wav"
+#define SFX_DING    "buttons/bell1.wav"
+#define SFX_UI_MOVE "common/wpn_moveselect.wav"
+#define SFX_UI_PICK "common/wpn_select.wav"
+#define SFX_UI_DENY "common/wpn_denyselect.wav"
+new const SFX_MISC[][] = { SFX_GET, SFX_CASH, SFX_BONUS, SFX_DROP, SFX_FLASH, SFX_TK, SFX_HEADSHOT, SFX_RIC, SFX_BLOCK, SFX_FIZZLE,
+	SFX_TURN, SFX_DING, SFX_UI_MOVE, SFX_UI_PICK, SFX_UI_DENY, "hostage/hos1.wav", "hostage/hos2.wav", "hostage/hos3.wav", "hostage/hos4.wav", "hostage/hos5.wav" };
 new const SKIN_DICE[SK_COUNT][6] = { {1,2,3,4,5,6}, {0,0,3,5,6,7}, {2,2,3,3,5,6}, {1,1,1,6,6,6},
                                      {3,3,3,4,4,4}, {0,2,2,5,5,7}, {1,3,3,3,5,6}, {2,2,2,2,6,7} };
 
@@ -274,7 +305,7 @@ new g_diceEnt[3 * REEL_SLOTS + 12], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN],
 
 // cvars
 new c_grace, c_onematch, bool:g_matchOver, g_matchBegan, g_mgBegan;
-new c_camlog, c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice;
+new c_camlog, c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice, c_sfx;
 new g_targetPurpose, g_shopSide;
 
 // ------------------------------------------------------------- plugin --
@@ -293,6 +324,10 @@ public plugin_precache()
 	for (new i = 1; i <= 4; i++) { new f[40]; formatex(f, charsmax(f), "player/pl_step%d.wav", i); precache_sound(f); }
 	precache_sound("events/task_complete.wav");
 	for (new k = 0; k < sizeof VO_LINES; k++) for (new i = 0; i < sizeof VO_LINES[]; i++) precache_sound(VO_LINES[k][i]);
+	for (new i = 0; i < GEAR_N; i++) precache_sound(GEAR_SND[i]);
+	for (new i = 0; i < EQ_COUNT; i++) precache_sound(EQ_SND[i]);
+	for (new i = 0; i < IT_COUNT; i++) precache_sound(ITEM_SND[i]);
+	for (new i = 0; i < sizeof SFX_MISC; i++) precache_sound(SFX_MISC[i]);
 	g_beamSpr = precache_model("sprites/laserbeam.spr");
 	precache_model("sprites/iplayer.spr"); precache_model("sprites/ihostage.spr");   // map overlay markers
 	precache_model("sprites/csp_space.spr"); precache_model("sprites/csp_face.spr");   // tools/build_mapicons.py: a frame per space type / character
@@ -324,6 +359,7 @@ public plugin_init()
 	c_debug   = register_cvar("csp_debug", "1");
 	c_buyany  = register_cvar("csp_buy_anywhere", "0");
 	c_voice   = register_cvar("csp_voice", "50");     // % chance a character barks a voice line on spaces, events and minigame results
+	c_sfx     = register_cvar("csp_sfx", "1");        // board stingers: buys, items, ? spaces, menu clicks (0 off)
 	register_cvar("csp_rings", "1");
 	c_hudscale = register_cvar("csp_hud_scale", "0");   // client hud_scale pushed to humans (0 = leave alone; 2 turned text into white boxes in the browser)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
@@ -2804,6 +2840,7 @@ public flow_turn_cut()
 	cam_shot(CAM_INTRO);
 	fade(0, 0.4);
 	banner("%s's turn", g_seatName[s]);
+	sfx(SFX_TURN);
 	// short: centred, a longer line runs into the score table on the right
 	subline("$%d  |  hostages %d away", g_money[s], g_dist[g_pos[s]][g_hostage]);
 	set_task(spd(1.8), "flow_turn_ready", TASK_FLOW);
@@ -3342,7 +3379,7 @@ land(s)
 	{
 		g_traps[n] = -1; refresh_traps();
 		if (g_gKit[s]) { g_gKit[s] = false; new g = gain(s, 500); announce("%s defuses %s's C4. +$%d", g_seatName[s], g_seatName[owner], g); client_cmd(0, "play ^"radio/bombdef.wav^""); voice(s, VO_GOOD); }
-		else if (g_smoke[s]) announce("%s walks through %s's C4 in smoke. It fizzles.", g_seatName[s], g_seatName[owner]);
+		else if (g_smoke[s]) { announce("%s walks through %s's C4 in smoke. It fizzles.", g_seatName[s], g_seatName[owner]); sfx(SFX_FIZZLE); }
 		else { new t = lose(s, get_pcvar_num(c_trap)); gain(owner, t); g_c4Take[owner] += t; announce("C4! %s pays %s $%d.", g_seatName[s], g_seatName[owner], t); explosion_fx(n); voice(s, VO_BAD); }
 	}
 	switch (g_nodeType[n])
@@ -3401,6 +3438,20 @@ public task_voice(data[])
 	else client_cmd(0, "play ^"%s^"", VO_LINES[kind][pick]);
 }
 
+// ------------------------------------------------------------- stingers --
+// A board stinger to everyone (the camera is shared, so a sound on the pawn can be out of earshot).
+// delay: hold it back a beat, e.g. the camper's verdict after the AWP shot.
+sfx(const snd[], Float:delay = 0.0)
+{
+	if (!get_pcvar_num(c_sfx)) return;
+	if (delay <= 0.0) client_cmd(0, "play ^"%s^"", snd);
+	else set_task(spd(delay), "task_sfx", TASK_SFX, snd, strlen(snd) + 1);
+}
+public task_sfx(const snd[]) { client_cmd(0, "play ^"%s^"", snd); }
+
+// menu clicks, to the one player in the menu
+ui_sfx(id, const snd[]) { if (get_pcvar_num(c_sfx) && is_user_connected(id) && !is_user_bot(id)) client_cmd(id, "play ^"%s^"", snd); }
+
 // one winner and one loser speak up after a minigame, not the whole lobby
 mg_voices()
 {
@@ -3430,26 +3481,27 @@ bool:do_event(s)
 	{
 		case 0:
 		{
-			if (g_gSec[s] < 3) { g_gSec[s] = 3; subline("? Found a dropped Desert Eagle. It's yours for the next round."); }
-			else if (give_item(s, IT_KNIFE)) subline("? Found a Knife Out lying around.");
-			else { new g = gain(s, 650); subline("? Found a Deagle, sold it. +$%d", g); }
+			if (g_gSec[s] < 3) { g_gSec[s] = 3; subline("? Found a dropped Desert Eagle. It's yours for the next round."); sfx(GEAR_SND[3]); }
+			else if (give_item(s, IT_KNIFE)) { subline("? Found a Knife Out lying around."); sfx(ITEM_SND[IT_KNIFE]); }
+			else { new g = gain(s, 650); subline("? Found a Deagle, sold it. +$%d", g); sfx(SFX_CASH); }
 		}
-		case 1: { g_flashed[s] += 3; subline("? Flashed by your own team. Next roll -3."); }
-		case 2: { for (new o = 0; o < SEATS; o++) gain(o, 300); subline("? Round bonus. Everyone +$300."); }
-		case 3: { new t = lose(s, 1000); subline("? Team kill. -$%d", t); }
-		case 4: { subline("? Bhop chain. Three more spaces."); g_stepsLeft = 3; g_moveDepth++; set_task(spd(1.2), "flow_step", TASK_FLOW); return true; }
+		case 1: { g_flashed[s] += 3; subline("? Flashed by your own team. Next roll -3."); sfx(SFX_FLASH); }
+		case 2: { for (new o = 0; o < SEATS; o++) gain(o, 300); subline("? Round bonus. Everyone +$300."); sfx(SFX_BONUS); }
+		case 3: { new t = lose(s, 1000); subline("? Team kill. -$%d", t); sfx(SFX_TK); }
+		case 4: { subline("? Bhop chain. Three more spaces."); sfx(ITEM_SND[IT_BHOP]); g_stepsLeft = 3; g_moveDepth++; set_task(spd(1.2), "flow_step", TASK_FLOW); return true; }
 		case 5:
 		{
 			new o; do o = random(SEATS); while (o == s);
 			new t = g_pos[s]; g_pos[s] = g_pos[o]; g_pos[o] = t; place_pawn(s); place_pawn(o);
 			subline("? Admin slap. %s and %s swap places.", g_seatName[s], g_seatName[o]);
+			sfx(SFX_SWAP);
 		}
-		case 6: { move_hostage(); subline("? The hostages moved to %s.", g_nodeArea[g_hostage]); }
+		case 6: { move_hostage(); subline("? The hostages moved to %s.", g_nodeArea[g_hostage]); sfx(SFX_MISC[sizeof SFX_MISC - 1 - random(5)]); }   // one of hostage/hos1-5
 		case 8:
 		{
 			new rich = -1;
 			for (new o = 0; o < SEATS; o++) if (o != s && !g_smoke[o] && (rich < 0 || g_money[o] > g_money[rich])) rich = o;
-			if (rich >= 0) { new t = lose(rich, 600); gain(s, t); subline("? %s drops %s a weapon. $%d changes hands.", g_seatName[rich], g_seatName[s], t); }
+			if (rich >= 0) { new t = lose(rich, 600); gain(s, t); subline("? %s drops %s a weapon. $%d changes hands.", g_seatName[rich], g_seatName[s], t); sfx(SFX_DROP); }
 		}
 	}
 	return false;
@@ -3481,7 +3533,7 @@ bool:buy_item(s, it)
 	g_money[s] -= ITEM_PRICE[it]; g_spent[s] += ITEM_PRICE[it]; sync_money(s);
 	g_items[s][g_itemN[s]++] = it;
 	announce("%s buys %s.", g_seatName[s], ITEM_NAME[it]);
-	emit_sound(g_seatPlayer[s] ? g_seatPlayer[s] : 0, CHAN_ITEM, "items/gunpickup1.wav", 0.8, ATTN_NORM, 0, PITCH_NORM);
+	sfx(SFX_GET);
 	return true;
 }
 
@@ -3508,6 +3560,7 @@ bool:use_item(s, it, target)
 	if ((it == IT_FAKE || it == IT_ROTATE) && (target < 0 || target == s)) return false;
 	if (it == IT_RIGGED && (target < 1 || target > 9)) return false;
 	take_item(s, it);
+	sfx(ITEM_SND[it]);
 	switch (it)
 	{
 		case IT_KNIFE:  { g_extraCrates[s] = 1; announce("%s pulls the knife. Two cases this roll.", g_seatName[s]); }
@@ -3550,6 +3603,7 @@ bool:buy_gear(s, g)
 	else { if (g_gPrim[s] == g) return false; g_gPrim[s] = g; }
 	g_money[s] -= GEAR_PRICE[g]; g_spent[s] += GEAR_PRICE[g]; sync_money(s);
 	announce("%s buys %s.", g_seatName[s], GEAR_NAME[g]);
+	sfx(GEAR_SND[g]);
 	return true;
 }
 
@@ -3584,6 +3638,7 @@ bool:buy_eq(s, e)
 		case EQ_KIT:    g_gKit[s] = true;
 	}
 	announce("%s buys %s.", g_seatName[s], EQ_NAME[e]);
+	sfx(EQ_SND[e]);
 	return true;
 }
 
@@ -3766,6 +3821,7 @@ nav_pick(id, i, bool:tap = false)
 {
 	if (!tap && get_gametime() < g_navNext[id]) return;   // a tap on the phone's panel is already tied to one menu by its seq
 	g_navNext[id] = get_gametime() + 0.5;
+	ui_sfx(id, SFX_UI_PICK);
 	// AMXX keeps newmenu selection to itself: nothing server-side can press a menu key, and a stuffed
 	// "menuselect" round trip proved unreliable on slow clients. So: forget the menu (the handler sees an
 	// exit it ignores), clear the client's display, and call the handler with the item, exactly as a digit would.
@@ -3790,7 +3846,7 @@ public cmd_nav(id)
 	else if (equal(act, "up") || equal(act, "down"))
 	{
 		g_navPos[id] = (g_navPos[id] + (act[0] == 'u' ? g_navN[id] - 1 : 1)) % g_navN[id];
-		nav_draw(id);
+		nav_draw(id); ui_sfx(id, SFX_UI_MOVE);
 	}
 	return PLUGIN_HANDLED;
 }
@@ -3822,8 +3878,8 @@ public hc_nav_prethink(const id)
 		return HC_CONTINUE;
 	}
 	if (now < g_navNext[id]) return HC_CONTINUE;      // analog sticks chatter: one step per 0.15 s
-	if (pressed & IN_FORWARD) { g_navPos[id] = (g_navPos[id] + g_navN[id] - 1) % g_navN[id]; g_navNext[id] = now + 0.15; nav_draw(id); }
-	else if (pressed & IN_BACK) { g_navPos[id] = (g_navPos[id] + 1) % g_navN[id]; g_navNext[id] = now + 0.15; nav_draw(id); }
+	if (pressed & IN_FORWARD) { g_navPos[id] = (g_navPos[id] + g_navN[id] - 1) % g_navN[id]; g_navNext[id] = now + 0.15; nav_draw(id); ui_sfx(id, SFX_UI_MOVE); }
+	else if (pressed & IN_BACK) { g_navPos[id] = (g_navPos[id] + 1) % g_navN[id]; g_navNext[id] = now + 0.15; nav_draw(id); ui_sfx(id, SFX_UI_MOVE); }
 	return HC_CONTINUE;
 }
 
@@ -3875,7 +3931,7 @@ public mh_turn(id, m, item)
 		case IT_ROTATE: if (can_use(s, IT_ROTATE)) { show_target_menu(s, 4); return PLUGIN_HANDLED; }
 		case IT_RIGGED: if (can_use(s, IT_RIGGED)) { show_rigged_menu(s); return PLUGIN_HANDLED; }
 	}
-	if (!use_item(s, v, -1)) center_print(id,"Can't use that now.");
+	if (!use_item(s, v, -1)) { center_print(id,"Can't use that now."); ui_sfx(id, SFX_UI_DENY); }
 	if (v == IT_INTEL) { set_task(spd(2.4), "flow_human_buy", TASK_FLOW); return PLUGIN_HANDLED; }
 	show_turn_menu(s);
 	return PLUGIN_HANDLED;
@@ -3945,8 +4001,9 @@ public mh_buy_cat(id, m, item)
 	menu_destroy(m);
 	new s = seat_of(id);
 	if (s != g_cur || g_state != ST_BOARD) return PLUGIN_HANDLED;
-	if (info[0] == 'g') { if (!buy_gear(s, str_to_num(info[1]))) center_print(id,"Can't buy that."); else client_cmd(id, "play ^"items/gunpickup1.wav^""); }
-	else if (info[0] == 'e') { if (!buy_eq(s, str_to_num(info[1]))) center_print(id,"Can't buy that."); else client_cmd(id, "play ^"items/gunpickup1.wav^""); }
+	// a buy plays its own sound to everyone (buy_gear / buy_eq)
+	if (info[0] == 'g') { if (!buy_gear(s, str_to_num(info[1]))) { center_print(id,"Can't buy that."); ui_sfx(id, SFX_UI_DENY); } }
+	else if (info[0] == 'e') { if (!buy_eq(s, str_to_num(info[1]))) { center_print(id,"Can't buy that."); ui_sfx(id, SFX_UI_DENY); } }
 	show_buy_menu(s);
 	return PLUGIN_HANDLED;
 }
@@ -4013,7 +4070,7 @@ public mh_shop(id, m, item)
 	new s = seat_of(id);
 	if (s != g_cur || g_state != ST_BOARD) return PLUGIN_HANDLED;
 	if (v == 99) { if (g_shopFromTurn) show_turn_menu(s); else set_task(spd(0.3), "flow_step", TASK_FLOW); return PLUGIN_HANDLED; }
-	if (!buy_item(s, v)) center_print(id,"Can't buy that.");
+	if (!buy_item(s, v)) { center_print(id,"Can't buy that."); ui_sfx(id, SFX_UI_DENY); }
 	show_shop_menu(s, g_shopFromTurn);
 	return PLUGIN_HANDLED;
 }
@@ -4165,6 +4222,7 @@ begin_duel(s, o)
 	g_mgFmt = FMT_DUEL; g_mg = pick_minigame(FMT_DUEL);
 	g_cont = CONT_NEXT_SEAT;
 	announce("Duel! %s calls out %s for $%d.", g_seatName[s], g_seatName[o], g_mgWager);
+	sfx(SFX_DUEL);
 	set_task(spd(1.5), "task_begin_minigame", TASK_FLOW);
 }
 public task_begin_minigame() { begin_minigame(); }
@@ -4174,22 +4232,23 @@ public task_begin_minigame() { begin_minigame(); }
 camper(s)
 {
 	emit_sound(g_seatPlayer[s] ? g_seatPlayer[s] : 0, CHAN_WEAPON, "weapons/awp1.wav", 1.0, ATTN_NORM, 0, PITCH_NORM);
-	if (g_smoke[s]) { subline("Camper! %s's smoke blocks the shot.", g_seatName[s]); return; }
+	// the verdict lands a beat after the shot
+	if (g_smoke[s]) { subline("Camper! %s's smoke blocks the shot.", g_seatName[s]); sfx(SFX_BLOCK, 0.35); return; }
 	new r = random(100);
-	if (r < 12 && g_stars[s] > 0) { g_stars[s]--; sync_score(s); move_hostage(); banner("Headshot. %s loses a star!", g_seatName[s]); return; }
-	if (r < 37 && g_gPrim[s] >= 0) { banner("Camper! %s drops their %s.", g_seatName[s], GEAR_NAME[g_gPrim[s]]); g_gPrim[s] = -1; return; }
-	if (r < 37 && g_itemN[s] > 0) { g_itemN[s] = 0; banner("Camper shoots %s's items to pieces.", g_seatName[s]); return; }
+	if (r < 12 && g_stars[s] > 0) { g_stars[s]--; sync_score(s); move_hostage(); banner("Headshot. %s loses a star!", g_seatName[s]); sfx(SFX_HEADSHOT, 0.35); return; }
+	if (r < 37 && g_gPrim[s] >= 0) { banner("Camper! %s drops their %s.", g_seatName[s], GEAR_NAME[g_gPrim[s]]); g_gPrim[s] = -1; sfx(SFX_DROP, 0.35); return; }
+	if (r < 37 && g_itemN[s] > 0) { g_itemN[s] = 0; banner("Camper shoots %s's items to pieces.", g_seatName[s]); sfx(SFX_RIC, 0.35); return; }
 	new t = lose(s, max(500, (g_money[s] * 35 / 100) / 50 * 50));
 	banner("Camper! %s drops $%d.", g_seatName[s], t);
+	sfx(SFX_DROP, 0.35);
 }
 
 // Armory: free item off the rack
 armory(s)
 {
 	new it = ARMORY_DROP[random(sizeof ARMORY_DROP)];
-	if (give_item(s, it)) subline("Armory: %s grabs %s.", g_seatName[s], ITEM_NAME[it]);
-	else { new g = gain(s, ITEM_PRICE[it] / 2); subline("Armory: kit's full, %s sells a %s for $%d.", g_seatName[s], ITEM_NAME[it], g); }
-	emit_sound(g_seatPlayer[s] ? g_seatPlayer[s] : 0, CHAN_ITEM, "items/gunpickup1.wav", 0.8, ATTN_NORM, 0, PITCH_NORM);
+	if (give_item(s, it)) { subline("Armory: %s grabs %s.", g_seatName[s], ITEM_NAME[it]); sfx(SFX_GET); }
+	else { new g = gain(s, ITEM_PRICE[it] / 2); subline("Armory: kit's full, %s sells a %s for $%d.", g_seatName[s], ITEM_NAME[it], g); sfx(SFX_CASH); }
 }
 
 // VIP Escort: slot reel picks who pays whom and what
@@ -4233,6 +4292,7 @@ public task_vip_reel()
 	new res[96]; formatex(res, charsmax(res), "%s %s %s!", g_seatName[a], VIP_ACT[g_vipAct], g_seatName[b]);
 	hud_all(CH_SUB, 255, 211, 107, false, spd(3.0), 0.0, 0.4, res);
 	announce("VIP Escort: %s %s %s.", g_seatName[a], VIP_ACT[g_vipAct], g_seatName[b]);
+	sfx(SFX_DING);
 	set_task(spd(2.6), "flow_end_seat", TASK_FLOW);
 }
 
@@ -4277,12 +4337,13 @@ ai_negotiate(s)
 
 negotiate(s, t, bool:star)
 {
-	if (g_smoke[t]) { lose(s, star ? 5000 : 1500); announce("%s pays the Negotiator, but %s is in smoke. Money wasted.", g_seatName[s], g_seatName[t]); return; }
+	if (g_smoke[t]) { lose(s, star ? 5000 : 1500); announce("%s pays the Negotiator, but %s is in smoke. Money wasted.", g_seatName[s], g_seatName[t]); sfx(ITEM_SND[IT_SMOKE]); return; }
 	if (star)
 	{
 		if (g_money[s] < 5000 || g_stars[t] == 0) return;
 		lose(s, 5000); g_stars[t]--; g_stars[s]++; sync_score(s); sync_score(t);
 		banner("%s takes a star from %s!", g_seatName[s], g_seatName[t]);
+		sfx(SFX_DING);
 	}
 	else
 	{
@@ -4290,6 +4351,7 @@ negotiate(s, t, bool:star)
 		lose(s, 1500);
 		new amt = lose(t, random_num(10, 30) * 100); gain(s, amt);
 		banner("%s takes $%d from %s.", g_seatName[s], amt, g_seatName[t]);
+		sfx(SFX_CASH);
 	}
 }
 
