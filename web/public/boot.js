@@ -228,7 +228,7 @@
       tick(); rejoinTimer = setInterval(tick, 1000);
     }
   };
-  // Minigame index (the plugin's MG_*) -> intro card: name, goal, controls per device, scoring. One template for all 13.
+  // Minigame index (the plugin's MG_*) -> intro card: name, goal, controls per device, scoring. One template for all 21.
   // Shown over the loading screen for map-change minigames, and as the in-game card on phones (CSP_CARD_<mg>_<fmt>).
   const SC_SIDE = "Winning side takes the win bonus; the rest get a loss bonus.", SC_ONE = "Winner takes the win bonus; the rest get a loss bonus.", SC_RACE = "First across takes the win bonus; the rest get a loss bonus.";
   const MG_CARDS = [
@@ -245,6 +245,14 @@
     { n: "Climb", g: "First to the top.", t: "Ladders: look up and push forward. Ledges: JUMP, then hold DUCK.", k: "Ladders: look up and hold W. Ledges: Space, then hold Ctrl.", p: "Ladders: look up and push forward. Ledges: A, then hold LB.", s: SC_RACE + " A fall = last checkpoint." },
     { n: "Maze Run", g: "First one out of the maze. The walls are too tall to jump.", t: "Move with the left stick, look with the right side. Turn back from dead ends early.", k: "Move and look. Turn back from dead ends early.", p: "Move and look. Turn back from dead ends early.", s: SC_RACE },
     { n: "Two Towers", g: "Last side standing. AWPs and Deagles.", t: "FIRE shoots. Tap the scope button to zoom.", k: "Click shoots, right click scopes.", p: "RT shoots, LT scopes.", s: SC_SIDE },
+    { n: "Deathmatch", g: "Most kills in 75 seconds. You respawn with a new gun every life.", t: "FIRE shoots. Keep moving: spawns are random.", k: "Click shoots. Keep moving: spawns are random.", p: "RT shoots. Keep moving: spawns are random.", s: "Most kills (side total in teams) takes the win bonus; the rest get a loss bonus." },
+    { n: "Rifle Round", g: "Last side standing. AKs, M4s and armor.", t: "FIRE shoots. Tap FIRE at range.", k: "Click shoots. Tap at range, crouch to steady.", p: "RT shoots. Tap at range.", s: SC_SIDE },
+    { n: "Shotgun Showdown", g: "Last side standing. Shotguns and armor.", t: "FIRE shoots. Get close.", k: "Click shoots. Get close, every pellet counts.", p: "RT shoots. Get close.", s: SC_SIDE },
+    { n: "SMG Spray", g: "Last side standing. P90s, MP5s and armor.", t: "FIRE shoots. Spray and strafe.", k: "Click shoots. Spray and strafe.", p: "RT shoots. Spray and strafe.", s: SC_SIDE },
+    { n: "Gun Game", g: "Every kill gives you the next gun. A kill with the last one, the knife, wins.", t: "FIRE shoots. You respawn after a death.", k: "Click shoots. You respawn after a death.", p: "RT shoots. You respawn after a death.", s: "A knife kill, or the furthest along at 75 s, takes the win bonus; the rest get a loss bonus." },
+    { n: "AWP Only", g: "Last side standing. AWPs only.", t: "FIRE shoots. Tap the scope button to zoom.", k: "Click shoots, right click scopes.", p: "RT shoots, LT scopes.", s: SC_SIDE },
+    { n: "Dual Elites", g: "Last side standing. Dual Elites only.", t: "FIRE shoots. Tap fast.", k: "Click shoots. Tap fast, 30 rounds a mag.", p: "RT shoots. Tap fast.", s: SC_SIDE },
+    { n: "Machine Guns", g: "Last side standing. M249s and armor.", t: "FIRE shoots. Crouch to steady the spray.", k: "Click shoots. Ctrl to crouch and steady the spray.", p: "RT shoots. Crouch to steady the spray.", s: SC_SIDE },
   ];
   const FMTS = { 1: "Free-for-all", 2: "2 v 2", 4: "1 v 3", 8: "Duel" };
   const cardDevice = () => lastPadSeen ? "p" : TOUCH ? "t" : "k";

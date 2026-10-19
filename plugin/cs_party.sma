@@ -114,8 +114,8 @@ new const VO_LINES[][][] = {
 new const SKIN_DICE[SK_COUNT][6] = { {1,2,3,4,5,6}, {0,0,3,5,6,7}, {2,2,3,3,5,6}, {1,1,1,6,6,6},
                                      {3,3,3,4,4,4}, {0,2,2,5,5,7}, {1,3,3,3,5,6}, {2,2,2,2,6,7} };
 
-enum { MG_PLANT = 0, MG_PISTOL, MG_FULLBUY, MG_DEAGLE, MG_KNIFE, MG_SCOUTZ, MG_NADES, MG_HNS, MG_SURF, MG_BHOP, MG_CLIMB, MG_MAZE, MG_TOWERS, MG_COUNT };
-new const MG_NAME[MG_COUNT][] = { "Plant the Bomb", "Pistol Round", "Full Buy", "Deagle Only", "Knife Fight", "Scoutzknivez", "Nades Only", "Hide and Seek", "Surf Race", "Bhop Course", "Climb", "Maze Run", "Two Towers" };
+enum { MG_PLANT = 0, MG_PISTOL, MG_FULLBUY, MG_DEAGLE, MG_KNIFE, MG_SCOUTZ, MG_NADES, MG_HNS, MG_SURF, MG_BHOP, MG_CLIMB, MG_MAZE, MG_TOWERS, MG_DM, MG_RIFLES, MG_SHOTGUNS, MG_SMG, MG_GUNGAME, MG_AWP, MG_ELITES, MG_M249, MG_COUNT };
+new const MG_NAME[MG_COUNT][] = { "Plant the Bomb", "Pistol Round", "Full Buy", "Deagle Only", "Knife Fight", "Scoutzknivez", "Nades Only", "Hide and Seek", "Surf Race", "Bhop Course", "Climb", "Maze Run", "Two Towers", "Deathmatch", "Rifle Round", "Shotgun Showdown", "SMG Spray", "Gun Game", "AWP Only", "Dual Elites", "Machine Guns" };
 new const MG_DESC[MG_COUNT][] = {
 	"T side plants. CT side stops them. Bring your gear.",
 	"Your pistol, armor and nades only. Standard round rules.",
@@ -129,7 +129,15 @@ new const MG_DESC[MG_COUNT][] = {
 	"First across the bhop course. Lava sends you back to the last checkpoint.",
 	"First to the top. Jumps, a ladder, beams. Fall in the pit and you go back to the last checkpoint.",
 	"First out of the maze wins. The walls are too tall to jump.",
-	"AWPs and Deagles on Two Towers. Last side standing." };
+	"AWPs and Deagles on Two Towers. Last side standing.",
+	"75 seconds, instant respawns, a new gun every life. Most kills wins.",
+	"AKs, M4s and armor. Last side standing.",
+	"Pump and auto shotguns, armor. Last side standing.",
+	"P90s, MP5s and armor. Last side standing.",
+	"Every kill moves you to the next gun. First to a knife kill wins; else the furthest along at 75 s.",
+	"AWPs only. Last side standing.",
+	"Dual Elites only. Last side standing.",
+	"M249s and armor. Last side standing." };
 // How-to card for minigames that need a CS movement trick. Shown while everyone loads in, through the
 // countdown and the first seconds of the race. Short on purpose; "" = no card.
 new const MG_TUT[MG_COUNT][] = {
@@ -145,25 +153,46 @@ new const MG_TUT[MG_COUNT][] = {
 	"BHOP COURSE^nGoal: first across the course.^nControls: hold JUMP, steer with A / D and the mouse. No W in the air.^nScoring: first finisher takes the win bonus. Lava = last checkpoint.",
 	"CLIMB^nGoal: first to the top.^nControls: ladders: look up and hold W. Ledges: JUMP then hold DUCK.^nScoring: first to the top takes the win bonus. A fall = last checkpoint.",
 	"MAZE RUN^nGoal: first one out of the maze.^nControls: move and look. The walls are too tall to jump.^nScoring: first out takes the win bonus. Dead ends are common.",
-	"TWO TOWERS^nGoal: last side standing, AWPs and Deagles.^nControls: fire to shoot, scope with the second fire.^nScoring: winning side takes the win bonus, losers a loss bonus." };
+	"TWO TOWERS^nGoal: last side standing, AWPs and Deagles.^nControls: fire to shoot, scope with the second fire.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"DEATHMATCH^nGoal: most kills in 75 seconds. You respawn with a new gun.^nControls: fire to shoot. Keep moving, spawns are random.^nScoring: most kills (side total in teams) takes the win bonus.",
+	"RIFLE ROUND^nGoal: last side standing with AKs and M4s.^nControls: fire to shoot. Tap fire at range, crouch to steady.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"SHOTGUN SHOWDOWN^nGoal: last side standing with shotguns.^nControls: fire to shoot. Get close, every pellet counts.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"SMG SPRAY^nGoal: last side standing with P90s and MP5s.^nControls: fire to shoot. Spray and strafe.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"GUN GAME^nGoal: each kill gives you the next gun. A kill with the last one, the knife, wins.^nControls: fire to shoot. You respawn after a death.^nScoring: knife kill, or furthest along at 75 s, takes the win bonus.",
+	"AWP ONLY^nGoal: last side standing with AWPs.^nControls: fire to shoot, scope with the second fire.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"DUAL ELITES^nGoal: last side standing with Dual Elites.^nControls: fire to shoot. Tap fast, 30 rounds a mag.^nScoring: winning side takes the win bonus, losers a loss bonus.",
+	"MACHINE GUNS^nGoal: last side standing with M249s.^nControls: fire to shoot. Crouch to steady the spray.^nScoring: winning side takes the win bonus, losers a loss bonus." };
 // one line for the countdown, under the banner
-new const MG_TIP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "Hold A or D toward the ramp. Never press W.", "Hold JUMP. Steer in the air with A / D.", "Ladders: look up, hold W. Ledges: JUMP then DUCK.", "Find the way out. The walls are too tall to jump.", "" };
-new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL };
+new const MG_TIP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "Hold A or D toward the ramp. Never press W.", "Hold JUMP. Steer in the air with A / D.", "Ladders: look up, hold W. Ledges: JUMP then DUCK.", "Find the way out. The walls are too tall to jump.", "", "Most kills wins. You respawn with a new gun.", "", "", "", "Each kill = next gun. Knife kill wins.", "", "", "" };
+#define FMT_ALL (FMT_FFA|FMT_2V2|FMT_1V3|FMT_DUEL)
+new const MG_FORMATS[MG_COUNT] = { FMT_2V2|FMT_1V3, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_FFA|FMT_2V2, FMT_2V2|FMT_1V3, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_FFA|FMT_DUEL, FMT_FFA|FMT_2V2|FMT_DUEL, FMT_ALL, FMT_ALL,
+	FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL, FMT_ALL };
 // 0 = fixed loadout (gear untouched), 1 = all your gear, 2 = pistol, armor and nades only
-new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+new const MG_GEAR[MG_COUNT] = { 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 // minigames played on their own maps (changelevel and back). A race draws its map from a pool (scan_pools);
 // this is the map it falls back to when its pool is empty.
-new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "csp_bhop", "csp_climb", "csp_maze", "csp_towers" };
+new const MG_MAP[MG_COUNT][] = { "", "", "", "", "", "", "", "", "csp_surf", "csp_bhop", "csp_climb", "csp_maze", "csp_towers", "", "", "", "", "", "", "", "" };
 // race map pools: every configs/cs_party/minigames/<map>.ini with its .bsp on the server, sorted into a race by
 // the .ini's "pool <surf|bhop|climb|maze|none>" line, else by the map's name (surf_, bhop_, kz_/climb_, maze_)
 #define POOL_MAX 64
 new g_poolMap[POOL_MAX][32], g_poolMg[POOL_MAX], g_poolN;
 new Float:g_mgDmg[SEATS];   // damage each seat dealt to opponents this fight (timeout tiebreak)
+// Deathmatch: respawn DM_RESPAWN s after a death on a board space away from the living, a new gun each life,
+// DM_LEN s of fighting, most kills wins (side totals in 2v2 / 1v3)
+#define DM_LEN 75.0
+#define DM_RESPAWN 1.5
+#define DM_GAP 700.0
+#define TASK_DM 53000      // + player id: respawn; TASK_DM + 99: end, TASK_DM + 98: kill table
+new const DM_GUNS[][] = { "ak47", "m4a1", "famas", "galil", "aug", "sg552", "mp5navy", "p90", "ump45", "m3", "xm1014", "scout" };
+// Gun Game: one rung per kill (g_dmKills is the rung), the knife last; a knife kill wins on the spot
+new const GG_GUNS[][] = { "mp5navy", "p90", "m3", "famas", "ak47", "m4a1", "awp", "deagle", "knife" };
+new g_dmKills[SEATS], bool:g_dmLive, Float:g_dmStart;
+bool:mg_respawns(m) { return m == MG_DM || m == MG_GUNGAME; }
 new g_raceMap[32];      // the map this match's map minigame plays on: drawn at its intro, or csp_test_remote's pick
 new g_mapsUsed[600];    // race maps played this match, "|map|" each: none repeats until its pool runs out
 // zBots can't surf, bhop, climb or solve a maze: on race maps they "finish" at a random time in this window (seconds)
 new const Float:MG_BOT_TIME[MG_COUNT][2] = { {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0},
-	{40.0, 75.0}, {35.0, 65.0}, {40.0, 70.0}, {30.0, 60.0}, {0.0, 0.0} };
+	{40.0, 75.0}, {35.0, 65.0}, {40.0, 70.0}, {30.0, 60.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0}, {0.0, 0.0} };
 // own-map minigames that are a fight (board elimination rules) instead of a race
 bool:mg_fight(m) { return m == MG_TOWERS; }
 
@@ -245,7 +274,7 @@ new g_diceEnt[3 * REEL_SLOTS + 12], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN],
 
 // cvars
 new c_grace, c_onematch, bool:g_matchOver, g_matchBegan, g_mgBegan;
-new c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice;
+new c_camlog, c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice;
 new g_targetPurpose, g_shopSide;
 
 // ------------------------------------------------------------- plugin --
@@ -299,6 +328,7 @@ public plugin_init()
 	c_hudscale = register_cvar("csp_hud_scale", "0");   // client hud_scale pushed to humans (0 = leave alone; 2 turned text into white boxes in the browser)
 	c_turntime = register_cvar("csp_turn_timeout", "45");   // s a human can sit on a board decision before the bot logic decides (0 = wait forever)                        // board space markers (TE_BEAMPOINTS); 0 for testing
 	c_autobhop = register_cvar("csp_autobhop", "1");   // Bhop Course: hold jump to hop (ReGameDLL sv_autobunnyhopping)
+	c_camlog = register_cvar("csp_camlog", "0");   // dev: once a second, the camera's worst one-frame jump and turn (cam_log)
 	c_pawnlight = register_cvar("csp_pawnlight", "1");   // board pawns carry a steady entity light (see pawn_lights)
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
 	c_grace = register_cvar("csp_seat_grace", "90");   // s a dropped human's seat waits for them (same _csp_pid, or same name) before a bot takes it over
@@ -1628,12 +1658,18 @@ public hc_can_take_damage(const victim, const attacker)
 // following whoever's turn it is. Shots: intro (front-on at the character), follow (behind,
 // looking down the path), dice (low angle up at the crate), land, hostage cutaway, wide.
 enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE, CAM_MAP };
+// cam_log (dev): this frame was a cut (left out), how far the wall clamp moved the camera, how far its trace origin moved
+new bool:g_camCut, Float:g_camClampD, Float:g_camFromD, Float:g_camFrom[3];
 new g_camMode, Float:g_camUntil, bool:g_camSnap, Float:g_camLook[3], Float:g_camFwd[3];
+// steadiness in tight spots: the placement in use (kept for a while), how far out along it the camera sits
+// (pulls in at once, eases back out), and the pawn's height eased so hops over crates don't bob the shot
+new g_camPick = -1, Float:g_camPickAt, Float:g_camArm = 1.0, Float:g_camBaseZ;
 
 cam_shot(mode, Float:hold = 0.0)
 {
 	// into or out of the map view: cut, don't fly through the walls and the sky
 	if ((g_camMode == CAM_MAP) != (mode == CAM_MAP)) { g_camSnap = true; map_overlay_show(mode == CAM_MAP); }
+	if (mode != g_camMode) g_camPick = -1;
 	g_camMode = mode;
 	g_camUntil = hold > 0.0 ? get_gametime() + hold : 0.0;
 }
@@ -1723,46 +1759,81 @@ cam_step(Float:dt)
 		R[0] = F[1]; R[1] = -F[0];
 	}
 
-	// each shot has a few candidate placements (forward, right, up); the director takes the first with a clear view
-	static const Float:SHOTS[6][4][3] = {
-		{ {-230.0,   0.0, 150.0}, {-170.0,  90.0, 190.0}, {-170.0, -90.0, 190.0}, { -90.0,   0.0, 260.0} },   // follow
-		{ {  95.0,  35.0,  16.0}, {  95.0, -35.0,  16.0}, {  70.0,  60.0,  40.0}, {  60.0, -60.0,  60.0} },   // intro
-		{ { 175.0,  60.0,  10.0}, { 175.0, -60.0,  10.0}, { 140.0, 100.0,  30.0}, { 110.0,-100.0,  50.0} },   // dice
-		{ {-120.0,  65.0, 115.0}, {-120.0, -65.0, 115.0}, { -60.0,   0.0, 170.0}, {  80.0,  80.0, 120.0} },   // land
-		{ {-170.0,  90.0, 120.0}, {-170.0, -90.0, 120.0}, { 170.0,  90.0, 120.0}, {   0.0,   0.0, 220.0} },   // hostage
-		{ {-300.0,   0.0, 240.0}, {-220.0, 170.0, 200.0}, {-220.0,-170.0, 200.0}, {-140.0,   0.0, 300.0} } }; // wide
+	// each shot has a few candidate placements (forward, right, up); the director takes the first with a clear
+	// view. The last one is low and close, for tunnels and under ceilings, where the high ones all hit the roof.
+	static const Float:SHOTS[6][5][3] = {
+		{ {-230.0,   0.0, 150.0}, {-170.0,  90.0, 190.0}, {-170.0, -90.0, 190.0}, { -90.0,   0.0, 260.0}, {-150.0,   0.0,  40.0} },   // follow
+		{ {  95.0,  35.0,  16.0}, {  95.0, -35.0,  16.0}, {  70.0,  60.0,  40.0}, {  60.0, -60.0,  60.0}, {  80.0,   0.0,  10.0} },   // intro
+		{ { 175.0,  60.0,  10.0}, { 175.0, -60.0,  10.0}, { 140.0, 100.0,  30.0}, { 110.0,-100.0,  50.0}, { 120.0,   0.0,  10.0} },   // dice
+		{ {-120.0,  65.0, 115.0}, {-120.0, -65.0, 115.0}, { -60.0,   0.0, 170.0}, {  80.0,  80.0, 120.0}, {-110.0,   0.0,  40.0} },   // land
+		{ {-170.0,  90.0, 120.0}, {-170.0, -90.0, 120.0}, { 170.0,  90.0, 120.0}, {   0.0,   0.0, 220.0}, {-130.0,   0.0,  40.0} },   // hostage
+		{ {-300.0,   0.0, 240.0}, {-220.0, 170.0, 200.0}, {-220.0,-170.0, 200.0}, {-140.0,   0.0, 300.0}, {-200.0,   0.0,  60.0} } }; // wide
 	static const Float:LOOK[6][3] = { {140.0, 0.0, -10.0}, {0.0, 0.0, 20.0}, {0.0, 0.0, 62.0}, {20.0, 0.0, -20.0}, {0.0, 0.0, 0.0}, {0.0, 0.0, 0.0} };
 	new Float:base[3]; base = P;
+	new bool:onPawn = g_camMode == CAM_FOLLOW || g_camMode == CAM_INTRO || g_camMode == CAM_DICE || g_camMode == CAM_LAND;
+	if (g_camSnap || g_camBaseZ == 0.0) g_camBaseZ = P[2];
+	else g_camBaseZ += (P[2] - g_camBaseZ) * ease(0.10, dt);
+	if (onPawn) base[2] = g_camBaseZ;
 	if (g_camMode == CAM_HOSTAGE) { base = g_nodePos[g_hostage]; base[2] += 40.0; }
 	else if (g_camMode == CAM_WIDE) cam_group_base(s, P, base);
 	new bool:mapView = (g_camMode == CAM_MAP);
-	new Float:from[3], Float:bestFrac = -1.0, Float:best[3];
+	new Float:from[3];
 	if (mapView) { want = g_mapCam; look = g_mapLook; map_marks_step(); }
 	else
 	{
 	offset(base, F, R, LOOK[g_camMode][0], LOOK[g_camMode][1], LOOK[g_camMode][2], look);
-	// every placement is traced from here, so it has to be open air: from inside solid a trace reports
-	// "blocked at 0" and the camera was left right there, inside the wall
-	from = look; from[2] += 20.0;
-	if (!cam_open(from)) from = look;
-	if (!cam_open(from)) from = P;
-	for (new c = 0; c < 4; c++)
-	{
-		new Float:cand[3], Float:endp[3];
-		offset(base, F, R, SHOTS[g_camMode][c][0], SHOTS[g_camMode][c][1], SHOTS[g_camMode][c][2], cand);
-		new Float:frac = cam_reach(from, cand, endp);
-		if (frac > bestFrac) { bestFrac = frac; best = endp; }
-		if (frac >= 0.95) break;
-	}
-	want = best;
+	// Every placement is traced from here, so it has to be open air: from inside solid a trace reports "blocked
+	// at 0" and the camera was left right there, inside the wall. On the pawn shots it's the pawn's head, not the
+	// look point: that sits 140 units down the path, which past a tunnel bend or a ceiling is the far side of a
+	// wall, and the camera then went there. The look point is kept on the pawn's side of walls too.
+	if (onPawn) { from = P; from[2] += 28.0; if (!cam_open(from)) from = P; new Float:lk[3]; lk = look; cam_reach(from, lk, look); }
+	else { from = look; from[2] += 20.0; if (!cam_open(from)) from = look; if (!cam_open(from)) from = P; }
+	new Float:fr[5], Float:cand[5][3], Float:endp[3], pick = -1, now = 0;
+	for (new c = 0; c < 5; c++) { offset(base, F, R, SHOTS[g_camMode][c][0], SHOTS[g_camMode][c][1], SHOTS[g_camMode][c][2], cand[c]); fr[c] = cam_reach(from, cand[c], endp); }
+	new firstClear = -1, bestC = 0;
+	for (new c = 0; c < 5; c++) { if (firstClear < 0 && fr[c] >= 0.95) firstClear = c; if (fr[c] > fr[bestC]) bestC = c; }
+	new choice = firstClear >= 0 ? firstClear : bestC;
+	// Don't hop between placements every frame (in a tunnel the "best" one changed constantly and the camera
+	// whipped between them): keep the current one for at least 0.8 s unless it's badly blocked (under 0.5).
+	new Float:t = get_gametime();
+	if (g_camSnap || g_camPick < 0 || g_camPick > 4) now = 1;
+	else if (choice != g_camPick && (fr[g_camPick] < 0.5 || t - g_camPickAt > 0.8) && fr[choice] > fr[g_camPick] + 0.05) now = 1;
+	if (now) { if (choice != g_camPick) g_camPickAt = t; g_camPick = choice; }
+	pick = g_camPick;
+	// spring arm: a wall coming in pulls the camera in at once, open space lets it back out slowly
+	if (g_camSnap) g_camArm = fr[pick];
+	else if (now) g_camArm = floatmin(g_camArm, fr[pick]);
+	if (fr[pick] < g_camArm) g_camArm = fr[pick];
+	else g_camArm += (fr[pick] - g_camArm) * ease(0.05, dt);
+	for (new k = 0; k < 3; k++) want[k] = from[k] + (cand[pick][k] - from[k]) * g_camArm;
 	}
 
+	// a shot that far away is a cut, not a flight: the eased path went through buildings and the clamp below
+	// then dragged the camera along walls (the hostage cutaway, the wide shot)
+	if (!mapView && get_distance_f(g_camPos, want) > 700.0) g_camSnap = true;
 	new Float:a = g_camSnap ? 1.0 : ease(0.16, dt), Float:b = g_camSnap ? 1.0 : ease(0.22, dt);
 	for (new k = 0; k < 3; k++) { g_camPos[k] += (want[k] - g_camPos[k]) * a; g_camLook[k] += (look[k] - g_camLook[k]) * b; }
+	g_camCut = g_camSnap;
 	g_camSnap = false;
 	// The eased path between two clear spots can cut through a wall or out of the map, and from inside solid
 	// or the void the engine draws nothing: the browser shows black there. Keep the camera on the pawn's side.
-	if (!mapView) { new Float:to[3]; to = g_camPos; cam_reach(from, to, g_camPos); }
+	// The eased path between two clear spots can cut through a wall or out of the map. Inside solid or the sky
+	// the engine draws nothing (black in the browser), so that is fixed in the same frame. Merely hidden behind
+	// something or grazing a wall (a pillar, a door frame, a tunnel bend) the camera pulls in over about a tenth
+	// of a second: done in one frame, that was most of the "camera goes crazy" jumps, hundreds of units at a time.
+	g_camClampD = 0.0;
+	if (!mapView)
+	{
+		new Float:to[3], Float:c[3]; to = g_camPos;
+		cam_reach(from, to, c);
+		g_camClampD = get_distance_f(to, c);
+		if (g_camClampD > 1.0)
+		{
+			if (!cam_open(to)) g_camPos = c;
+			else { new Float:k = ease(0.35, dt); for (new i = 0; i < 3; i++) g_camPos[i] = to[i] + (c[i] - to[i]) * k; }
+		}
+	}
+	g_camFromD = get_distance_f(g_camFrom, from); g_camFrom = from;
 
 	new Float:dir[3], Float:ang[3];
 	xs_vec_sub_simple(g_camLook, g_camPos, dir);
@@ -1772,6 +1843,7 @@ cam_step(Float:dt)
 	entity_set_origin(g_cam, g_camPos);
 	entity_set_vector(g_cam, EV_VEC_angles, ang);
 	entity_set_vector(g_cam, EV_VEC_v_angle, ang);
+	cam_log();
 
 	static Float:viewAt;
 	if (get_gametime() - viewAt > 0.5 || get_gametime() < viewAt)
@@ -1797,6 +1869,23 @@ cam_step(Float:dt)
 		new Float:ha[3]; entity_get_vector(g_hostageEnt, EV_VEC_angles, ha);
 		ha[1] = floatmod(ha[1] + 50.0 * dt, 360.0); entity_set_vector(g_hostageEnt, EV_VEC_angles, ha);
 	}
+}
+
+// dev (csp_camlog 1): once a second, the camera's biggest move and turn in a single frame, its total path and its
+// distance from the pawn. A shot that "goes crazy" shows up as big one-frame steps and turns.
+cam_log()
+{
+	static Float:prev[3], Float:prevYaw, Float:maxStep, Float:maxTurn, Float:sum, Float:at, frames;
+	if (!get_pcvar_num(c_camlog)) return;
+	new Float:st = get_distance_f(prev, g_camPos), Float:tu = floatabs(floatmod(g_camAng[1] - prevYaw + 540.0, 360.0) - 180.0);
+	prev = g_camPos; prevYaw = g_camAng[1];
+	if (st > 60.0 && !g_camCut && st < 2000.0) server_print("[CSP] camjump %.0f mode %d clamp %.0f from %.0f", st, g_camMode, g_camClampD, g_camFromD);
+	if (st < 2000.0 && !g_camCut) { maxStep = floatmax(maxStep, st); maxTurn = floatmax(maxTurn, tu); sum += st; frames++; }
+	new Float:now = get_gametime();
+	if (now - at < 1.0 && now >= at) return;
+	new Float:P[3]; pawn_origin(g_cur, P);
+	server_print("[CSP] camlog mode %d seat %d step %.0f turn %.0f path %.0f dist %.0f frames %d", g_camMode, g_cur, maxStep, maxTurn, sum, get_distance_f(P, g_camPos), frames);
+	at = now; maxStep = 0.0; maxTurn = 0.0; sum = 0.0; frames = 0;
 }
 
 bool:cam_open(const Float:p[3]) { new c = engfunc(EngFunc_PointContents, p); return c != CONTENTS_SOLID && c != CONTENTS_SKY; }
@@ -4204,23 +4293,39 @@ negotiate(s, t, bool:star)
 	}
 }
 
-// Weighted, not uniform: half the FFA and duel pool is map-change races, so a flat pick sent most
-// minigames off dust2. The dust2 fights weigh 4, Two Towers 2, the races 1; each play this match cuts a
-// minigame's weight, the last one never repeats, and a map-change minigame never follows another.
+// Gun rounds weigh most (game night 10/18: too many knife and grenade fights), own-map fights next, races
+// after, knives, nades and hide and seek least. A minigame plays once per party: only when every one that fits
+// the format has played does the least-played one come back (never the last one). A map-change minigame never
+// follows another while there's anything else left.
+mg_weight(m)
+{
+	if (m == MG_KNIFE || m == MG_NADES || m == MG_HNS) return 1;
+	if (MG_MAP[m][0]) return mg_fight(m) ? 4 : 2;
+	return 6;
+}
+
 pick_minigame(fmt)
 {
 	new pool[MG_COUNT], wt[MG_COUNT], n = 0, total = 0;
 	if (g_forceMg >= 0 && g_forceMg < MG_COUNT) return g_forceMg;   // dev override ignores format
 	new bool:lastRemote = g_mgLast >= 0 && g_mgLast < MG_COUNT && MG_MAP[g_mgLast][0] != 0;
-	for (new pass = 0; pass < 2 && !n; pass++)   // pass 1 drops the variety rules if they emptied the pool
+	// pass 0: unplayed and not a second map change; pass 1: unplayed; pass 2: the least played, not the last one
+	for (new pass = 0; pass < 3 && !n; pass++)
+	{
+		new least = cellmax;
+		if (pass == 2) for (new m = 0; m < MG_COUNT; m++)
+			if ((MG_FORMATS[m] & fmt) && (!MG_MAP[m][0] || mg_has_map(m)) && m != g_mgLast) least = min(least, g_mgPlayed[m]);
 		for (new m = 0; m < MG_COUNT; m++)
 		{
 			if (!(MG_FORMATS[m] & fmt)) continue;
 			if (MG_MAP[m][0] && !mg_has_map(m)) continue;
-			if (!pass && (m == g_mgLast || (lastRemote && MG_MAP[m][0]))) continue;
-			new base = !MG_MAP[m][0] ? 4 : (mg_fight(m) ? 2 : 1);
-			wt[n] = max(1, base * 12 / (1 + 2 * g_mgPlayed[m])); total += wt[n]; pool[n++] = m;
+			if (pass < 2 && g_mgPlayed[m]) continue;
+			if (pass == 0 && lastRemote && MG_MAP[m][0]) continue;
+			if (pass == 2 && (m == g_mgLast || g_mgPlayed[m] > least)) continue;
+			wt[n] = mg_weight(m); total += wt[n]; pool[n++] = m;
 		}
+	}
+	if (!n) { pool[0] = MG_FULLBUY; wt[0] = 1; total = 1; n = 1; }
 	new r = random(total), k = 0;
 	while (k < n - 1 && r >= wt[k]) { r -= wt[k]; k++; }
 	g_mgPlayed[pool[k]]++; g_mgLast = pool[k];
@@ -4297,7 +4402,7 @@ mg_rules()
 	set_cvar_string("mp_buytime", "0");
 	set_cvar_string("sv_gravity", g_mg == MG_SCOUTZ ? "300" : "800");
 	set_cvar_string("mp_give_player_c4", mg_objective() ? "1" : "0");
-	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "1.75" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS ? "2.0" : "1.5")));
+	set_cvar_string("mp_roundtime", g_mg == MG_HNS ? "1.75" : (g_mg == MG_PLANT || g_mg == MG_PISTOL ? "1.75" : (g_mg == MG_TOWERS || mg_respawns(g_mg) ? "2.0" : "1.5")));
 	new prim[16], sec[16], gren[16];
 	switch (g_mg)
 	{
@@ -4306,6 +4411,11 @@ mg_rules()
 		case MG_SCOUTZ: { copy(prim, charsmax(prim), "scout"); }
 		case MG_NADES:  { copy(gren, charsmax(gren), "hegrenade"); }
 		case MG_TOWERS: { copy(prim, charsmax(prim), "awp"); copy(sec, charsmax(sec), "deagle"); }
+		case MG_DM:     { copy(sec, charsmax(sec), "deagle"); }   // the primary is drawn per life in apply_loadout
+		case MG_RIFLES, MG_SHOTGUNS, MG_SMG: { copy(sec, charsmax(sec), "usp"); }
+		case MG_AWP:    { copy(prim, charsmax(prim), "awp"); }
+		case MG_ELITES: { copy(sec, charsmax(sec), "elite"); }
+		case MG_M249:   { copy(prim, charsmax(prim), "m249"); copy(sec, charsmax(sec), "usp"); }
 	}
 	set_cvar_string("mp_t_default_weapons_primary", prim); set_cvar_string("mp_ct_default_weapons_primary", prim);
 	set_cvar_string("mp_ct_default_weapons_secondary", sec);
@@ -4336,6 +4446,14 @@ mg_fight_start()
 	{
 		arrayset(g_hnsSpUsed, false, sizeof g_hnsSpUsed); g_hnsPushes = 0;
 		for (new k = 0; k < SEATS; k++) { g_hnsSeatSp[k] = -1; g_hnsLast[k][2] = -99999.0; }
+	}
+	g_dmLive = false; remove_task(TASK_DM + 99); remove_task(TASK_DM + 98);
+	if (mg_respawns(g_mg))
+	{
+		arrayset(g_dmKills, 0, sizeof g_dmKills);
+		g_dmLive = true; g_dmStart = get_gametime();
+		set_task(DM_LEN, "task_dm_end", TASK_DM + 99);
+		set_task(1.0, "task_dm_table", TASK_DM + 98, _, _, "b");
 	}
 	rg_restart_round();
 	dbg("Minigame %s started (fmt %d).", MG_NAME[g_mg], g_mgFmt);
@@ -4396,7 +4514,14 @@ apply_loadout(s)
 	switch (g_mg)
 	{
 		case MG_KNIFE: { rg_remove_all_items(id); rg_give_item(id, "weapon_knife"); set_entvar(id, var_health, 35.0); }
+		case MG_RIFLES: give_full(id, (g_mgFmt == FMT_FFA || g_mgFmt == FMT_DUEL) ? (random(2) ? "m4a1" : "ak47") : (g_mgSide[s] == SIDE_CT ? "m4a1" : "ak47"));
+		case MG_SHOTGUNS: give_full(id, random(2) ? "xm1014" : "m3");
+		case MG_SMG: give_full(id, random(2) ? "p90" : "mp5navy");
+		case MG_DM: give_full(id, DM_GUNS[random(sizeof DM_GUNS)]);
+		case MG_GUNGAME: gg_equip(s);
 	}
+	if (mg_respawns(g_mg) || g_mg == MG_RIFLES || g_mg == MG_SHOTGUNS || g_mg == MG_SMG || g_mg == MG_M249) rg_set_user_armor(id, 100, ARMOR_VESTHELM);
+	if (mg_respawns(g_mg) && g_dmLive && get_gametime() > g_dmStart + 1.0) { dm_place(s); return; }   // a respawn, not the start
 	if (MG_GEAR[g_mg]) give_gear(s, MG_GEAR[g_mg] == 1);
 	if (g_mg == MG_HNS)
 	{
@@ -4873,6 +4998,7 @@ public hc_takedmg_post(const victim, const inflictor, const attacker, Float:dama
 public hc_killed_post(const victim, const killer)
 {
 	if (g_state != ST_MINIGAME || g_mgDone) return;
+	if (mg_respawns(g_mg)) { dm_killed(victim, killer); return; }
 	if (g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL) return;
 	new alive = 0, last = -1;
 	for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && is_user_alive(g_seatPlayer[s])) { alive++; last = s; }
@@ -4891,6 +5017,7 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	if (g_state != ST_MINIGAME) return HC_CONTINUE;
 	// the last of a side just dropped out: their stand-in is a moment away, so the fight isn't over
 	if (!g_mgDone) for (new s = 0; s < SEATS; s++) if (g_standin[s]) { SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }
+	if (!g_mgDone && mg_respawns(g_mg)) { SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }   // only task_dm_end ends it
 	if (!g_mgDone && event == ROUND_GAME_COMMENCE) { set_member_game(m_bGameStarted, true); SetHookChainReturn(ATYPE_BOOL, false); return HC_SUPERCEDE; }   // not a result
 	// FFA and duels sit on two CS teams only so the spawns go round. CS still ends the round when one of those
 	// teams is all dead (ReGameDLL's elimination check ignores mp_freeforall), which handed the win to the
@@ -4960,6 +5087,7 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 		g_mgDone = true;
 	}
 	g_state = ST_MG_RESULT;
+	g_dmLive = false; remove_task(TASK_DM + 99); remove_task(TASK_DM + 98);
 	// CS would restart the round on its own 3-5 s from now, in the middle of the results: everyone respawned at
 	// the map spawns, armed, bots loose, before the board took over. The board's own restart (enter_board) or the
 	// changelevel comes first and clears this.
@@ -4975,6 +5103,112 @@ public hc_round_end(WinStatus:status, ScenarioEventEndRound:event, Float:delay)
 	}
 	set_task(0.1, "flow_minigame_result", TASK_FLOW);
 	return HC_CONTINUE;
+}
+
+// ------------------------------------------------------------ deathmatch --
+dm_killed(victim, killer)
+{
+	new sv = seat_of(victim), sk = (1 <= killer <= MaxClients) ? seat_of(killer) : -1;
+	new bool:teams = g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL;
+	if (sk >= 0 && sk != sv && g_mgIn[sk] && !(teams && sv >= 0 && g_mgSide[sk] == g_mgSide[sv])) g_dmKills[sk]++;
+	else if (sv >= 0 && g_dmKills[sv] > 0 && (sk == sv || sk < 0)) g_dmKills[sv]--;   // fell, blew themselves up
+	set_task(DM_RESPAWN, "task_dm_respawn", TASK_DM + victim);
+	if (sk < 0 || sk == sv) return;
+	if (g_mg != MG_GUNGAME) { center_print(g_seatPlayer[sk], "Kill! %d so far.", g_dmKills[sk]); return; }
+	if (g_dmKills[sk] >= sizeof GG_GUNS)   // the knife kill
+	{
+		banner("%s finishes the Gun Game!", g_seatName[sk]);
+		g_mgWinnerN = 0;
+		new bool:teams = g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL;
+		for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && (s == sk || (teams && g_mgSide[s] == g_mgSide[sk]))) g_mgWinners[g_mgWinnerN++] = s;
+		g_mgDone = true; g_dmLive = false;
+		rg_round_end(3.0, WINSTATUS_DRAW, ROUND_END_DRAW, "", "", true);
+		return;
+	}
+	if (is_user_alive(g_seatPlayer[sk])) { gg_equip(sk); center_print(g_seatPlayer[sk], "Level %d of %d: %s", g_dmKills[sk] + 1, sizeof GG_GUNS, GG_GUNS[g_dmKills[sk]]); }
+}
+
+// Gun Game: knife plus this seat's rung (just the knife on the last one)
+gg_equip(s)
+{
+	new id = g_seatPlayer[s], k = clamp(g_dmKills[s], 0, sizeof GG_GUNS - 1);
+	rg_remove_all_items(id);
+	rg_give_item(id, "weapon_knife");
+	if (!equal(GG_GUNS[k], "knife")) give_full(id, GG_GUNS[k]);
+}
+
+public task_dm_respawn(taskid)
+{
+	new id = taskid - TASK_DM, s = seat_of(id);
+	if (g_state != ST_MINIGAME || !mg_respawns(g_mg) || g_mgDone || !g_dmLive) return;
+	if (!is_user_connected(id) || is_user_alive(id) || s < 0 || !g_mgIn[s]) return;
+	rg_round_respawn(id);
+}
+
+// a respawn: of a few random board spaces, the one whose nearest living opponent is closest to DM_GAP away
+// (farthest-away put everyone across the map from each other: 3 kills in 75 s with four bots)
+dm_place(s)
+{
+	new id = g_seatPlayer[s], best = -1, Float:bestD = 999999.0;
+	new bool:teams = g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL;
+	if (!g_nodeCount) return;
+	for (new t = 0; t < 8; t++)
+	{
+		new n = random(g_nodeCount), Float:near = 999999.0;
+		for (new k = 0; k < SEATS; k++)
+		{
+			if (k == s || !g_mgIn[k] || !is_user_alive(g_seatPlayer[k]) || (teams && g_mgSide[k] == g_mgSide[s])) continue;
+			new Float:o[3]; entity_get_vector(g_seatPlayer[k], EV_VEC_origin, o);
+			near = floatmin(near, get_distance_f(o, g_nodePos[n]));
+		}
+		new Float:off = floatabs(floatmin(near, 4000.0) - DM_GAP);
+		if (off < bestD) { bestD = off; best = n; }
+	}
+	new Float:o[3], Float:sd[2];
+	safe_spot(o, g_nodePos[best], sd);
+	entity_set_origin(id, o);
+}
+
+public task_dm_table()
+{
+	if (g_state != ST_MINIGAME || !mg_respawns(g_mg) || !g_dmLive) { remove_task(TASK_DM + 98); return; }
+	new line[160], len = 0, left = max(0, floatround(g_dmStart + DM_LEN - get_gametime()));
+	len = formatex(line, charsmax(line), "%s  %d:%02d  |", g_mg == MG_GUNGAME ? "GUN GAME (level)" : "DEATHMATCH (kills)", left / 60, left % 60);
+	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3)
+	{
+		new k[2]; for (new s = 0; s < SEATS; s++) if (g_mgIn[s]) k[g_mgSide[s]] += g_dmKills[s];
+		formatex(line[len], charsmax(line) - len, "  CT %d  -  T %d", k[SIDE_CT], k[SIDE_T]);
+	}
+	else for (new s = 0; s < SEATS; s++) if (g_mgIn[s]) len += formatex(line[len], charsmax(line) - len, "  %s %d", g_seatName[s], g_dmKills[s]);
+	hud_all(CH_SUB, 221, 215, 196, false, 1.2, 0.0, 0.0, line);
+}
+
+public task_dm_end()
+{
+	if (g_state != ST_MINIGAME || !mg_respawns(g_mg) || g_mgDone) return;
+	g_mgWinnerN = 0;
+	if (g_mgFmt == FMT_2V2 || g_mgFmt == FMT_1V3)
+	{
+		new k[2], Float:dm[2], side = -1;
+		for (new s = 0; s < SEATS; s++) if (g_mgIn[s]) { k[g_mgSide[s]] += g_dmKills[s]; dm[g_mgSide[s]] += g_mgDmg[s]; }
+		if (k[SIDE_CT] != k[SIDE_T]) side = k[SIDE_CT] > k[SIDE_T] ? SIDE_CT : SIDE_T;
+		else if (dm[SIDE_CT] != dm[SIDE_T]) side = dm[SIDE_CT] > dm[SIDE_T] ? SIDE_CT : SIDE_T;
+		if (side >= 0) for (new s = 0; s < SEATS; s++) if (g_mgIn[s] && g_mgSide[s] == side) g_mgWinners[g_mgWinnerN++] = s;
+	}
+	else
+	{
+		// most kills; level at the top goes to damage dealt; level on both is a draw
+		new best = -1, bool:tie = false;
+		for (new s = 0; s < SEATS; s++) if (g_mgIn[s])
+		{
+			if (best < 0 || g_dmKills[s] > g_dmKills[best] || (g_dmKills[s] == g_dmKills[best] && g_mgDmg[s] > g_mgDmg[best])) { best = s; tie = false; }
+			else if (g_dmKills[s] == g_dmKills[best] && g_mgDmg[s] == g_mgDmg[best]) tie = true;
+		}
+		if (best >= 0 && !tie) g_mgWinners[g_mgWinnerN++] = best;
+	}
+	dbg("%s over: score %d %d %d %d", MG_NAME[g_mg], g_dmKills[0], g_dmKills[1], g_dmKills[2], g_dmKills[3]);
+	g_mgDone = true; g_dmLive = false;
+	rg_round_end(3.0, WINSTATUS_DRAW, ROUND_END_DRAW, "", "", true);
 }
 
 public flow_minigame_result()
