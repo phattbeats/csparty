@@ -479,3 +479,26 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - `gamedata.zip` keeps its name: the page stores it in Cache Storage keyed by ETag (one HEAD per visit also checks the party key) and asks the browser for persistent storage so it is not evicted.
 - No service worker: immutable HTTP caching plus Cache Storage covers repeat visits, and a worker would add an update path to get wrong.
 - After deploy check: `curl -sI https://csparty.example.com/xash.<hash>.wasm` shows the immutable header (Cloudflare's Browser Cache TTL only raises shorter lifetimes, it does not cut a year).
+
+## #3865 game night 10/18 feedback (server 0.5.36-vq + relay 0.4.37 + agent, 2026-10-19 ~05:40 UTC)
+- **More shooting.** Eight new gun minigames: Deathmatch and Gun Game (75 s, respawn 1.5 s on a board space ~700
+  units from the nearest enemy; DM gives a new gun per life, Gun Game a rung per kill and a knife kill wins), Rifle
+  Round, Shotgun Showdown, SMG Spray, AWP Only, Dual Elites, Machine Guns. Pistol, Deagle and Scoutzknivez play in
+  every format now. `csp_force_mg` indexes: 13 DM, 14 Rifles, 15 Shotguns, 16 SMG, 17 Gun Game, 18 AWP, 19 Elites, 20 M249.
+- **No repeats.** `pick_minigame` plays each minigame once per party; the least-played one comes back only when every
+  one that fits the format has played. Weights: gun rounds 6, own-map fights 4, races 2, knife/nades/hide and seek 1.
+  Simulated over 4000 parties: repeats 8.0 -> 0.3 per party, knife+nades+HNS 30% -> 11%, gun rounds 57% -> 75%.
+  The 10/18 match had Knife x3, Hide and Seek x3, Pistol x3, Nades x2 in 16.
+- **Board camera** (tunnels, under/over things). Placements are traced from the pawn's head (not the look point down
+  the path), held 0.8 s, with a low fifth placement for tunnels, a spring arm (in at once, out slowly) and eased
+  height. The wall clamp hard-snaps only when the camera is inside solid or sky; just hidden, it pulls in over ~0.1 s.
+  A shot more than 700 units away is a cut. Bot A/B on dust2 (`csp_camlog 1`, ~5 min of board each): worst one-frame
+  move p90/p99 362/1747 -> 38/108 units, turn p99 179 -> 93 degrees, seconds with a >60-unit jump 18% -> 8%.
+- Relay 0.4.37 = 0.4.36 + boot.js (phone cards for the new minigames), swapped into the already-hashed public dir by
+  `web/swap_boot.js` (re-running hash_assets.js on a hashed dir throws). It includes PHA-4234 (c8af7e5), which was live
+  as 0.4.36 but not on main.
+- `deploy0536-pha3865.sh` gates on peers 0, 0 humans, 0 lobbies, live 0.5.35-vq / 0.4.36. The `cs-party-server:0.5.35-vq`
+  tag had gone missing from the host (image 368e280ee108 was only tagged `test4095c`, so `csparty-up.sh` and new lobbies
+  would have failed); re-tagged before the deploy.
+- Rollback: containers `cs-party-{server,relay,agent}-pha3865old` (stopped), `csparty-up.sh.pre-pha3865`, then
+  `./csparty-up.sh all`.
