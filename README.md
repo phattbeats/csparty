@@ -14,19 +14,19 @@ Status: v0.5, playable start to finish with bots and humans, from CS 1.6, a desk
 - **Minigames** after everyone moves: space colors decide CT vs T (4-0 FFA, 2-2, 3-1). Real CS rounds on the board map: Plant the Bomb, Pistol Round, Full Buy, Deagle Only, Rifle Round, Shotgun Showdown, SMG Spray, Deathmatch (75 s, respawns with a new gun each life, most kills wins), Knife Fight, Scoutzknivez, Nades Only, Hide and Seek. Survive a gear round and keep your gear. Die and lose it. Loot counts. Each minigame plays once per party, and gun rounds come up most. A repeat only happens once every minigame that fits the format has played.
 - **Characters:** eight, one per CS 1.6 model, each with its own die (Mario Party style). Browser players pick from a grid on the join screen (mouse, touch, arrows or a controller; the pick is remembered). The pick travels as `setinfo _csp_char 0-7`, so CS 1.6 players can set it in the console too. At match start picks are honoured first come, first served in seat order; bots and anyone whose pick was taken get a random one of the rest.
 - **Boards:** de_dust2, de_inferno, de_aztec, de_cbble. The board is the map the server is on; between matches anyone can switch with `say /board`.
-- **Map-change minigames:** Surf Race (`csp_surf`), Bhop Course (`csp_bhop`), Climb (`csp_climb`: step jumps, a ladder wall, narrow beams, checkpoints over a pit) and Maze Run (`csp_maze` plus seven generated variants from 8x8 to 16x16, brick/hedge/metal/rust and two dark ones; walls too tall to jump). Two Towers (`csp_towers`, Murray's community sniper map) is a deathmatch minigame. The server changes map, everyone races start to finish, and the match resumes on the board where it left off (state in `data/cs_party_state.json`). Human seats are held 60 s across the change.
+- **Map-change minigames:** Surf Race (`csp_surf`), Bhop Course (`csp_bhop`), Climb (`csp_climb`: step jumps, a ladder wall, narrow beams, checkpoints over a pit) and Maze Run (`csp_maze` plus seven generated variants from 8x8 to 16x16, brick/hedge/metal/rust and two dark ones; walls too tall to jump). Two Towers (`csp_towers`, Murray's community sniper map) is a deathmatch minigame. The server changes map, everyone races start to finish, and the match resumes on the board where it left off (state in `data/cs_party_state.json`). Human seats are held 90 s across the change (`csp_seat_grace`).
 - **Bonus stars** (`csp_awards 1`): two are drawn from six at match start and announced, with live leaders on the HUD: Top Fragger, Max Money, Eco Round, Big Spender, Rusher, Bomb Squad. Hidden end-of-game awards flipped about half of all winners in simulation; announcing two makes them goals to play for instead of a coin flip at the end.
 - CS money HUD shows board money; TAB score shows stars.
 
 ## Controls
 
-Every CS Party menu works with digits, or with a cursor: move up/down to highlight, **Jump** to pick, **Use** to go back. "Open a case" is always first, so a whole turn is Jump, Jump.
+Every CS Party menu works with digits, or with a cursor: move up/down to highlight, **Jump** to pick, **Use** to go back. "Open a case" is always first and the reels spin themselves, so a whole turn is one **Jump**.
 
 | | Menus | Turn | Minigames |
 |---|---|---|---|
-| Keyboard | digits, or W/S + Space, E back | Space, Space | as CS 1.6 |
-| Controller (USB or Bluetooth, phones too) | D-pad or left stick, A pick, B back | A, A | sticks move/look, RT fire, LT alt-fire, A jump, LB duck, X reload, RB / D-pad left-right weapons, Y scores |
-| Phone (touch) | left thumb up/down, Jump | Jump, Jump | left half moves, right half looks, Jump / Fire / Duck / Use / Reload buttons |
+| Keyboard | digits, or W/S + Space, E back | Space | as CS 1.6 |
+| Controller (USB or Bluetooth, phones too) | D-pad or left stick, A pick, B back | A | sticks move/look, RT fire, LT alt-fire, A jump, LB duck, X reload, RB / D-pad left-right weapons, Y scores |
+| Phone (touch) | left thumb up/down, Jump | Jump | left half moves, right half looks, Jump / Fire / Duck / Use / Reload buttons |
 
 The cursor is read server-side from each player's movement (buttons and analog forward/back), so it needs nothing in the client.
 
@@ -104,7 +104,7 @@ Remote: `RCON_PASSWORD=... tools/rcon.py csp_start` (set `rcon_password` on the 
 | `csp_turn_timeout` | 45 | seconds a human can sit on a board decision before the bot logic makes that one (8 s if they disconnected; 0 = wait forever) |
 | `csp_buy_anywhere` | 0 | 1 = Black Market in the turn menu too |
 | `csp_speed` | 1.0 | delay multiplier (0.25 for fast bot tests) |
-| `csp_debug` | 1 | 2 = crate and jump tracing |
+| `csp_debug` | 1 | 2 = menu, cursor and race tracing |
 
 ## Play in a browser
 
@@ -127,7 +127,7 @@ browser tab ──https──> relay (static files + /relay WebSocket) ──udp
 
 **Controllers.** The browser's Gamepad API, so USB and Bluetooth pads both work, phones included. The layout lives in `cstrike/userconfig.cfg` in the game data (see Controls).
 
-**The page looks after the connection.** It shows a joining overlay with stages, reasons when you get disconnected or kicked (with a Rejoin button), and keeps the game data in the browser's Cache Storage, checked by ETag, so a second visit skips the 44 MB download. A watchdog notices when server traffic stops in the middle of a map change (a client that missed the change) and sends `retry`; the server holds the seat 60 s and gives it back by name.
+**The page looks after the connection.** It shows a joining overlay with stages, reasons when you get disconnected or kicked (with a Rejoin button), and keeps the game data in the browser's Cache Storage, checked by ETag, so a second visit skips the 44 MB download. A watchdog notices when server traffic stops in the middle of a map change (a client that missed the change) and sends `retry`; the server holds the seat 90 s and gives it back by name.
 
 ## Deploy (Docker, e.g. Unraid)
 
