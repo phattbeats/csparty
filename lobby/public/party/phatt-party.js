@@ -61,7 +61,7 @@
       { id: 'clubhouse', name: 'Clubhouse', blurb: 'Tables that take minutes. Drop in, drop out.' },
       { id: 'mainevents', name: MAIN_EVENTS_NAME, blurb: 'Nights that take hours.' }],
     games: [
-      { id: 'pokernight', genre: 'clubhouse', name: 'Poker Night', url: 'https://poker.phatt.vip/', min: 1, max: 5, party: 'hash', icon: '🃏' },
+      { id: 'pokernight', genre: 'clubhouse', name: 'Poker Night', url: 'https://poker.phatt.vip/', min: 1, max: 5, party: 'hash', icon: '🃏', list: { path: 'api/rooms', format: 'pokernight' } },
       { id: 'klondike', genre: 'clubhouse', name: 'Solitaire', url: '<hub>/?game=klondike', min: 1, max: 1, party: 'query', hub: true, icon: '♠' },
       { id: 'hearts', genre: 'clubhouse', name: 'Hearts', url: '<hub>/?game=hearts', min: 4, max: 4, party: 'query', hub: true, icon: '♥' },
       { id: 'crazyeights', genre: 'clubhouse', name: 'Crazy Eights', url: '<hub>/?game=crazyeights', min: 2, max: 8, party: 'query', hub: true, icon: '8' },
@@ -75,8 +75,8 @@
       { id: 'spades', genre: 'clubhouse', name: 'Spades', url: '<hub>/?game=spades', min: 4, max: 4, party: 'query', hub: true, icon: '♠' },
       { id: 'cribbage', genre: 'clubhouse', name: 'Cribbage', url: '<hub>/?game=cribbage', min: 2, max: 4, party: 'query', hub: true, icon: '❖' },
       { id: 'backgammon', genre: 'clubhouse', name: 'Backgammon', url: '<hub>/?game=backgammon', min: 2, max: 2, party: 'query', hub: true, icon: '⚁' },
-      { id: 'csparty', genre: 'mainevents', name: 'CS Party', url: 'https://csparty.phatt.vip/', min: 1, max: 4, party: 'query', roomParam: 'code', icon: '🎲' },
-      { id: '7dtz', genre: 'mainevents', name: '7 Days to Zelda', url: 'https://zelda.phatt.vip/', min: 1, max: 4, party: 'query', icon: '🗡' }],
+      { id: 'csparty', genre: 'mainevents', name: 'CS Party', url: 'https://csparty.phatt.vip/', min: 1, max: 4, party: 'query', roomParam: 'code', icon: '🎲', list: { path: 'api/public', format: 'csparty' } },
+      { id: '7dtz', genre: 'mainevents', name: '7 Days to Zelda', url: 'https://zelda.phatt.vip/', min: 1, max: 4, party: 'query', roomParam: 'camp', icon: '🗡', list: { path: 'api/rooms', format: '7dtz' } }],
   };
   const entry = (id) => CATALOG.games.find((g) => g.id === id) || null;
   const gameName = (id) => (id === 'clubhouse' ? 'the Clubhouse' : (entry(id) || {}).name || (id ? id[0].toUpperCase() + id.slice(1) : 'nowhere'));
@@ -134,7 +134,7 @@
     if (m.t === 'pong') return;
     if (m.t === 'party') {
       const wasCode = state.code;
-      state.code = m.code || null; state.host = m.host || null; state.members = m.members || []; state.venue = m.venue || null; state.chat = m.chat || [];
+      state.code = m.code || null; state.host = m.host || null; state.public = !!m.public; state.members = m.members || []; state.venue = m.venue || null; state.chat = m.chat || [];
       if (m.you && hex32(m.you) && m.you !== member) { member = m.you; ls.set(LS_MEMBER, member); }
       ls.set(LS_CODE, state.code);
       const mine = state.members.find((x) => x.id === member);
@@ -261,6 +261,7 @@
     '.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px}',
     '.tile{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:8px 10px;border-radius:10px;background:linear-gradient(160deg,#3c2819,#26170d);border:1px solid #0007;box-shadow:0 3px 8px #0007,inset 0 1px 0 #fff1,inset 0 0 0 1px #c9a24a22;min-height:64px;position:relative}',
     '.tile:hover{box-shadow:0 6px 12px #000a,inset 0 0 0 1px #c9a24a66}.tile[disabled]{opacity:.42;cursor:not-allowed}.tile .ico{position:absolute;right:8px;top:6px;color:#c9a24a;font-size:18px;opacity:.9}',
+    '.brow{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:9px;background:#26170d;border:1px solid #0007;margin-top:6px}.brow .info{flex:1;min-width:0}.brow .acts{display:flex;gap:6px;flex:none}.brow .btn{padding:5px 10px;font-size:12px}a.btn{text-decoration:none;display:inline-block}',
     '.tile .n{font-size:14px;padding-right:22px}.tile .p{font-size:11px;color:#c9a24a;letter-spacing:.06em}.tile .why{font-size:11px;color:#d9534f}.tile.here{box-shadow:inset 0 0 0 2px #8fc7a0aa}.tile .herelbl{font-size:10px;color:#8fc7a0;letter-spacing:.1em}',
     '.banner{pointer-events:auto;position:fixed;left:50%;top:14px;transform:translateX(-50%);width:min(520px,calc(100vw - 20px));padding:12px 14px;border-radius:12px;background:linear-gradient(#4a3322,#2c1b10);border:1px solid #000;box-shadow:0 0 0 2px #c9a24a77,0 18px 40px #000c;animation:rise .2s ease-out}',
     '.banner p{margin:0 0 8px;font-size:15px}.banner .warn{color:#ffd8b0;font-size:13px}.banner .row button{min-height:38px;padding:0 16px;border-radius:8px;border:1px solid #140b05;font-weight:700}',
@@ -338,15 +339,15 @@
     if (drawer) drawer.remove();
     drawer = el('aside', 'drawer'); drawer.setAttribute('role', 'dialog'); drawer.setAttribute('aria-label', 'Party');
     const hd = el('div', 'hd');
-    const h2 = el('h2', '', view === 'catalog' ? 'Take the party to…' : view === 'start' ? 'Party' : 'Party');
+    const h2 = el('h2', '', view === 'catalog' ? 'Take the party to…' : view === 'browse' ? 'Open games' : 'Party');
     hd.appendChild(h2);
     if (state.code && view !== 'catalog') { const c = el('span', 'code', state.code); c.title = 'Party code'; hd.appendChild(c); }
-    if (view === 'catalog') { const back = el('button', 'x', '‹'); back.type = 'button'; back.setAttribute('aria-label', 'Back'); back.onclick = () => setView('party'); hd.appendChild(back); }
+    if (view === 'catalog' || view === 'browse') { const back = el('button', 'x', '‹'); back.type = 'button'; back.setAttribute('aria-label', 'Back'); back.onclick = () => setView(state.code ? 'party' : 'start'); hd.appendChild(back); }
     const x = el('button', 'x', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Close the party drawer'); x.onclick = () => { closeDrawer(); pill.focus(); };
     hd.appendChild(x); drawer.appendChild(hd);
     const body = el('div', 'body'); drawer.appendChild(body);
     root.appendChild(drawer); // attach first: the chat log paints into a connected node
-    if (view === 'start') renderStart(body); else if (view === 'catalog') renderCatalog(body); else renderParty(body);
+    if (view === 'start') renderStart(body); else if (view === 'catalog') renderCatalog(body); else if (view === 'browse') renderBrowse(body); else renderParty(body);
     body.scrollTop = prevScroll;
   }
 
@@ -368,6 +369,7 @@
     join.onclick = doJoin; code.onkeydown = (e) => { if (e.key === 'Enter') doJoin(); };
     jr.appendChild(code); jr.appendChild(join); s.appendChild(jr);
     body.appendChild(s);
+    const br = el('button', 'btn ghost', 'Open games across the arcade'); br.type = 'button'; br.onclick = () => setView('browse'); body.appendChild(br);
   }
 
   function renderParty(body) {
@@ -405,8 +407,15 @@
     const mv = el('div', 'row');
     if (me.host) { const b = el('button', 'btn', 'Take the party to…'); b.type = 'button'; b.onclick = () => setView('catalog'); mv.appendChild(b); }
     else mv.appendChild(el('span', 'muted', 'Only ' + (hostM.name || 'the host') + ' can move the party'));
+    const br = el('button', 'btn ghost', 'Open games'); br.type = 'button'; br.title = 'Open games and lobbies across the whole arcade'; br.onclick = () => setView('browse'); mv.appendChild(br);
     const lv = el('button', 'btn ghost', 'Leave'); lv.type = 'button'; lv.style.marginLeft = 'auto'; lv.onclick = () => { if (confirm('Leave the party?')) api.leave(); };
     mv.appendChild(lv); body.appendChild(mv);
+    if (me.host) {
+      const pl = el('label', 'muted'); pl.style.display = 'flex'; pl.style.gap = '6px'; pl.style.alignItems = 'center'; pl.style.cursor = 'pointer';
+      const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = !!state.public; cb.onchange = () => send({ t: 'public', on: cb.checked });
+      pl.appendChild(cb); pl.appendChild(document.createTextNode('List this party in Open games so others can join'));
+      body.appendChild(pl);
+    } else if (state.public) body.appendChild(el('div', 'muted', 'This party is listed in Open games.'));
     // chat
     body.appendChild(el('div', 'sec', 'Chat'));
     chatBox = el('div', 'chat'); chatBox.setAttribute('role', 'log'); chatBox.setAttribute('aria-live', 'polite'); body.appendChild(chatBox); renderChat();
@@ -430,6 +439,54 @@
       chatBox.appendChild(d);
     });
     chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  // ---- the universal lobby browser: GET <hub>/api/browser (server/browser.js), refreshed while the view is open ----
+  let browseData = null, browseTimer = 0, browseAt = 0;
+  function loadBrowse(force) {
+    if (!force && Date.now() - browseAt < 4000) return Promise.resolve(browseData);
+    return fetch(HUB + '/api/browser', { mode: 'cors' }).then((r) => (r.ok ? r.json() : null)).then((d) => { browseData = d; browseAt = Date.now(); if (open && view === 'browse') renderDrawer(); return d; }).catch(() => { browseData = null; browseAt = Date.now(); if (open && view === 'browse') renderDrawer(); return null; });
+  }
+  function renderBrowse(body) {
+    const me = state.members.find((m) => m.id === member) || {};
+    const d = browseData;
+    if (!d) { body.appendChild(el('div', 'muted', browseAt ? 'The arcade is not answering right now.' : 'Looking around the arcade…')); if (!browseAt) loadBrowse(true); }
+    clearInterval(browseTimer); browseTimer = setInterval(() => { if (open && view === 'browse') loadBrowse(true); else clearInterval(browseTimer); }, 8000);
+    const top = el('div', 'row'); top.appendChild(el('span', 'muted', state.code ? (me.host ? 'Join alone, or bring the whole party.' : 'Joining takes you there on your own; ' + ((state.members.find((m) => m.id === state.host) || {}).name || 'the host') + ' can bring the party.') : 'Everything open across the arcade right now.'));
+    const rf = el('button', 'btn ghost', 'Refresh'); rf.type = 'button'; rf.style.marginLeft = 'auto'; rf.onclick = () => loadBrowse(true); top.appendChild(rf); body.appendChild(top);
+    if (!d) return;
+    const parties = (d.parties || []).filter((x) => x.code !== state.code);
+    const games = (d.games || []).filter((g) => g.rooms.length || !g.ok);
+    if (!parties.length && !games.some((g) => g.rooms.length)) body.appendChild(el('div', 'muted', 'Nothing open anywhere right now. Be the first.'));
+    const cat = el('div', 'cat');
+    if (parties.length) {
+      const gd = el('div', 'g'); gd.appendChild(el('div', 'sec', 'Parties'));
+      parties.forEach((x) => {
+        const r = el('div', 'brow');
+        const info = el('div', 'info'); info.appendChild(el('div', 'nm', '♣ ' + x.name)); info.appendChild(el('div', 'wh', x.online + ' online' + (x.venue ? ' · at ' + x.venue.gameName : ''))); r.appendChild(info);
+        const j = el('a', 'btn', 'Join'); j.href = x.url; r.appendChild(j); gd.appendChild(r);
+      });
+      cat.appendChild(gd);
+    }
+    games.forEach((g) => {
+      const gd = el('div', 'g');
+      const sec = el('div', 'sec', (g.icon ? g.icon + ' ' : '') + g.name); gd.appendChild(sec);
+      if (!g.ok) gd.appendChild(el('div', 'why', 'Not reachable right now' + (g.error ? ' (' + g.error + ')' : '')));
+      g.rooms.forEach((rm) => {
+        const r = el('div', 'brow');
+        const info = el('div', 'info');
+        info.appendChild(el('div', 'nm', rm.name));
+        const who = rm.players && rm.players.length ? rm.players.join(', ') : rm.humans + (rm.humans === 1 ? ' player' : ' players');
+        info.appendChild(el('div', 'wh', (rm.status === 'lobby' ? 'waiting · ' : 'playing · ') + who + ' · ' + rm.humans + '/' + rm.seats + (rm.free ? ' · ' + rm.free + ' open' : ' · full') + (rm.looking ? ' · looking for players' : '')));
+        r.appendChild(info);
+        const acts = el('div', 'acts');
+        const j = el('a', 'btn', rm.free ? 'Join' : 'Watch'); j.href = state.code ? urlFor(g.id, { room: rm.id }) : rm.url; acts.appendChild(j);
+        if (me.host) { const b = el('button', 'btn ghost', 'Bring the party'); b.type = 'button'; b.onclick = () => { api.goto(g.id, { room: rm.id }); setView('party'); }; acts.appendChild(b); }
+        r.appendChild(acts); gd.appendChild(r);
+      });
+      cat.appendChild(gd);
+    });
+    body.appendChild(cat);
   }
 
   function renderCatalog(body) {

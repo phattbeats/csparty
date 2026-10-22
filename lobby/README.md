@@ -136,4 +136,4 @@ code; the lobby code and `lobby`/`playing` are reported on every state; the name
 name box; leaving a lobby through the party asks first (the arcade selector shares that guard, wired after
 DOMContentLoaded now that both scripts are deferred). The hand-off link to the game server gets `?party&m` appended so
 `web/public/boot.js` shows the pill in the match too (`playing`, then `done` when the match ends; mid-match guard).
-Dev: open the page once with `?hub=http://<ip>:4400` to point the drop-in at a local Clubhouse hub.
+The arcade's universal lobby browser lists this Worker's `GET /api/public` lobbies and links to `/?code=CODE`; the drop-in's Open games view shows the same list here. Dev: open the page once with `?hub=http://<ip>:4400` to point the drop-in at a local Clubhouse hub.
