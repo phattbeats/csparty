@@ -219,3 +219,11 @@ Ways past it, cheapest first:
 1. Serve `gamedata.zip` from Cloudflare (allowed by decision 4). This removes the first-visit upload.
 2. Run the relay as several processes (Node cluster or one relay per few lobbies). That moves the limit to RAM, about 40 lobbies.
 3. Rented hosts are ruled out (decision 3); the agent already supports any number of hosts.
+
+## 14. The Clubhouse party (PHA-4335, 2026-10-22)
+
+The arcade's universal lobby ("the party") moves a group between Poker Night, the Clubhouse tables, CS Party and 7 Days
+to Zelda without re-forming it. CS Party takes part through the drop-in `lobby/public/party/phatt-party.js` and the
+`// party` block at the end of `lobby/public/lobby.js` (details in `lobby/README.md`; the contract is
+`clubhouse-games/docs/CROSSOVER.md` §1). Nothing in the Worker changed: the party's "room" is simply the lobby code,
+created with the existing `POST /api/lobbies` and joined with the existing `/?code=` link.

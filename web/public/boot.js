@@ -1199,7 +1199,8 @@
     if (!lobbyUrl || backing) return; backing = true;
     watch.gaveUp = true;   // the server closing behind us isn't a lost connection
     overlay("Match over", "Back to the lobby…", { spin: true });
-    setTimeout(() => { location.href = lobbyUrl.href; }, 6000);
+    partyDone();
+    setTimeout(() => { location.href = partyLink(lobbyUrl.href); }, 6000);
   }
 
   // ------------------------------------------------------------------ lobby hand-off (lobby/, #3989)
@@ -1219,4 +1220,20 @@
     let first = true; try { first = !sessionStorage.getItem(once); sessionStorage.setItem(once, "1"); } catch {}
     if (first) $("form").requestSubmit();
   }
+
+  // ------------------------------------------------------------------ party pill (the Clubhouse crossover, PHA-4335)
+  // The group that came here through the lobby page (lobby/public/lobby.js has the arrival protocol). The lobby put
+  // ?party=CODE&m=TOKEN on the hand-off link, so party/phatt-party.js (deferred, hence DOMContentLoaded) knows the
+  // group on this origin too: it shows who is where, chat, and the host's "take the party to…". Here we only say
+  // "playing" in the lobby's code, "done" when the match ends, and guard a mid-match leave.
+  let partyDone = () => {};
+  const partyLink = (href) => { const P = window.PhattParty; if (!P || !P.code) return href; try { const u = new URL(href); u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; } };
+  function partyInit() {
+    const P = window.PhattParty; if (!P) return;
+    const room = lobbyUrl ? lobbyUrl.searchParams.get("code") : null;
+    P.setGuard(() => (inGame() ? "You are mid-match. Leaving hands your seat to a bot." : ""));
+    P.ready.then(() => { if (P.code) P.setWhere({ room, status: "playing" }); });
+    partyDone = () => { if (P.code) P.setWhere({ room, status: "done" }); };
+  }
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", partyInit); else partyInit();
 })();

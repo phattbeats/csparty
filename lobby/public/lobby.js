@@ -59,7 +59,7 @@
     homeStatus("Looking for the party…");
     try {
       const r = await fetch(`/api/lobbies/${code}`);
-      if (r.status === 404) { homeStatus(`No party with code ${code}. It may have ended.`, true); history.replaceState(null, "", "/"); return; }
+      if (r.status === 404) { homeStatus(`No party with code ${code}. It may have ended.`, true); history.replaceState(null, "", keepParty("/")); return; }
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       enter(code, via);
     } catch (e) { homeStatus(String(e.message || e), true); }
@@ -80,7 +80,7 @@
   function enter(c, how) {
     code = c; via = how || "code"; leaving = false; sawStart = false; last = null;
     $("ready").hidden = true;   // until the lobby's first state: a click before the socket opens would be lost
-    history.replaceState(null, "", `/?code=${code}`);
+    history.replaceState(null, "", keepParty(`/?code=${code}`));
     $("home").hidden = true; $("lobby").hidden = false;
     $("lobby-code").textContent = code;
     $("eyebrow").textContent = "PARTY " + code;
@@ -119,12 +119,13 @@
   function backHome(msg) {
     leaving = true; try { ws?.close(); } catch {}
     ws = null; code = ""; clearInterval(countdown);
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", keepParty("/"));
     $("lobby").hidden = true; $("home").hidden = false;
     $("eyebrow").textContent = "PARTY LOBBY"; $("headline").textContent = "Make a party, send the code."; $("subline").textContent = "Up to 4 players. Bots fill the empty seats.";
     homeStatus(msg || "", !!msg);
     closedMsg = "";
     loadPublic(); loadStatus();
+    partyWhere();
   }
   $("leave").addEventListener("click", () => { send({ t: "leave" }); backHome(""); });
   $("copy").addEventListener("click", async () => {
@@ -195,7 +196,7 @@
     $("seeking-wrap").hidden = !isHost; $("lobby-seeking").checked = s.seeking;
     $("end").hidden = !isHost || open;
     $("go").hidden = !(inMatch && s.go);
-    if (s.go) $("go").href = s.go;
+    if (s.go) $("go").href = withPartyQuery(s.go);
 
     clearInterval(countdown);
     if (s.error) lobbyStatus(s.error, s.state !== "queued");
@@ -219,15 +220,98 @@
     if (!inMatch) sawStart = false;
     if (inMatch && sawStart && s.go && !render.going) {
       render.going = true; lobbyStatus("Server ready. Joining…");
-      setTimeout(() => { location.href = s.go; }, 1200);
+      setTimeout(() => { location.href = withPartyQuery(s.go); }, 1200);
     }
+    partyWhere();
   }
+
+  // ------------------------------------------------------------------ party (the Clubhouse crossover, PHA-4335)
+  // The drop-in (party/phatt-party.js, window.PhattParty; contract: clubhouse-games/docs/CROSSOVER.md) draws the Party
+  // pill, drawer and follow banner and moves people between the arcade's games. This block is what CS Party does with
+  // the venue: arrival (join the group's lobby, or make one when I am the host and tell the group its code), where I
+  // am (lobby code + lobby/playing), the name carried across games, and a leave guard. Both the arcade selector and
+  // the drop-in are deferred scripts and this one is not, so they are wired after DOMContentLoaded (that is also why
+  // the arcade guard lives here now). The ?party=CODE&m=TOKEN query is the party's: it survives our URL rewrites and
+  // rides on the game-server hand-off so the pill knows the group there too.
+  const PARTY_GAME = "csparty";
+  function keepParty(path) {
+    const u = new URL(path, location.href), cur = new URLSearchParams(location.search);
+    for (const k of ["party", "m"]) if (cur.get(k)) u.searchParams.set(k, cur.get(k));
+    return u.pathname + u.search;
+  }
+  function withPartyQuery(href) {
+    const P = window.PhattParty;
+    if (!P || !P.code) return href;
+    try { const u = new URL(href, location.href); u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; }
+  }
+  let party = null, partyAccepted, partyJoined, partyWhereKey = "", partyMaking = false;
+  const partyHostName = () => (party.members.find((m) => m.id === party.host) || {}).name || "The host";
+  // report the lobby code and phase; a no-op when nothing changed (render and backHome call this every time)
+  function partyWhere() {
+    if (!party) return;
+    const w = code ? { room: code, status: last && last.state === "in_match" ? "playing" : "lobby" } : { room: null, status: "lobby" };
+    const k = `${w.room || ""}:${w.status}`;
+    if (k === partyWhereKey) return;
+    partyWhereKey = k; party.setWhere(w);
+  }
+  // act on a venue that is here: join its lobby, or (as host) make one and tell the party
+  async function partyAct(venue) {
+    if (!party) return;
+    if (venue.room) {
+      if (code === venue.room || partyJoined === venue.room) return;
+      partyJoined = venue.room;
+      if (code) { send({ t: "leave" }); backHome(""); }
+      tryJoin(venue.room, "party");
+      return;
+    }
+    if (party.isHost) {
+      if (code) { partyWhereKey = ""; partyWhere(); return; }   // already in a lobby: it becomes the party's
+      if (partyMaking) return;
+      partyMaking = true; store.set("csp_name", myName()); homeStatus("Making a party for the group…");
+      try {
+        const r = await fetch("/api/lobbies", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pid, name: myName(), char: myChar, public: false, title: `${myName()} & friends` }) });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        partyJoined = j.code; enter(j.code, "party");
+        party.setWhere({ room: j.code, status: "lobby" }); partyWhereKey = `${j.code}:lobby`;
+      } catch (e) { homeStatus(`Could not make a party for the group: ${e.message || e}`, true); }
+      partyMaking = false;
+      return;
+    }
+    homeStatus(`${partyHostName()} is setting up the party…`);
+  }
+  // a snapshot: the host's lobby code landed on a venue I accepted (arrived with it, or said yes to the banner)
+  function partyWatch() {
+    if (!party) return;
+    const v = party.venue;
+    if (!v || v.game !== PARTY_GAME || v.at !== partyAccepted) return;
+    if (v.room && v.room !== partyJoined && v.room !== code) partyAct(v);
+  }
+  function partyInit() {
+    const inLobby = () => (!$("lobby").hidden ? "You are in a party, and leaving drops your seat." : "");
+    if (window.PhattArcade) PhattArcade.setGuard(inLobby);
+    party = window.PhattParty || null;
+    if (!party) return;
+    party.setGuard(inLobby);
+    party.on("party", partyWatch);
+    party.on("follow", (v) => { partyAccepted = v.at; partyJoined = undefined; partyAct(v); });
+    $("name").addEventListener("change", () => { if (party.code && myName() !== "Player") party.setProfile({ name: myName() }); });
+    party.ready.then(() => {
+      // the name travels with the party: a nameless browser takes the party's; a named one tells the party
+      const carried = String(party.me.name || "").trim().slice(0, 20);
+      if (!$("name").value.trim() && carried && carried.toLowerCase() !== "guest") { $("name").value = carried; store.set("csp_name", carried); }
+      else if ($("name").value.trim() && party.code && (!party.me.name || party.me.name === "Guest")) party.setProfile({ name: myName() });
+      partyWhereKey = ""; partyWhere();
+      // arrival: the party is here -> its lobby, or make one (the ?code= deep link may already have joined it)
+      const v = party.venue;
+      if (party.code && v && v.game === PARTY_GAME) { partyAccepted = v.at; partyAct(v); }
+    });
+  }
+  if (document.readyState === "loading") addEventListener("DOMContentLoaded", partyInit); else partyInit();
 
   // ------------------------------------------------------------------ boot
   const q = new URLSearchParams(location.search).get("code");
   if (q) { $("code").value = q.toUpperCase(); tryJoin(q, "link"); } else loadPublic();
   loadStatus();
 })();
-
-// PHATT GAMING ARCADE selector: ask before it takes someone out of a party they are sitting in
-if (window.PhattArcade) PhattArcade.setGuard(() => (document.getElementById("lobby") && !document.getElementById("lobby").hidden) ? "You are in a party, and leaving drops your seat." : "");

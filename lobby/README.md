@@ -124,3 +124,16 @@ real game server, then checks the lobby reopens (see its header).
    domain (Workers > csparty-lobby > Domains) or use the workers.dev address.
 3. Lobby servers: `deploy/csparty-up.sh agent` on the game host (`LOBBY_WS` and `PUBLIC_URL` in its `.env`), and
    the relay with `POOL_AGENT=http://127.0.0.1:8097`. `GET /api/capacity` should list the host online.
+
+## The Clubhouse party (PHA-4335)
+
+The lobby page carries the arcade's universal lobby: `public/party/phatt-party.js` (a byte copy of the canonical
+`clubhouse-games/client/party/phatt-party.js`; contract `clubhouse-games/docs/CROSSOVER.md`) draws the Party pill,
+drawer (members, chat, invite link, "Take the party to…") and the follow banner. `lobby.js`'s `// party` block is what
+CS Party does with it: a party arriving with `?party=CODE&m=TOKEN` joins the venue's lobby (`?code=` deep link, or
+`tryJoin` on the follow banner); a host with no lobby yet makes one titled "<host> & friends" and tells the party its
+code; the lobby code and `lobby`/`playing` are reported on every state; the name carried across games fills an empty
+name box; leaving a lobby through the party asks first (the arcade selector shares that guard, wired after
+DOMContentLoaded now that both scripts are deferred). The hand-off link to the game server gets `?party&m` appended so
+`web/public/boot.js` shows the pill in the match too (`playing`, then `done` when the match ends; mid-match guard).
+Dev: open the page once with `?hub=http://<ip>:4400` to point the drop-in at a local Clubhouse hub.
