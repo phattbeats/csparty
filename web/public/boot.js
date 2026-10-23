@@ -1227,13 +1227,14 @@
   // group on this origin too: it shows who is where, chat, and the host's "take the party to…". Here we only say
   // "playing" in the lobby's code, "done" when the match ends, and guard a mid-match leave.
   let partyDone = () => {};
-  const partyLink = (href) => { const P = window.PhattParty; if (!P || !P.code) return href; try { const u = new URL(href); u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; } };
+  const partyLink = (href) => { const P = window.PhattParty; if (!P) return href; try { const u = new URL(href); if (P.code) u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; } };
   function partyInit() {
     const P = window.PhattParty; if (!P) return;
     const room = lobbyUrl ? lobbyUrl.searchParams.get("code") : null;
     P.setGuard(() => (inGame() ? "You are mid-match. Leaving hands your seat to a bot." : ""));
-    P.ready.then(() => { if (P.code) P.setWhere({ room, status: "playing" }); });
-    partyDone = () => { if (P.code) P.setWhere({ room, status: "done" }); };
+    // where I am goes to the arcade chat too (the Table channel), party or not
+    P.ready.then(() => P.setWhere({ room, status: "playing" }));
+    partyDone = () => P.setWhere({ room, status: "done" });
   }
   if (document.readyState === "loading") addEventListener("DOMContentLoaded", partyInit); else partyInit();
 })();

@@ -241,8 +241,8 @@
   }
   function withPartyQuery(href) {
     const P = window.PhattParty;
-    if (!P || !P.code) return href;
-    try { const u = new URL(href, location.href); u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; }
+    if (!P) return href; // m (who I am) carries even without a party: the arcade chat follows me into the match
+    try { const u = new URL(href, location.href); if (P.code) u.searchParams.set("party", P.code); u.searchParams.set("m", P.member); return u.href; } catch { return href; }
   }
   let party = null, partyAccepted, partyJoined, partyWhereKey = "", partyMaking = false;
   const partyHostName = () => (party.members.find((m) => m.id === party.host) || {}).name || "The host";

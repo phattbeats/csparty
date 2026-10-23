@@ -5,6 +5,7 @@
  * Use:  a script tag, src="/arcade/phatt-arcade.js" data-game="csparty" defer
  * Options: data-mount="#selector" puts the button first inside that element (default: first child of body),
  *          data-base="/arcade/" overrides where logos load from (default: next to this script).
+ * Dock:    when the Arcade dock (party/phatt-party.js, window.PhattParty) is on the page, the button opens its Games tab.
  * Guard:   PhattArcade.setGuard(() => "You're in a match." | "")  a non-empty string makes a game tile ask
  *          before it navigates away, so the selector never drops a player from a live game by accident.
  * All UI lives in a shadow root so no game stylesheet can restyle it. */
@@ -147,7 +148,11 @@
       li.appendChild(t); list.appendChild(li);
     });
 
-    function openIt() { warn.hidden = true; if (!dlg.open) dlg.showModal(); close.focus(); }
+    function openIt() {
+      // the Arcade dock (party/phatt-party.js) is the one game switcher when it is on the page: open its Games tab
+      if (window.PhattParty && typeof window.PhattParty.open === "function") { window.PhattParty.open("games"); return; }
+      warn.hidden = true; if (!dlg.open) dlg.showModal(); close.focus();
+    }
     open.onclick = openIt;
     close.onclick = function () { dlg.close(); };
     dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });
