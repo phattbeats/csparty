@@ -61,7 +61,7 @@
 
   const state = { code: null, host: null, members: [], venue: null, chat: [], inventory: [], connected: false, where: {}, public: false };
   // the arcade chat: one store per channel + personal lines (whispers, command replies) that show in every view
-  const chat = { you: null, online: 0, squelch: new Set(), general: { name: 'Arcade', users: [], lines: [] }, table: { name: null, title: null, users: [], lines: [] }, personal: [], unread: { general: 0, party: 0, table: 0 }, view: ls.get(LS_VIEW) || 'general', sent: [], sentAt: -1, lastWhisper: null };
+  const chat = { you: null, online: 0, squelch: new Set(), general: { name: 'Arcade', users: [], lines: [] }, table: { name: null, title: null, users: [], lines: [] }, personal: [], filter: true, unread: { general: 0, party: 0, table: 0 }, view: ls.get(LS_VIEW) || 'general', sent: [], sentAt: -1, lastWhisper: null };
   const listeners = {};
   const emit = (ev, data) => { (listeners[ev] || []).slice().forEach((fn) => { try { fn(data); } catch (e) { console.error('PhattParty listener', e); } }); };
   let guard = () => '';
@@ -119,7 +119,7 @@
     if (m.t === 'chat') { const l = partyLine(m.line); state.chat.push(l); if (state.chat.length > 50) state.chat.shift(); addLine('party', l); emit('chat', m.line); return; }
     if (m.t === 'inventory') { state.inventory = m.items || []; emit('inventory', state.inventory.slice()); return; }
     if (m.t === 'hi') {
-      chat.you = m.you; chat.online = m.online || 0; chat.squelch = new Set(m.squelch || []);
+      chat.you = m.you; chat.online = m.online || 0; chat.squelch = new Set(m.squelch || []); setFilterView(m.filter !== false);
       if (m.you && m.you.name && m.you.name !== profile.name && m.you.name !== 'Guest' && !profile.name) { profile.name = m.you.name; }
       render(); return;
     }
@@ -142,6 +142,7 @@
     if (m.t === 'line') { onLine(m.line); return; }
     if (m.t === 'you') {
       if (chat.you) { chat.you.name = m.name; chat.you.away = m.away; }
+      if (m.filter !== undefined) setFilterView(m.filter !== false);
       if (m.name && m.name !== profile.name) { profile.name = m.name; ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar })); emit('me', api.me); }
       if (open) renderHeader();
       return;
@@ -155,7 +156,10 @@
   }
 
   // ---- chat lines ----
-  function partyLine(l) { return { id: 'p' + l.id, ch: 'party', kind: l.system ? 'sys' : 'say', from: l.system ? null : { id: l.member, name: l.name }, text: l.text, ts: l.ts }; }
+  function partyLine(l) { return { id: 'p' + l.id, ch: 'party', kind: l.system ? 'sys' : 'say', from: l.system ? null : { id: l.member, name: l.name }, text: l.text, clean: l.clean, ts: l.ts }; }
+  // the word filter: lines carry `clean` (banned words masked) when they have any; the server keeps the choice per member
+  const shown = (l) => (chat.filter && l.clean ? l.clean : l.text);
+  function setFilterView(on) { if (chat.filter === on) return; chat.filter = on; if (open && tab === 'chat') { renderChips(); renderLog(); } }
   function onLine(l) {
     if (l.squelch) chat.squelch = new Set(l.squelch);
     if (l.ch === 'general') addLine('general', l);
@@ -164,7 +168,7 @@
       chat.personal.push(l); if (chat.personal.length > 100) chat.personal.shift();
       if (l.kind === 'wfrom' || l.kind === 'invite') {
         chat.lastWhisper = l.from;
-        if (!open || tab !== 'chat') { unreadW++; renderLauncher(); pulse(); toast(l.kind === 'invite' ? l.text : '<From: ' + l.from.name + '> ' + l.text, () => openDrawer('chat')); }
+        if (!open || tab !== 'chat') { unreadW++; renderLauncher(); pulse(); toast(l.kind === 'invite' ? shown(l) : '<From: ' + l.from.name + '> ' + shown(l), () => openDrawer('chat')); }
       }
       if (open && tab === 'chat') appendLine(l);
     }
@@ -479,7 +483,7 @@
 
   // ---- Chat tab ----
   let chipsEl, logEl, usersEl, inputEl, nameBarEl, hintsEl, showUsers = false;
-  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
+  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/filter', '[on | off]', 'mask banned words, or show them'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
   function views() {
     const v = [{ id: 'general', cls: 'g', label: '#' + (chat.general.name || 'Arcade') }];
     if (state.code) v.push({ id: 'party', cls: 'p', label: 'Party' });
@@ -543,6 +547,9 @@
     const w = button('👥 ' + list.filter((u) => u.online !== false).length, 'chip who', 'Who is here'); w.setAttribute('aria-pressed', String(showUsers));
     w.onclick = () => { showUsers = !showUsers; renderChips(); renderUsers(); };
     chipsEl.appendChild(w);
+    const fb = button(chat.filter ? '✱ Filter on' : '✱ Filter off', 'chip who', chat.filter ? 'Banned words show masked. Click to see them (/filter off)' : 'You see banned words. Click to mask them (/filter on)'); fb.setAttribute('aria-pressed', String(chat.filter));
+    fb.onclick = () => { setFilterView(!chat.filter); send({ t: 'pref', filter: chat.filter }); };
+    chipsEl.appendChild(fb);
     chat.unread[chat.view] = 0; unreadW = 0;
   }
   function usersFor(view) {
@@ -590,16 +597,16 @@
     const d = el('div', 'ln ' + (l.kind || 'say') + (l.from && l.from.id === member ? ' me' : ''));
     d.appendChild(el('span', 'ts', hhmm(l.ts)));
     const f = l.from;
-    if (l.kind === 'say' && f) { d.appendChild(document.createTextNode('<')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode('> ' + l.text)); }
-    else if (l.kind === 'emote' && f) { d.appendChild(document.createTextNode('<')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode(' ' + l.text + '>')); }
-    else if (l.kind === 'roll' && f) { d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode(' ' + l.text)); }
-    else if (l.kind === 'wfrom' && f) { d.appendChild(document.createTextNode('<From: ')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode('> ' + l.text)); }
-    else if (l.kind === 'wto' && l.to) { d.appendChild(document.createTextNode('<To: ')); d.appendChild(whoNode(l.to, displayName(l.to))); d.appendChild(document.createTextNode('> ' + l.text)); }
+    if (l.kind === 'say' && f) { d.appendChild(document.createTextNode('<')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode('> ' + shown(l))); }
+    else if (l.kind === 'emote' && f) { d.appendChild(document.createTextNode('<')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode(' ' + shown(l) + '>')); }
+    else if (l.kind === 'roll' && f) { d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode(' ' + shown(l))); }
+    else if (l.kind === 'wfrom' && f) { d.appendChild(document.createTextNode('<From: ')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode('> ' + shown(l))); }
+    else if (l.kind === 'wto' && l.to) { d.appendChild(document.createTextNode('<To: ')); d.appendChild(whoNode(l.to, displayName(l.to))); d.appendChild(document.createTextNode('> ' + shown(l))); }
     else if (l.kind === 'invite' && f) {
-      d.appendChild(document.createTextNode(l.text));
+      d.appendChild(document.createTextNode(shown(l)));
       if (l.party && l.party !== state.code) { const j = button('Join party', 'btn small act'); j.onclick = () => { api.join(l.party).then(() => { toast('You joined ' + f.name + "'s party."); }).catch(() => {}); }; d.appendChild(j); }
     }
-    else d.appendChild(document.createTextNode(l.text));
+    else d.appendChild(document.createTextNode(shown(l)));
     return d;
   }
   function renderHints() {
