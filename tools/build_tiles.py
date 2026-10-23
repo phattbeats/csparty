@@ -37,24 +37,30 @@ STUDIO_NF_FULLBRIGHT = 0x0004
 def hex_pts(cx, cy, rad):
     return [(cx + rad * math.cos(math.radians(60 * k)), cy + rad * math.sin(math.radians(60 * k))) for k in range(6)]
 
+SS = 4              # drawn at 4x and scaled down: PIL draws without anti-aliasing, and the rim and labels came out jagged
+
 def tile_texture(label, fill, ink, font_path, path):
-    img = Image.new("RGB", (S, S), tuple(int(c * 0.45) for c in fill))      # dark: the rim and the sides use it
+    B = S * SS
+    img = Image.new("RGB", (B, B), tuple(int(c * 0.45) for c in fill))      # dark: the rim and the sides use it
     d = ImageDraw.Draw(img)
-    c = S / 2
-    d.polygon(hex_pts(c, c, S / 2 - 2), fill=tuple(int(c * 0.45) for c in fill))
-    d.polygon(hex_pts(c, c, S / 2 - 14), fill=fill)
-    d.polygon(hex_pts(c, c, S / 2 - 22), outline=tuple(min(255, int(v * 1.25) + 20) for v in fill), width=3)
-    size = 124                                   # largest that fits inside the inner hexagon
+    c = B / 2
+    d.polygon(hex_pts(c, c, B / 2 - 2 * SS), fill=tuple(int(c * 0.45) for c in fill))
+    d.polygon(hex_pts(c, c, B / 2 - 14 * SS), fill=fill)
+    d.polygon(hex_pts(c, c, B / 2 - 22 * SS), outline=tuple(min(255, int(v * 1.25) + 20) for v in fill), width=3 * SS)
+    size = 124 * SS                              # largest that fits inside the inner hexagon
     while True:
         font = ImageFont.truetype(font_path, size)
         bb = d.textbbox((0, 0), label, font=font)
-        if bb[2] - bb[0] <= S * 0.56 or size <= 30: break
-        size -= 4
+        if bb[2] - bb[0] <= B * 0.56 or size <= 30 * SS: break
+        size -= 4 * SS
     w, h = bb[2] - bb[0], bb[3] - bb[1]
     x, y = c - w / 2 - bb[0], c - h / 2 - bb[1]
-    d.text((x + 3, y + 4), label, font=font, fill=tuple(int(v * 0.35) for v in fill))   # drop shadow
-    d.text((x, y), label, font=font, fill=ink)
-    img.quantize(colors=256, method=Image.Quantize.MEDIANCUT).save(path)
+    dark = tuple(int(v * 0.35) for v in fill)
+    d.text((x + 3 * SS, y + 4 * SS), label, font=font, fill=dark)   # drop shadow
+    # a dark outline keeps the label readable from the low, glancing camera angles
+    d.text((x, y), label, font=font, fill=ink, stroke_width=3 * SS, stroke_fill=dark)
+    img = img.resize((S, S), Image.LANCZOS)
+    img.quantize(colors=256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE).save(path)
 
 def tile_smd(path, tex):
     # top-face UV: image up (v=1) is model +x, image right (u=1) is model -y
