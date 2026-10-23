@@ -524,7 +524,7 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - Rollback: containers `cs-party-{server,agent}-pha4365old` (stopped), `csparty-up.sh.pre-pha4365`, then
   `./csparty-up.sh server && ./csparty-up.sh agent`, or keep 0.5.37 and set `csp_sfx 0`.
 
-## #4367 asset polish (branch pha-4367-polish, not deployed)
+## #4367 asset polish (server 0.5.38-vq + gamedata + hedge mappack + lobby, 2026-10-23 ~14:55 UTC)
 - Contact sheet of every custom asset shot in engine (GPU Playwright on the Quadro, test stack server :27067 / relay :8167),
   10 weakest ranked and fixed, before/after re-shot on the same stack. Sheets are on the issue.
 - **Lobby** (`lobby/wrangler.toml`): `[build] command = "npm run art"`. The live lobby was deployed with a bare
@@ -543,3 +543,13 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - Deploy needs: server image with `cs_party.amxx`, `models/csp_tile.mdl`, `sprites/csp_space.spr`, `maps/csp_{bhop,climb,surf}.{bsp,nav}`
   and the hedge server files; `gamedata.zip` with the same five files replaced; `mappacks/csp_maze_hedge.zip`; lobby `npm run deploy`.
   The new `csp_space.spr` must ship with the plugin (frames 11/12). Gate as usual (peers 0, 0 humans, 0 lobbies).
+- Deployed after Brandon's OK: `deploy0538-pha4367.sh` (gates: peers 0, 0 humans, 0 lobbies, live 0.5.37-vq, live
+  gamedata.zip md5 unchanged) swapped server + agent to 0.5.38-vq, rewrote `gamedata.zip` in place from `gamedata.zip.0538`
+  and replaced `mappacks/csp_maze_hedge.zip`. Relay container untouched. Rollback: containers `cs-party-{server,agent}-pha4367old`
+  (stopped), `csparty-up.sh.pre-pha4367`, `gamedata.zip.pre-0538` (`cat` it back over gamedata.zip), `csp_maze_hedge.zip.pre-0538`.
+- **Lobby Worker account:** the live lobby (`csparty-lobby.brandon-444.workers.dev`) is on the Brandon@phatt.tech account
+  (`CLOUDFLARE_PHATT_TECH`, account d444596c...). `CLOUDFLARE_TOKEN_WORKERS` is the PHATT MEDIA CLUB account, which holds a
+  dormant copy (`csparty-lobby.phatt-media-club.workers.dev`, last real deploy 10-12): a deploy with that token lands there.
+  Set `CLOUDFLARE_ACCOUNT_ID=d444596cbb456a629e7d40071e47eb23` explicitly. That account has no Analytics Engine, so
+  `wrangler deploy` fails on the `EVENTS` binding; the live Worker runs without it (`env.EVENTS?.` is guarded). Deploy with a
+  copy of wrangler.toml minus the `[[analytics_engine_datasets]]` block (`-c`). Live version 91d4f72d; rollback `b1451599`.
