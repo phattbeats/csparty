@@ -31,8 +31,8 @@ def tex_axes(n):
 
 class Brush:
     """Convex brush from vertices + faces (lists of vertex indices, any winding)."""
-    def __init__(self, verts, faces, tex, face_tex=None):
-        self.v, self.f, self.tex, self.face_tex = verts, faces, tex, face_tex or {}
+    def __init__(self, verts, faces, tex, face_tex=None, scale=1):
+        self.v, self.f, self.tex, self.face_tex, self.scale = verts, faces, tex, face_tex or {}, scale
     def text(self):
         c = tuple(sum(p[k] for p in self.v) / len(self.v) for k in range(3))
         out = ["{"]
@@ -44,15 +44,15 @@ class Brush:
             u, v = tex_axes(n)
             t = self.face_tex.get(fi, self.tex)
             out.append(f"( {p0[0]:g} {p0[1]:g} {p0[2]:g} ) ( {p1[0]:g} {p1[1]:g} {p1[2]:g} ) ( {p2[0]:g} {p2[1]:g} {p2[2]:g} ) "
-                       f"{t} [ {u[0]} {u[1]} {u[2]} 0 ] [ {v[0]} {v[1]} {v[2]} 0 ] 0 1 1")
+                       f"{t} [ {u[0]} {u[1]} {u[2]} 0 ] [ {v[0]} {v[1]} {v[2]} 0 ] 0 {self.scale:g} {self.scale:g}")
         out.append("}")
         return "\n".join(out)
 
-def box(lo, hi, tex, top=None):
+def box(lo, hi, tex, top=None, scale=1):
     x0, y0, z0 = lo; x1, y1, z1 = hi
     v = [(x0,y0,z0),(x1,y0,z0),(x1,y1,z0),(x0,y1,z0),(x0,y0,z1),(x1,y0,z1),(x1,y1,z1),(x0,y1,z1)]
     f = [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]]
-    return Brush(v, f, tex, {1: top} if top else None)
+    return Brush(v, f, tex, {1: top} if top else None, scale)
 
 def ramp(x0, x1, inner_y, outer_y, z_bot0, z_top0, drop, tex):
     """Surf ramp: triangle cross-section (low inner edge, high outer edge) swept along x, descending by `drop`."""
@@ -98,8 +98,8 @@ def build_surf():
     m = Map("csp_surf")
     shell(m, (-2600, -1100, -1400), (2600, 1100, 1200))
     MET, WALL, CAUT = "CSTRIKE_ME4METL", "CSTRIKE_WR7PLN", "CSTRIKE_ME7CAUT"
-    # start ledge
-    m.solid(box((-2500, -260, 640), (-2150, 260, 672), WALL, CAUT))
+    # start ledge (metal: the striped top filled the first view of the race); stripes stay on the finish pad
+    m.solid(box((-2500, -260, 640), (-2150, 260, 672), WALL, MET))
     spawns(m, -2380, -40, 710)
     m.ent("info_teleport_destination", targetname="stage1", origin="-2380 0 710", angles="0 0 0")
     # stage 1: V ramps, inner edges 48u apart, 300u rise over 260u (49 deg), descending 300 over the run
@@ -107,7 +107,7 @@ def build_surf():
         m.solid(ramp(-2150, -350, side * 48, side * 308, 220, 520, 300, MET))
     teleport_zone(m, (-2150, -48, -200), (-350, 48, 140), "stage1")
     # mid platform
-    m.solid(box((-340, -260, -120), (-80, 260, -96), WALL, CAUT))
+    m.solid(box((-340, -260, -120), (-80, 260, -96), WALL, MET))
     m.ent("info_teleport_destination", targetname="stage2", origin="-220 0 -50", angles="0 0 0")
     # stage 2: longer, steeper drop
     for side in (-1, 1):
@@ -232,7 +232,7 @@ for _n, (_t, _st, _title) in SURF_PACK.items():
 def build_bhop():
     m = Map("csp_bhop")
     shell(m, (-3000, -500, -600), (3000, 500, 800))
-    WALL, CAUT, FLOOR = "CSTRIKE_WR7PLN", "CSTRIKE_ME7CAUT", "CSTRIKE_FP2DARK"
+    WALL, CAUT, FLOOR, TOP = "CSTRIKE_WR7PLN", "CSTRIKE_ME7CAUT", "CSTRIKE_FP2DARK", "CSTRIKE_ME4METL"
     m.solid(box((-2950, -200, -32), (-2600, 200, 0), FLOOR))
     spawns(m, -2800, -40, 40)
     m.ent("info_teleport_destination", targetname="cp0", origin="-2800 0 40", angles="0 0 0")
@@ -242,7 +242,7 @@ def build_bhop():
     for g in gaps:
         x += g
         y = int(90 * math.sin(i * 0.9))
-        m.solid(box((x, y - 40, -32), (x + 80, y + 40, 0), CAUT))
+        m.solid(box((x, y - 40, -32), (x + 80, y + 40, 0), CAUT, TOP))
         x += 80; i += 1
         if i in (6, 12):   # checkpoint pads
             x += 96
@@ -271,7 +271,7 @@ def build_bhop():
 def build_climb():
     m = Map("csp_climb")
     shell(m, (-3200, -700, -700), (3200, 700, 1500))
-    WALL, CAUT, FLOOR, BEAM = "CSTRIKE_WR7PLN", "CSTRIKE_ME7CAUT", "CSTRIKE_FP2DARK", "CSTRIKE_CJ2BEAM"
+    WALL, CAUT, FLOOR, BEAM, TOP = "CSTRIKE_WR7PLN", "CSTRIKE_ME7CAUT", "CSTRIKE_FP2DARK", "CSTRIKE_CJ2BEAM", "CSTRIKE_ME4METL"
     m.solid(box((-3150, -200, -32), (-2800, 200, 0), FLOOR))
     spawns(m, -3000, -40, 40)
     m.ent("info_teleport_destination", targetname="cp0", origin="-3000 0 40", angles="0 0 0")
@@ -285,7 +285,7 @@ def build_climb():
     x, z = -2800, 0
     for i, (gap, rise) in enumerate([(64, 24), (72, 24), (80, 28), (80, 28), (88, 32), (88, 32), (96, 32), (96, 36)]):
         x += gap; z += rise; y = int(110 * math.sin(i * 1.1))
-        m.solid(box((x, y - 56, z - 32), (x + 112, y + 56, z), CAUT)); x += 112
+        m.solid(box((x, y - 56, z - 32), (x + 112, y + 56, z), CAUT, TOP)); x += 112
     x = checkpoint(x + 80, z + 24); z += 24
     # 2: ladder wall up 320 units onto a ledge
     m.solid(box((x, -96, z - 32), (x + 64, 96, z), FLOOR))                    # foot of the ladder
@@ -303,13 +303,13 @@ def build_climb():
         z += 16
         m.solid(box((x, y - 12, z - 16), (x + 288, y + 12, z), BEAM))
         x += 288
-        m.solid(box((x, min(y, y2) - 48, z - 32), (x + 96, max(y, y2) + 48, z), CAUT))
+        m.solid(box((x, min(y, y2) - 48, z - 32), (x + 96, max(y, y2) + 48, z), CAUT, TOP))
         y = y2; x += 96
     x = checkpoint(x + 64, z + 16); z += 16
     # 4: big steps, rise 40, longer gaps, wide y swings
     for i, gap in enumerate([80, 88, 96, 96, 104, 104]):
         x += gap; z += 40; y = int(110 * math.sin(i * 1.4 + 0.5))
-        m.solid(box((x, y - 52, z - 32), (x + 104, y + 52, z), CAUT)); x += 104
+        m.solid(box((x, y - 52, z - 32), (x + 104, y + 52, z), CAUT, TOP)); x += 104
     finish_x = x + 96
     m.solid(box((finish_x, -220, z - 8), (finish_x + 320, 220, z + 24), WALL, CAUT)); fz = z + 24
     # pit: fall = back to the last checkpoint passed
@@ -333,7 +333,7 @@ MAZE_THEMES = {
     "brick":    dict(wall="CSTRIKE_WR4CCPN", floor="CSTRIKE_FT4APHT", sky="desert"),
     "concrete": dict(wall="CSTRIKE_WR7PLN",  floor="CSTRIKE_FP2MED",  sky="cliff"),
     "metal":    dict(wall="CSTRIKE_ME4METL", floor="CSTRIKE_FP2LGHT", sky="city"),
-    "hedge":    dict(wall="CSTRIKE_MJ3SHRU", floor="CSTRIKE_FT3GRAS", sky="morning"),
+    "hedge":    dict(wall="CSTRIKE_MJ3SHRU", floor="CSTRIKE_FT3GRAS", sky="morning", scale=0.5),
     "rust":     dict(wall="CSTRIKE_ME2RSTW", floor="CSTRIKE_FT2DIRT", sky="dusk"),
     "night":    dict(wall="CSTRIKE_WR4CCVT", floor="CSTRIKE_FP2DARK", sky="night"),
 }
@@ -409,7 +409,8 @@ def build_maze(name="csp_maze", n=12, cell=160, seed=3867, theme="brick", dark=F
     m.solid(box((-lobby, 0, -32), (W + room, W, 0), FLOOR))
     rng = random.Random(seed)
     east, north = maze_carve(n, rng, n if loops is None else loops)
-    def wall(x0, y0, x1, y1): m.solid(box((x0, y0, 0), (x1, y1, H), WALL))
+    sc = th.get("scale", 1)
+    def wall(x0, y0, x1, y1): m.solid(box((x0, y0, 0), (x1, y1, H), WALL, scale=sc))
     # outer walls, with the entrance (west of cell 0,0) and exit (east of cell n-1,n-1) left open
     wall(-T, cell, 0, W + T)                                   # west, gap at row 0
     wall(W, -T, W + T, W - cell)                               # east, gap at row n-1
@@ -420,8 +421,8 @@ def build_maze(name="csp_maze", n=12, cell=160, seed=3867, theme="brick", dark=F
             if cx < n - 1 and east[cx][cy]: wall(x + cell - T // 2, y - T // 2, x + cell + T // 2, y + cell + T // 2)
             if cy < n - 1 and north[cx][cy]: wall(x - T // 2, y + cell - T // 2, x + cell + T // 2, y + cell + T // 2)
     # lobby and finish room walls (rooms span the full maze height, closed except where they meet the maze)
-    m.solid(box((-lobby - 16, 0, 0), (-lobby, W, H), WALL))
-    m.solid(box((W + room, 0, 0), (W + room + 16, W, H), WALL))
+    m.solid(box((-lobby - 16, 0, 0), (-lobby, W, H), WALL, scale=sc))
+    m.solid(box((W + room, 0, 0), (W + room + 16, W, H), WALL, scale=sc))
     m.solid(box((W + 64, W - cell - 192, -2), (W + room - 64, W - 64, 0), CAUT))   # finish pad marking
     spawns(m, -lobby // 2, cell // 2, 40)
     if not dark:

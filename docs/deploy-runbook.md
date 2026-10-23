@@ -523,3 +523,23 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   Its agent line prints only `IMAGE=` (the 0536 script's `grep "agent\|^IMAGE="` also printed `LOBBY_SECRET`).
 - Rollback: containers `cs-party-{server,agent}-pha4365old` (stopped), `csparty-up.sh.pre-pha4365`, then
   `./csparty-up.sh server && ./csparty-up.sh agent`, or keep 0.5.37 and set `csp_sfx 0`.
+
+## #4367 asset polish (branch pha-4367-polish, not deployed)
+- Contact sheet of every custom asset shot in engine (GPU Playwright on the Quadro, test stack server :27067 / relay :8167),
+  10 weakest ranked and fixed, before/after re-shot on the same stack. Sheets are on the issue.
+- **Lobby** (`lobby/wrangler.toml`): `[build] command = "npm run art"`. The live lobby was deployed with a bare
+  `wrangler deploy`, so `public/art/` (gitignored) never shipped: logo, portraits and favicon all 404. Any deploy now copies them.
+- **Map overlay** (`tools/build_mapicons.py`, `csp_space.spr` 11 -> 13 frames): frame 11 a gold-star hostage marker and
+  frame 12 a whose-turn ring tinted per character replace CS's `ihostage.spr` / `iplayer.spr` (a red "C" and an "H").
+  SHOP/ARMOR draw as BUY/KEV on the map (four letters shrank to unreadable). The builder had a latent `+ (255)` tuple bug and
+  could not run; fixed. `csp_face.spr` rebuilds byte-identical.
+- **Board tiles** (`tools/build_tiles.py`): drawn at 4x and scaled down (no more jagged rim/labels), labels outlined.
+- **HUD** (plugin): a legend row ("* stars  W minigames won") over the seat rows; a bonus-star tie of three or more reads
+  "4 tied at 800" instead of listing every player across two lines.
+- **Race maps** (`tools/gen_minigame_maps.py`): bhop/climb platform tops and the surf start/mid ledges are `CSTRIKE_ME4METL`
+  (hazard stripes stay on the sides and finish pads); `csp_maze_hedge` walls at texture scale 0.5 (the 192x128 shrub was a
+  smear; hedge pack 0.93 -> 1.0 MB, lightmaps scale with it). `Brush`/`box` take a texture `scale`. `csp_maze` rebuilds
+  byte-identical with the same SDHLT, so the toolchain matches.
+- Deploy needs: server image with `cs_party.amxx`, `models/csp_tile.mdl`, `sprites/csp_space.spr`, `maps/csp_{bhop,climb,surf}.{bsp,nav}`
+  and the hedge server files; `gamedata.zip` with the same five files replaced; `mappacks/csp_maze_hedge.zip`; lobby `npm run deploy`.
+  The new `csp_space.spr` must ship with the plugin (frames 11/12). Gate as usual (peers 0, 0 humans, 0 lobbies).

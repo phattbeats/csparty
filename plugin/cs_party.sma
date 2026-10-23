@@ -51,6 +51,7 @@
 
 // ---------------------------------------------------------------- data --
 enum { NT_BLUE = 0, NT_RED, NT_EVENT, NT_SITE, NT_START, NT_SHOP, NT_CAMPER, NT_ARMORY, NT_VIP, NT_DUEL, NT_NEGOT };
+#define SPR_HOSTAGE 11   // csp_space.spr: after the NT_* frames, the hostage star (11) and the whose-turn ring (12)
 enum { ST_IDLE = 0, ST_BOARD, ST_MG_INTRO, ST_MINIGAME, ST_MG_RESULT, ST_END, ST_REMOTE_WAIT, ST_REMOTE_RACE, ST_RESUME };
 enum { SIDE_NONE = -1, SIDE_CT = 0, SIDE_T = 1 };
 enum { FMT_FFA = 1, FMT_2V2 = 2, FMT_1V3 = 4, FMT_DUEL = 8 };
@@ -329,7 +330,6 @@ public plugin_precache()
 	for (new i = 0; i < IT_COUNT; i++) precache_sound(ITEM_SND[i]);
 	for (new i = 0; i < sizeof SFX_MISC; i++) precache_sound(SFX_MISC[i]);
 	g_beamSpr = precache_model("sprites/laserbeam.spr");
-	precache_model("sprites/iplayer.spr"); precache_model("sprites/ihostage.spr");   // map overlay markers
 	precache_model("sprites/csp_space.spr"); precache_model("sprites/csp_face.spr");   // tools/build_mapicons.py: a frame per space type / character
 	precache_model("models/csp_tile.mdl");
 }
@@ -2150,8 +2150,13 @@ map_overlay_spawn()
 		g_mapMark[s] = mark_ent("sprites/csp_face.spr", 255, 255, 255); map_flag(g_mapMark[s]);
 		if (g_mapMark[s]) entity_set_int(g_mapMark[s], EV_INT_rendermode, kRenderTransColor);
 	}
-	g_mapMark[SEATS] = mark_ent("sprites/ihostage.spr", 0, 0, 0); map_flag(g_mapMark[SEATS]);                 // CS's own overview icons
-	g_mapMark[SEATS + 1] = mark_ent("sprites/iplayer.spr", 255, 255, 255); map_flag(g_mapMark[SEATS + 1]);   // ring: whose turn
+	// csp_space.spr frame 11: the hostages (a gold star), frame 12: whose turn (a ring, tinted per character).
+	// CS's ihostage/iplayer icons read as a red "C" and an "H" over a space.
+	for (new k = 0; k < 2; k++)
+	{
+		new e = mark_ent("sprites/csp_space.spr", 255, 255, 255); g_mapMark[SEATS + k] = e; map_flag(e);
+		if (e) { entity_set_int(e, EV_INT_rendermode, kRenderTransColor); entity_set_float(e, EV_FL_frame, float(SPR_HOSTAGE + k)); }
+	}
 }
 
 map_overlay_show(bool:on)
@@ -2227,7 +2232,7 @@ map_marks_step()
 	{
 		new Float:fk = map_proj(ring, g_mapPlane + 20.0);
 		entity_set_origin(r, ring);
-		entity_set_float(r, EV_FL_scale, dia * 1.9 * fk / 32.0);   // iplayer is 32 px: a ring around the portrait
+		entity_set_float(r, EV_FL_scale, dia * 1.45 * fk / 128.0);   // a ring around the portrait
 		new Float:col[3]; for (new k = 0; k < 3; k++) col[k] = float(CHAR_COL[g_seatSkin[g_cur]][k]);
 		entity_set_vector(r, EV_VEC_rendercolor, col);
 		entity_set_int(r, EV_INT_renderfx, kRenderFxPulseFastWide);
@@ -2238,7 +2243,7 @@ map_marks_step()
 		new Float:o[3]; o = g_nodePos[g_hostage];
 		new Float:fk = map_proj(o, g_mapPlane + 10.0);
 		entity_set_origin(h, o);
-		entity_set_float(h, EV_FL_scale, sdia * 2.8 * fk / 32.0);   // ihostage is 32 px
+		entity_set_float(h, EV_FL_scale, sdia * 1.5 * fk / 128.0);
 	}
 }
 
@@ -2490,6 +2495,8 @@ public task_hud()
 		}
 		if (g_awardN) len += formatex(buf[len], charsmax(buf) - len, "^n");
 	}
+	// what "*" and "W" mean: the rows alone read as "*0 W0" to a first-time player
+	len += formatex(buf[len], charsmax(buf) - len, "  * stars   W minigames won^n");
 	// map view: each row says which portrait on the map is that player
 	new bool:mapTags = (g_camMode == CAM_MAP && g_state == ST_BOARD);
 	for (new s = 0; s < SEATS; s++)
@@ -5422,7 +5429,10 @@ award_leader(cat, out[], len)
 {
 	new best = 0; for (new s = 0; s < SEATS; s++) best = max(best, award_value(cat, s));
 	if (best <= 0) { copy(out, len, "nobody yet"); return; }
-	new n = 0; out[0] = 0;
+	new n = 0, tied = 0; out[0] = 0;
+	for (new s = 0; s < SEATS; s++) if (award_value(cat, s) == best) tied++;
+	// three or four names wrapped onto a second line and read as a list of players, not a lead
+	if (tied > 2) { formatex(out, len, "%d tied at %d", tied, best); return; }
 	for (new s = 0; s < SEATS; s++) if (award_value(cat, s) == best) n += formatex(out[n], len - n, "%s%.10s", n ? ", " : "", g_seatName[s]);
 	formatex(out[n], len - n, " %d", best);
 }
