@@ -71,7 +71,8 @@
 
   // ---- socket (always on: chat works without a party) ----
   let ws = null, retry = 0, retryTimer = null, pingTimer = null, createNext = false, hadSnapshot = false;
-  const send = (m) => { if (ws && ws.readyState === 1) { ws.send(JSON.stringify(m)); return true; } return false; };
+  // nothing but hello/ping before the hello: the server would refuse it; hello() re-sends where/inventory, and profile goes dirty
+  const send = (m) => { if (ws && ws.readyState === 1 && (ws.__said || m.t === 'hello' || m.t === 'ping')) { ws.send(JSON.stringify(m)); return true; } return false; };
   function hello() {
     if (ws) ws.__said = true;
     send({ t: 'hello', party: createNext ? undefined : wantCode || undefined, member, name: profile.name || 'Guest', avatar: profile.avatar || null, game: GAME, create: createNext || undefined, level: profile.level, title: profile.title });
@@ -147,7 +148,7 @@
     }
     if (m.t === 'err') {
       if (m.msg === 'no such party') { ls.set(LS_CODE, null); wantCode = null; state.code = null; if (!hadSnapshot) { hadSnapshot = true; resolveReady(api); } render(); toast('That party has ended.'); }
-      else if (m.msg !== 'no party') toast(m.msg);
+      else if (m.msg !== 'no party' && m.msg !== 'say hello first') toast(m.msg);
       if (pendingJoin) { pendingJoin.reject(new Error(m.msg)); pendingJoin = null; }
       emit('err', m.msg);
     }
@@ -262,8 +263,8 @@
     ' background:linear-gradient(#2b211a,#17110d);border:2px solid var(--c);box-shadow:0 3px 0 var(--o),0 5px 0 #000,0 10px 24px #000a;transition:transform .12s,box-shadow .12s}',
     '.launch:hover{transform:translateY(-1px);box-shadow:0 4px 0 var(--o),0 6px 0 #000,0 12px 26px #000a}.launch:active{transform:translateY(2px);box-shadow:0 1px 0 var(--o),0 2px 0 #000}',
     '.launch.pulse{animation:pulse .9s ease-out 2}@keyframes pulse{50%{box-shadow:0 3px 0 var(--o),0 5px 0 #000,0 0 0 6px #e8702a66}}',
-    '.coin{width:32px;height:32px;border-radius:50%;flex:none;display:grid;place-items:center;font:bold 17px/1 Tahoma,sans-serif;color:#1a0f06;background:radial-gradient(circle at 35% 30%,#ffb36b,var(--o) 60%,#9c4614);box-shadow:inset 0 -2px 3px #0006,0 0 0 2px #17110d}',
-    '.launch .lbl{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}.launch .lbl b{font-size:14px;letter-spacing:.06em}.launch .lbl small{font-size:11px;color:var(--t);font-family:"Courier New",monospace;letter-spacing:.04em}',
+    '.coin{width:38px;height:38px;flex:none;display:block;filter:drop-shadow(0 2px 0 #000) drop-shadow(0 4px 6px #0008);margin:-4px 0}.coin svg{display:block;width:100%;height:100%}.launch:hover .coin{transform:rotate(-8deg)}.coin{transition:transform .2s}',
+    '.launch .lbl{display:flex;flex-direction:column;align-items:flex-start;line-height:1.15}.launch .lbl b{font:900 15px/1.1 "Arial Black","Arial Bold",Impact,Tahoma,sans-serif;letter-spacing:.05em;color:var(--c);-webkit-text-stroke:1px #1a1410;paint-order:stroke fill;text-shadow:2px 2px 0 var(--o),3px 3px 0 #1a1410;margin-bottom:2px}.launch .lbl small{font-size:11px;color:var(--t);font-family:"Courier New",monospace;letter-spacing:.04em}',
     '.launch .stack{display:flex;margin-left:2px}.launch .stack .av{width:26px;height:26px;margin-right:-8px;border:2px solid #17110d;font-size:11px}.launch .stack .av:last-child{margin-right:0}',
     '.badge{position:absolute;top:-8px;right:-8px;min-width:22px;height:22px;padding:0 6px;border-radius:99px;background:var(--o);color:#1a0f06;font-weight:700;font-size:12px;display:grid;place-items:center;border:2px solid #17110d}',
     '.launch.off{filter:grayscale(.7)}',
@@ -272,7 +273,10 @@
     ' background:repeating-linear-gradient(0deg,rgba(255,255,255,.018) 0 2px,transparent 2px 4px),linear-gradient(var(--bg2),var(--bg));border:2px solid var(--c);box-shadow:0 0 0 2px #000,0 0 0 5px var(--o),0 0 0 7px #000,0 24px 70px #000d;animation:rise .16s ease-out}',
     '@keyframes rise{from{transform:translateX(-12px);opacity:0}}',
     '.hd{display:flex;align-items:center;gap:10px;padding:10px 10px 8px 12px;border-bottom:2px dashed #5fb8ac44}',
-    '.brand{font:bold 12px/1 "Courier New",monospace;letter-spacing:.18em;color:var(--o);flex:1;white-space:nowrap}.brand i{font-style:normal;color:var(--t)}',
+    // the PHATT GAMING ARCADE wordmark, 2D like the logo: cream block letters, dark outline, orange offset, teal underline
+    '.brand{flex:1;display:flex;align-items:center;gap:8px;min-width:0}.brand .coin{width:34px;height:34px;margin:0}',
+    '.wm{display:flex;flex-direction:column;line-height:1;font-family:"Arial Black","Arial Bold",Impact,Tahoma,sans-serif;font-weight:900;color:var(--c);-webkit-text-stroke:1px #1a1410;paint-order:stroke fill}',
+    '.wm small{font-size:8.5px;letter-spacing:.32em;margin-bottom:2px}.wm b{font-size:17px;letter-spacing:.06em;text-shadow:2px 2px 0 var(--o),3px 3px 0 #1a1410}.wm i{display:block;height:3px;margin-top:3px;border-radius:2px;background:var(--t);box-shadow:0 0 0 1px #1a1410;width:86%}',
     '.mechip{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:2px 10px 2px 3px;border-radius:99px;background:#0e0b09;border:1px solid var(--line);max-width:190px}.mechip:hover{border-color:var(--t)}.mechip .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mechip .away{color:var(--o);font-size:11px}',
     '.x{min-width:36px;min-height:36px;border-radius:8px;background:var(--c);color:#17110d;border:2px solid;border-color:#fff #9c8a68 #9c8a68 #fff;font-weight:700}.x:hover{background:var(--o)}',
     '.tabs{display:flex;gap:4px;padding:8px 10px 0;border-bottom:2px solid #000}',
@@ -334,6 +338,28 @@
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function button(text, cls, title) { const b = el('button', cls, text); b.type = 'button'; if (title) b.title = title; return b; }
+  // The PHATT GAMING ARCADE mark as a 3D sphere: the orange body is lit (gradient + soft top-left light), the logo's flat
+  // 2D P (cream, teal notch, dark outline) sits on it, then a dark rim and a glint wrap both so it reads as a ball. Vector, so no image file to ship or sync.
+  let coinN = 0;
+  function coin() {
+    const id = 'pc' + (++coinN);
+    const s = el('span', 'coin'); s.setAttribute('aria-hidden', 'true');
+    s.innerHTML = '<svg viewBox="0 0 100 100"><defs>'
+      + '<radialGradient id="' + id + 'b" cx="38%" cy="32%" r="72%"><stop offset="0" stop-color="#ffa45c"/><stop offset=".55" stop-color="#e8702a"/><stop offset="1" stop-color="#9c4614"/></radialGradient>'
+      + '<radialGradient id="' + id + 'l" cx="34%" cy="26%" r="58%"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient>'
+      + '<radialGradient id="' + id + 'r" cx="50%" cy="50%" r="50%"><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".5"/></radialGradient>'
+      + '<linearGradient id="' + id + 'p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffaf0"/><stop offset="1" stop-color="#e8d6b0"/></linearGradient>'
+      + '<clipPath id="' + id + 'c"><circle cx="50" cy="50" r="44"/></clipPath></defs>'
+      + '<circle cx="50" cy="50" r="44" fill="url(#' + id + 'b)"/>'
+      + '<circle cx="50" cy="50" r="44" fill="url(#' + id + 'l)"/>'
+      + '<g clip-path="url(#' + id + 'c)" stroke="#1a1410" stroke-width="5" stroke-linejoin="round">'
+      + '<path fill="url(#' + id + 'p)" fill-rule="evenodd" d="M21 20H62A21 21 0 0 1 62 62H44V100H21ZM44 35H62A7.5 7.5 0 0 1 62 50H44Z"/>'
+      + '<path fill="#5fb8ac" stroke-width="3" d="M24 23H40L24 39Z"/></g>'
+      + '<circle cx="50" cy="50" r="44" fill="url(#' + id + 'r)"/>'
+      + '<ellipse cx="77" cy="24" rx="6" ry="3" fill="#fff" opacity=".6" transform="rotate(42 77 24)"/>'
+      + '<circle cx="50" cy="50" r="45.5" fill="none" stroke="#1a1410" stroke-width="5"/></svg>';
+    return s;
+  }
   const hue = (s) => { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return h % 360; };
   function avatarNode(m) {
     const a = el('span', 'av');
@@ -388,7 +414,7 @@
   function renderLauncher() {
     if (!launch) return;
     launch.textContent = '';
-    launch.appendChild(el('span', 'coin', 'P'));
+    launch.appendChild(coin());
     const lbl = el('span', 'lbl'); lbl.appendChild(el('b', '', 'ARCADE'));
     const online = chat.online || 0;
     lbl.appendChild(el('small', '', !state.connected ? 'connecting…' : state.code ? 'party of ' + state.members.filter((m) => m.online).length : online + ' online'));
@@ -418,7 +444,8 @@
   function renderHeader() {
     if (!headerEl) return;
     headerEl.textContent = '';
-    const b = el('div', 'brand'); b.appendChild(document.createTextNode('PHATT ')); b.appendChild(el('i', '', 'ARCADE')); headerEl.appendChild(b);
+    const b = el('div', 'brand'); b.appendChild(coin()); const wm = el('span', 'wm'); wm.setAttribute('aria-label', 'Phatt Gaming Arcade');
+    wm.appendChild(el('small', '', 'PHATT GAMING')); wm.appendChild(el('b', '', 'ARCADE')); wm.appendChild(el('i')); b.appendChild(wm); headerEl.appendChild(b);
     const me = api.me;
     const chip = button('', 'mechip', 'Change your name'); chip.appendChild(avatarNode(me));
     if (me.level) chip.appendChild(el('span', 'lvl', String(me.level)));
