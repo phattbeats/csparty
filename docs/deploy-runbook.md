@@ -553,3 +553,16 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   Set `CLOUDFLARE_ACCOUNT_ID=d444596cbb456a629e7d40071e47eb23` explicitly. That account has no Analytics Engine, so
   `wrangler deploy` fails on the `EVENTS` binding; the live Worker runs without it (`env.EVENTS?.` is guarded). Deploy with a
   copy of wrangler.toml minus the `[[analytics_engine_datasets]]` block (`-c`). Live version 91d4f72d; rollback `b1451599`.
+
+## #4335 Arcade dock on the lobby and game pages (relay 0.4.39 + lobby Worker, 2026-10-23 ~17:35 UTC)
+- The PHATT Arcade dock (party + chat, hub `https://clubhouse.phatt.vip`, `wss://clubhouse.phatt.vip/party`) on both pages:
+  `party/phatt-party.js` plus its script tag, `lobby.js?v=6` (arrival protocol), and `boot.js` (party pill, mid-match guard).
+- **Lobby Worker** (main 7af4f48): deployed as in #4367 (`CLOUDFLARE_PHATT_TECH`, account d444596c..., `-c` copy of
+  wrangler.toml minus `[[analytics_engine_datasets]]`). Version `20c386ab`; rollback `npx wrangler rollback 91d4f72d-2bcb-42a6-9b92-897f2865edde`.
+- **Relay 0.4.39** (`patch-relay39-pha4335/`, FROM 0.4.38 = 0.4.37 + PHA-4382's pool-agent.js): copies `party/phatt-party.js`,
+  swaps boot.js (`swap_boot.js`), and `party_tag.mjs` puts the script tag before the engine scripts in the hashed index.html.
+  `deploy0439-pha4335.sh` gates on peers 0, 0 lobbies, live relay 0.4.37, and swaps only the relay (server and agent untouched).
+- Rollback: `docker rm -f cs-party-relay && docker rename cs-party-relay-pha4335old cs-party-relay && docker start cs-party-relay`,
+  then restore `csparty-up.sh.pre-pha4335` (RELAY_IMAGE 0.4.38).
+- The public lobby list is the Worker's (`https://csparty-lobby.brandon-444.workers.dev/api/public`); the relay at
+  csparty.phatt.vip has no `/api/*` and its page ignores `?code=`.
