@@ -129,7 +129,7 @@
       c.name = m.name; c.title = m.title; c.users = m.users || []; c.lines = (m.history || []).slice();
       if (m.kind === 'table' && !m.name && chat.view === 'table') chat.view = 'general';
       if (changed) chat.unread[m.kind] = 0;
-      if (open && tab === 'chat') { renderChips(); if (chat.view === m.kind) renderLog(); renderUsers(); } else renderLauncher();
+      if (open && tab === 'chat') { renderChips(); if (chat.view === m.kind) renderLog(); renderUsers(); renderPlaceholder(); } else renderLauncher();
       return;
     }
     if (m.t === 'users') {
