@@ -421,7 +421,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === "GET" && req.url === "/status") return out(200, { ...cap(), worker: ws?.readyState === WebSocket.OPEN,
     relaySecs: relay.at ? Math.round((Date.now() - relay.at) / 1000) : null,
-    detail: [...lobbies.values()].map((l) => ({ code: l.code, port: l.port, state: l.state, ageSecs: Math.round((Date.now() - l.created) / 1000), events: l.events || [] })) });
+    detail: [...lobbies.values()].map((l) => ({ code: l.code, port: l.port, pid: l.pid, cpu: l.cpu, memMb: l.memMb, state: l.state, ageSecs: Math.round((Date.now() - l.created) / 1000), events: l.events || [] })) });
   out(404, { error: "not found" });
 });
 
