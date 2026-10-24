@@ -21,7 +21,9 @@
 // same rcon password on every lobby server instead of a random one each; tests).
 import crypto from "node:crypto";
 import dgram from "node:dgram";
+import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import http from "node:http";
 import { WebSocket } from "ws";
 
@@ -42,6 +44,12 @@ const NOSHOW_MS = 1000 * +(env.NOSHOW_SECS || 240);     // started, and nobody e
 const LINGER_MS = 1000 * +(env.LINGER_SECS || 120);     // after the match ends (the plugin sends everyone back)
 const READY_MS = 1000 * +(env.READY_SECS || 300);       // map load on a busy host takes up to ~2 min
 const MAX_MATCH_MS = 1000 * +(env.MAX_MATCH_SECS || 10800);
+// MODE=process (the single-container build, #4475): lobby servers are child processes of this one, not containers.
+// MODE=docker (default): one container per lobby through the Docker socket, as in #4154.
+const PROCESS_MODE = (env.MODE || "docker") === "process";
+const HLDS_DIR = env.HLDS_DIR || "/hlds";                 // the shared, read-only game server install
+const SLOT_DIR = env.SLOT_DIR || "/run/csp-slots";        // per-lobby writable view (tmpfs)
+const NICE = +(env.LOBBY_NICE || 5);
 const NET = "csp-lobbies";
 const DOCKER_SOCK = env.DOCKER_SOCK || "/var/run/docker.sock";
 let drain = env.DRAIN === "1";
@@ -95,6 +103,61 @@ const containerSpec = (l) => ({
     RestartPolicy: { Name: "no" },   // a crashed match is over; the Worker reopens the lobby
   },
 });
+
+
+// ------------------------------------------------------------------------------------------------ process mode
+// A slot is a symlink farm of the shared install (cp -rs: real directories, symlinked files) with the few paths a
+// server writes replaced by real directories, so two lobby servers never share a log, a state file or a cfg write.
+const WRITABLE = ["cstrike/logs", "cstrike/addons/amxmodx/logs", "cstrike/addons/amxmodx/data/csp_state"];
+const makeSlot = (l) => {
+  l.dir = `${SLOT_DIR}/${l.code}`;
+  fs.rmSync(l.dir, { recursive: true, force: true });
+  fs.mkdirSync(SLOT_DIR, { recursive: true });
+  execFileSync("cp", ["-rs", HLDS_DIR, l.dir]);
+  for (const w of WRITABLE) { fs.rmSync(`${l.dir}/${w}`, { recursive: true, force: true }); fs.mkdirSync(`${l.dir}/${w}`, { recursive: true }); }
+};
+const spawnLobby = (l) => {
+  makeSlot(l);
+  const args = ["-game", "cstrike", "-bots", "+ip", "0.0.0.0", "+port", String(l.port), "+maxplayers", "10", "+sv_lan", "1",
+    "+rcon_password", l.rcon, "+map", MAP];
+  const child = spawn(`${l.dir}/hlds_linux`, args, { cwd: l.dir, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...env, LD_LIBRARY_PATH: l.dir, LOBBY_SECRET: "", HOME: l.dir } });   // the lobby secret never reaches a game server
+  l.child = child; l.pid = child.pid;
+  try { os.setPriority(child.pid, NICE); } catch {}
+  for (const stream of [child.stdout, child.stderr]) {
+    let text = "";
+    stream.setEncoding("utf8");
+    stream.on("data", (chunk) => {
+      text += chunk; let i;
+      while ((i = text.indexOf("\n")) >= 0) { onLine(l, text.slice(0, i).replace(/\r$/, "")); text = text.slice(i + 1); }
+      if (text.length > 65536) text = "";
+    });
+  }
+  child.on("error", (e) => { log(`[${l.code}] spawn: ${e.message}`); l.onFail?.(e.message); });
+  child.on("exit", (code, sig) => {
+    l.exited = true;
+    if (lobbies.get(l.code) === l && l.state !== "stopping") stopLobby(l, `crashed (${sig || code})`);
+  });
+};
+const killLobby = async (l) => {
+  if (l.child && !l.exited) {
+    const gone = new Promise((r) => l.child.once("exit", r));
+    l.child.kill("SIGTERM");
+    await Promise.race([gone, sleep(5000)]);
+    if (!l.exited) { l.child.kill("SIGKILL"); await Promise.race([gone, sleep(2000)]); }
+  }
+  if (l.dir) fs.rmSync(l.dir, { recursive: true, force: true });
+};
+// CPU (100 = one core, over the time since the last sample) and RSS from /proc: no Docker stats call
+const procSample = (l) => {
+  try {
+    const st = fs.readFileSync(`/proc/${l.pid}/stat`, "utf8").split(") ")[1].split(" ");
+    const ticks = +st[11] + +st[12], now = Date.now();
+    if (l.lastTicks != null) l.cpu = Math.round(((ticks - l.lastTicks) / 100) / ((now - l.lastAt) / 1000) * 1000) / 10;
+    l.lastTicks = ticks; l.lastAt = now;
+    l.memMb = Math.round(+fs.readFileSync(`/proc/${l.pid}/statm`, "utf8").split(" ")[1] * 4096 / 1048576);
+  } catch {}
+};
 
 // ------------------------------------------------------------------------------------------------ rcon
 // GoldSrc rcon over UDP: "challenge rcon" -> "challenge rcon N", then "rcon N "password" command".
@@ -179,19 +242,24 @@ const startLobby = async (code) => {
   try {
     await pickPort(l);
     if (!l.port) throw new Error("no free port");
-    await docker("DELETE", `/containers/csp-lobby-${code}?force=1`).catch(() => {});   // left over from a crash
-    const c = await docker("POST", `/containers/create?name=csp-lobby-${code}`, containerSpec(l));
-    l.id = c.Id;
     const ready = new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error("server didn't come up in time")), READY_MS);
       l.onReady = () => { l.onReady = l.onFail = null; clearTimeout(t); resolve(); };
       l.onFail = (why) => { l.onReady = l.onFail = null; clearTimeout(t); reject(new Error(why)); };
     });
     ready.catch(() => {});
-    const since = Math.floor(Date.now() / 1000) - 2;
-    await docker("POST", `/containers/${l.id}/start`);
-    log(`[${code}] starting on :${l.port} (${l.id.slice(0, 12)})`);
-    await tail(l, since);   // from just before the start: the map takes 10 s or more, so nothing is missed
+    if (PROCESS_MODE) {
+      spawnLobby(l);
+      log(`[${code}] starting on :${l.port} (pid ${l.pid})`);
+    } else {
+      await docker("DELETE", `/containers/csp-lobby-${code}?force=1`).catch(() => {});   // left over from a crash
+      const c = await docker("POST", `/containers/create?name=csp-lobby-${code}`, containerSpec(l));
+      l.id = c.Id;
+      const since = Math.floor(Date.now() / 1000) - 2;
+      await docker("POST", `/containers/${l.id}/start`);
+      log(`[${code}] starting on :${l.port} (${l.id.slice(0, 12)})`);
+      await tail(l, since);   // from just before the start: the map takes 10 s or more, so nothing is missed
+    }
     await ready;
     // cvars ride rcon: on the command line they run before the plugin has registered them
     for (const c of ["csp_one_match 1", `hostname "CS Party ${code}"`, ...EXTRA_CVARS]) await rcon(l.port, l.rcon, c);
@@ -214,7 +282,8 @@ const stopLobby = (l, reason, tell = true) => {
   log(`[${l.code}] stopping (${reason}, was ${was}, up ${Math.round((Date.now() - l.created) / 1000)} s)`);
   try { l.logs?.destroy(); } catch {}
   return l.stopped = (async () => {
-    if (l.id) await docker("DELETE", `/containers/${l.id}?force=1`).catch((e) => { if (e.status !== 404) log(`[${l.code}] remove: ${e.message}`); });
+    if (PROCESS_MODE) await killLobby(l);
+    else if (l.id) await docker("DELETE", `/containers/${l.id}?force=1`).catch((e) => { if (e.status !== 404) log(`[${l.code}] remove: ${e.message}`); });
     if (lobbies.get(l.code) === l) lobbies.delete(l.code);
     if (tell) send({ t: "ended", code: l.code, reason });
     sendCap();
@@ -264,7 +333,9 @@ const adopt = async () => {
 // CPU per lobby container (100 = one core) from a one-shot stats read; upload from the relay's server->browser bytes.
 const sampleCpu = async () => {
   for (const l of lobbies.values()) {
-    if (!l.id || l.state === "stopping") continue;
+    if (l.state === "stopping") continue;
+    if (PROCESS_MODE) { procSample(l); continue; }
+    if (!l.id) continue;
     try {
       const s = await docker("GET", `/containers/${l.id}/stats?stream=false`, null, { timeout: 10000 });
       const cpu = s.cpu_stats.cpu_usage.total_usage - s.precpu_stats.cpu_usage.total_usage;
@@ -356,17 +427,18 @@ const server = http.createServer((req, res) => {
 
 // ------------------------------------------------------------------------------------------------ main
 const main = async () => {
-  if (!IMAGE || !SECRET || !PUBLIC_URL) { console.error("pool-agent: set IMAGE, LOBBY_SECRET and PUBLIC_URL"); process.exit(2); }
-  await ensureNetwork();
-  await adopt();
+  if ((!PROCESS_MODE && !IMAGE) || !SECRET || !PUBLIC_URL) { console.error("pool-agent: set IMAGE (or MODE=process), LOBBY_SECRET and PUBLIC_URL"); process.exit(2); }
+  if (!PROCESS_MODE) { await ensureNetwork(); await adopt(); }
   server.listen(+LISTEN_PORT, LISTEN_HOST, () => log(`pool-agent ${VERSION} for ${HOST_ID}: ${lobbies.size} adopted, max ${MAX_LOBBIES}, image ${IMAGE}, on ${LISTEN_HOST}:${LISTEN_PORT}`));
   connect();
   setInterval(reap, 5000).unref();
   setInterval(async () => { await sampleCpu(); sendCap(); }, 30000).unref();
 };
 // Containers outlive the agent on purpose (players keep playing through an agent restart); a restarted agent adopts them.
-process.on("SIGTERM", () => { log("SIGTERM: leaving lobby servers running"); process.exit(0); });
-process.on("SIGINT", () => process.exit(0));
+// Process mode: the servers are our children and go with us (a restart ends the matches; the Worker reopens the lobbies).
+const quit = () => { if (PROCESS_MODE) for (const l of lobbies.values()) try { l.child?.kill("SIGKILL"); } catch {} process.exit(0); };
+process.on("SIGTERM", () => { if (!PROCESS_MODE) log("SIGTERM: leaving lobby servers running"); quit(); });
+process.on("SIGINT", quit);
 process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
 process.on("unhandledRejection", (e) => log(`unhandled: ${e?.stack || e}`));
 main().catch((e) => { console.error(e); process.exit(1); });

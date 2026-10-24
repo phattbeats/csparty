@@ -114,6 +114,9 @@ const syncPool = () => syncing ||= (async () => {
   } catch {} finally { syncing = null; }
 })();
 if (POOL_AGENT) setInterval(syncPool, 2000).unref();
+// One-container build (#4475): EMBED_POOL=1 runs the pool-agent in this process (MODE=process there: lobby servers are
+// child processes), so no second container and no Docker socket. /sync stays on loopback.
+if (process.env.EMBED_POOL === "1") await import("./pool-agent.js");
 
 const server = http.createServer((req, res) => {
   let url;
