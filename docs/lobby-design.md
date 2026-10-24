@@ -227,3 +227,11 @@ to Zelda without re-forming it. CS Party takes part through the drop-in `lobby/p
 `// party` block at the end of `lobby/public/lobby.js` (details in `lobby/README.md`; the contract is
 `clubhouse-games/docs/CROSSOVER.md` §1). Nothing in the Worker changed: the party's "room" is simply the lobby code,
 created with the existing `POST /api/lobbies` and joined with the existing `/?code=` link.
+
+## 15. One container (PHA-4475, in progress)
+
+Brandon's direction (2026-10-24): as few containers as possible, built into the lobby system. `MODE=process` in
+`web/pool-agent.js` runs each lobby's ReHLDS as a child process (a symlink-farm slot of the shared read-only install,
+with logs and `csp_state` private), and `EMBED_POOL=1` runs the pool-agent inside the relay process. `deploy/Dockerfile.single`
+builds the one image. Untested until measured on the RAID: whether `hlds_linux` resolves its own directory through the
+slot symlinks, and per-lobby RAM/CPU against section 13. The Docker mode stays as the fallback.

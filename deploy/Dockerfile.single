@@ -1,0 +1,30 @@
+# CS Party in ONE container (#4475): the browser relay, the lobby manager (pool-agent, embedded) and every lobby's
+# ReHLDS server as child processes. No Docker socket, no per-lobby containers.
+#   build context: deploy/ (needs cs-party-server-overlay.tar.gz and ../web/public built, see docker-compose.yml)
+ARG BASE=public.ecr.aws/docker/library/ubuntu:24.04
+FROM ${BASE} AS hlds
+RUN dpkg --add-architecture i386 && apt-get update -qq \
+ && apt-get install -y -qq --no-install-recommends ca-certificates curl lib32gcc-s1 lib32stdc++6 libc6:i386 \
+ && rm -rf /var/lib/apt/lists/*
+RUN mkdir -p /steamcmd && curl -fsSL https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz | tar xz -C /steamcmd
+RUN for i in 1 2 3 4 5; do \
+      /steamcmd/steamcmd.sh +force_install_dir /hlds +login anonymous +app_set_config 90 mod cstrike \
+        +app_update 90 validate +quit >/tmp/steamcmd.log 2>&1; \
+      [ -f /hlds/cstrike/liblist.gam ] && [ -f /hlds/hlds_linux ] && break; done; test -f /hlds/cstrike/liblist.gam
+
+FROM hlds
+COPY cs-party-server-overlay.tar.gz /tmp/overlay.tar.gz
+RUN tar xzf /tmp/overlay.tar.gz -C /hlds && rm /tmp/overlay.tar.gz \
+ && mkdir -p /root/.steam/sdk32 && ln -sf /hlds/steamclient.so /root/.steam/sdk32/steamclient.so \
+ && rm -f /hlds/cstrike/listenserver.cfg && chmod -R a-w /hlds
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt-get install -y -qq nodejs && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY ../web/package.json ./
+RUN npm install --omit=dev --no-audit --no-fund --silent
+COPY ../web/relay.js ../web/pool-agent.js ../web/hash_assets.js ./
+COPY ../web/public/ ./public/
+RUN node hash_assets.js ./public
+ENV PORT=8080 ROOT=/app/public EMBED_POOL=1 MODE=process HLDS_DIR=/hlds SLOT_DIR=/run/csp-slots MAP=de_dust2
+# slots live on tmpfs: mount one at /run/csp-slots (compose does)
+EXPOSE 8080
+CMD ["node", "relay.js"]
