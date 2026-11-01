@@ -228,10 +228,26 @@ to Zelda without re-forming it. CS Party takes part through the drop-in `lobby/p
 `clubhouse-games/docs/CROSSOVER.md` §1). Nothing in the Worker changed: the party's "room" is simply the lobby code,
 created with the existing `POST /api/lobbies` and joined with the existing `/?code=` link.
 
-## 15. One container (PHA-4475, in progress)
+## 15. One container (PHA-4475, built and crash-tested; not deployed)
 
 Brandon's direction (2026-10-24): as few containers as possible, built into the lobby system. `MODE=process` in
 `web/pool-agent.js` runs each lobby's ReHLDS as a child process (a symlink-farm slot of the shared read-only install,
 with logs and `csp_state` private), and `EMBED_POOL=1` runs the pool-agent inside the relay process. `deploy/Dockerfile.single`
-builds the one image. Untested until measured on the RAID: whether `hlds_linux` resolves its own directory through the
-slot symlinks, and per-lobby RAM/CPU against section 13. The Docker mode stays as the fallback.
+builds the one image. Docker mode stays the default and the fallback; nothing changes for the live stack until it is deployed.
+
+**Measured on the RAID** (one container, `MODE=process`, embedded agent, Worker under wrangler, ReHLDS from `cs-party-server:test4367`):
+- `hlds_linux` runs correctly from the slot symlinks; two servers side by side both reached `[CSPEV] server_ready`.
+- Per lobby: about 107 MB RSS, about 13% of a core during map start, settling to about 4.4% (bots, no browser players). Section 13's
+  container-per-lobby figures (7.7% CPU, 104-138 MB with 4 real players) are not directly comparable: this run had no real players.
+- Crash isolation (`tools/dev/pool_crash.js`): with 5 full lobbies, `kill -9` of one server was logged as `crashed (SIGKILL)`, the lobby
+  left the pool in about 1 s and its slot dir was removed. The other 4 kept their PIDs, stayed `in_match` and answered rcon. The Worker
+  reopened the crashed lobby, and a new lobby reused the freed port.
+
+**Process lifecycle.** The relay owns signals and errors when embedded: its `shutdown()` drains peers, and its `uncaughtException` /
+`unhandledRejection` handlers are the last-resort guard. The pool-agent registers its own handlers only when run standalone. In both
+cases an `exit` hook SIGKILLs the lobby servers, so an orderly relay exit never orphans `hlds_linux`. A hard kill of the relay
+(SIGKILL, OOM) cannot run the hook; the next container start sweeps a fresh slot dir, but a surviving container would need its
+orphans reaped by the container runtime (PID 1 exit takes the whole PID namespace down, so this does not happen in the single image).
+
+**Not done:** browser e2e with real players, a long CPU/upload measurement, the friends' server as slot 0, per-process `ulimit`/cgroup
+limits, and the live deploy (merge onto newest main, peers==0 / no-humans gate).

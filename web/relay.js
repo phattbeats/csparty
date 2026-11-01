@@ -310,6 +310,7 @@ const shutdown = (sig) => {
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 // Last resort: one bad request must not drop every player in the party. Log it and keep relaying.
 process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
+process.on("unhandledRejection", (e) => log(`unhandled: ${e?.stack || e}`));
 server.on("clientError", (e, sock) => { try { sock.destroy(); } catch {} });
 process.on("SIGINT", () => shutdown("SIGINT"));
 

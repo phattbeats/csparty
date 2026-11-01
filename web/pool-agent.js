@@ -436,9 +436,16 @@ const main = async () => {
 };
 // Containers outlive the agent on purpose (players keep playing through an agent restart); a restarted agent adopts them.
 // Process mode: the servers are our children and go with us (a restart ends the matches; the Worker reopens the lobbies).
-const quit = () => { if (PROCESS_MODE) for (const l of lobbies.values()) try { l.child?.kill("SIGKILL"); } catch {} process.exit(0); };
-process.on("SIGTERM", () => { if (!PROCESS_MODE) log("SIGTERM: leaving lobby servers running"); quit(); });
-process.on("SIGINT", quit);
-process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
-process.on("unhandledRejection", (e) => log(`unhandled: ${e?.stack || e}`));
+const killChildren = () => { if (PROCESS_MODE) for (const l of lobbies.values()) try { l.child?.kill("SIGKILL"); } catch {} };
+// 'exit' fires on every orderly exit path (process.exit, relay shutdown, event loop drained), so children never outlive us.
+process.on("exit", killChildren);
+// Embedded in the relay (EMBED_POOL=1) the relay owns the signal and error policy: its shutdown() drains peers first and its
+// uncaughtException handler is the last-resort guard. Registering ours too would exit before the drain and double-log.
+if (process.env.EMBED_POOL !== "1") {
+  const quit = () => process.exit(0);
+  process.on("SIGTERM", () => { if (!PROCESS_MODE) log("SIGTERM: leaving lobby servers running"); quit(); });
+  process.on("SIGINT", quit);
+  process.on("uncaughtException", (e) => log(`uncaught: ${e?.stack || e}`));
+  process.on("unhandledRejection", (e) => log(`unhandled: ${e?.stack || e}`));
+}
 main().catch((e) => { console.error(e); process.exit(1); });
