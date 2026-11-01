@@ -10,6 +10,8 @@
  *                   <hub>/?game=<id>). Defaults to this page's origin. Local dev: ?hub=http://<ip>:4400 once.
  *        data-mount optional selector; the launcher is appended there instead of <body>.
  * The dock owns the bottom-left corner: it sets html[data-phatt-dock] so a page can keep ~72 px there clear.
+ * A page with its own top bar can call PhattParty.dockInto(el) instead: the launcher sits in el (compact, same cabinet
+ * look), the panel drops down from the top right under the bar, and the corner is left alone (no data-phatt-dock).
  *
  * On its own it: connects to the hub for chat (party or not), reads ?party=CODE&m=TOKEN from the URL, keeps the member
  * token in localStorage 'phatt.party.member' (and the party code in 'phatt.party.code'), renders the launcher + panel,
@@ -22,10 +24,15 @@
  *   PhattParty.setWhere({room, status, game})   where I am (status 'lobby'|'playing'|'done'; game: hub surfaces only).
  *                                          Also puts me in that room's Table chat, party or not.
  *   PhattParty.setProfile({name, avatar, level, title})   setInventory([ids])   setGuard(() => 'You are mid-hand.' | '')
- *   PhattParty.on('party'|'goto'|'follow'|'chat'|'inventory'|'err'|'me', fn) -> off()
+ *   PhattParty.report(game, result) -> Promise<{ok, xp, level, unlocked:[{id,kind,name}], achievements, inventory, profile}|{error}|null>
+ *                                          a finished game on this surface pays the account's XP/level and its profile unlocks
+ *   PhattParty.progress() -> Promise<{profile}|null>   the account's level, XP bar and owned Poker Night profile pieces
+ *   PhattParty.on('party'|'goto'|'follow'|'chat'|'inventory'|'progress'|'err'|'me', fn) -> off()
  *       'me' (me) my name changed from the dock (/name or the rename box): the page should adopt it
+ *   PhattParty.dockInto(el)   put the launcher in a page's own top bar (see above)
  *   PhattParty.ready   Promise, settles after the first party snapshot (or at once with no party)
  *   PhattParty.urlFor(gameId, {room}) / isHere(venue) / open(tab?: 'chat'|'games'|'party') / close() / toast(msg)
+ *   PhattParty.track(e, fields) / pageview(path?) / dnt   analytics beacons (docs/ANALYTICS.md; nothing is sent under DNT / GPC)
  */
 (function () {
   'use strict';
@@ -40,7 +47,7 @@
   const FOLLOW_SECONDS = 5;
 
   // ---- catalog (embedded copy of client/party/catalog.js CATALOG; refreshed from <hub>/api/catalog at startup) ----
-  let CATALOG = {"genres":[{"id":"clubhouse","name":"Clubhouse","blurb":"Tables that take minutes. Drop in, drop out."},{"id":"mainevents","name":"Main Events","blurb":"Nights that take hours."}],"games":[{"id":"pokernight","genre":"clubhouse","name":"Poker Night","url":"https://poker.phatt.vip/","min":1,"max":5,"party":"hash","icon":"🃏","list":{"path":"api/rooms","format":"pokernight"},"blurb":"Poker Night at the Inventory online: private rooms, a 3D table, a seat for friends."},{"id":"klondike","genre":"clubhouse","name":"Solitaire","url":"<hub>/?game=klondike","min":1,"max":1,"party":"query","hub":true,"icon":"♠","blurb":"Classic Klondike. Draw one or three.","category":"cards"},{"id":"hearts","genre":"clubhouse","name":"Hearts","url":"<hub>/?game=hearts","min":4,"max":4,"party":"query","hub":true,"icon":"♥","blurb":"Dodge the hearts and the Queen of Spades. Lowest score wins.","category":"cards"},{"id":"crazyeights","genre":"clubhouse","name":"Crazy Eights","url":"<hub>/?game=crazyeights","min":2,"max":8,"party":"query","hub":true,"icon":"8","blurb":"Match the suit or rank. Eights are wild. Empty your hand first.","category":"cards"},{"id":"gofish","genre":"clubhouse","name":"Go Fish","url":"<hub>/?game=gofish","min":2,"max":6,"party":"query","hub":true,"icon":"≈","blurb":"Ask for a rank, collect books of four.","category":"cards"},{"id":"rummy","genre":"clubhouse","name":"Gin Rummy","url":"<hub>/?game=rummy","min":2,"max":2,"party":"query","hub":true,"icon":"♣","blurb":"Meld, knock or go gin. First to 100.","category":"cards"},{"id":"blackjack","genre":"clubhouse","name":"Blackjack","url":"<hub>/?game=blackjack","min":1,"max":7,"party":"query","hub":true,"icon":"21","blurb":"Beat the dealer. Ten rounds, most chips wins.","category":"cards"},{"id":"dice","genre":"clubhouse","name":"Yacht Dice","url":"<hub>/?game=dice","min":1,"max":8,"party":"query","hub":true,"icon":"⚄","blurb":"Five dice, three rolls, thirteen boxes. Chase the Yacht.","category":"dice"},{"id":"checkers","genre":"clubhouse","name":"Checkers","url":"<hub>/?game=checkers","min":2,"max":2,"party":"query","hub":true,"icon":"●","blurb":"Jump, capture and crown kings on the classic wooden board.","category":"board"},{"id":"chess","genre":"clubhouse","name":"Chess","url":"<hub>/?game=chess","min":2,"max":2,"party":"query","hub":true,"icon":"♞","blurb":"The royal game: castling, en passant, promotion, checkmate.","category":"board"},{"id":"dominoes","genre":"clubhouse","name":"Dominoes","url":"<hub>/?game=dominoes","min":2,"max":4,"party":"query","hub":true,"icon":"▮","blurb":"Double-six. Draw game with a boneyard for 2-3, block game for 4.","category":"board"},{"id":"spades","genre":"clubhouse","name":"Spades","url":"<hub>/?game=spades","min":4,"max":4,"party":"query","hub":true,"icon":"♠","blurb":"Partners bid and take tricks. Spades are trump. First to 250.","category":"cards"},{"id":"cribbage","genre":"clubhouse","name":"Cribbage","url":"<hub>/?game=cribbage","min":2,"max":4,"party":"query","hub":true,"icon":"❖","blurb":"Peg around the board to 121.","category":"cards"},{"id":"backgammon","genre":"clubhouse","name":"Backgammon","url":"<hub>/?game=backgammon","min":2,"max":2,"party":"query","hub":true,"icon":"⚁","blurb":"Roll, race and bear off your fifteen checkers first.","category":"board"},{"id":"euchre","genre":"clubhouse","name":"Euchre","url":"<hub>/?game=euchre","min":4,"max":4,"party":"query","hub":true,"icon":"J","blurb":"Partners, bowers and going alone. First team to 10.","category":"cards"},{"id":"president","genre":"clubhouse","name":"President","url":"<hub>/?game=president","min":3,"max":8,"party":"query","hub":true,"icon":"♛","blurb":"Shed your cards first. Twos are high. Scum pays tribute.","category":"cards"},{"id":"cheat","genre":"clubhouse","name":"Cheat","url":"<hub>/?game=cheat","min":3,"max":8,"party":"query","hub":true,"icon":"?","blurb":"Lay cards face-down, claim a rank, and call out the liars.","category":"cards"},{"id":"thirtyone","genre":"clubhouse","name":"Thirty-One","url":"<hub>/?game=thirtyone","min":2,"max":8,"party":"query","hub":true,"icon":"31","blurb":"Three cards, one suit, knock before the table catches up.","category":"cards"},{"id":"oldmaid","genre":"clubhouse","name":"Old Maid","url":"<hub>/?game=oldmaid","min":2,"max":8,"party":"query","hub":true,"icon":"♕","blurb":"Pair them off, pass the queen, and do not be the one left holding her.","category":"cards"},{"id":"liarsdice","genre":"clubhouse","name":"Liar's Dice","url":"<hub>/?game=liarsdice","min":2,"max":8,"party":"query","hub":true,"icon":"⚂","blurb":"Five dice under a cup. Bid, bluff, and call the liar.","category":"dice"},{"id":"farkle","genre":"clubhouse","name":"Farkle","url":"<hub>/?game=farkle","min":2,"max":8,"party":"query","hub":true,"icon":"⚅","blurb":"Six dice, push your luck, bank before you farkle.","category":"dice"},{"id":"csparty","genre":"mainevents","name":"CS Party","url":"https://csparty.phatt.vip/","min":1,"max":4,"party":"query","roomParam":"code","icon":"🎲","list":{"path":"api/public","format":"csparty"},"blurb":"A Mario Party-style board game inside Counter-Strike 1.6. Up to 4 players, bots fill empty seats."},{"id":"7dtz","genre":"mainevents","name":"7 Days to Zelda","url":"https://zelda.phatt.vip/","min":1,"max":4,"party":"query","roomParam":"camp","icon":"🗡","list":{"path":"api/rooms","format":"7dtz"},"blurb":"Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids."}]};
+  let CATALOG = {"genres":[{"id":"clubhouse","name":"Clubhouse","blurb":"Tables that take minutes. Drop in, drop out."},{"id":"mainevents","name":"Main Events","blurb":"Nights that take hours."}],"games":[{"id":"pokernight","genre":"clubhouse","name":"Poker Night","url":"https://poker.phatt.vip/","min":1,"max":5,"party":"hash","icon":"🃏","list":{"path":"api/rooms","format":"pokernight"},"blurb":"Poker Night at the Inventory online: private rooms, a 3D table, a seat for friends."},{"id":"klondike","genre":"clubhouse","name":"Solitaire","url":"<hub>/?game=klondike","min":1,"max":1,"party":"query","hub":true,"icon":"♠","blurb":"Classic Klondike. Draw one or three.","category":"cards"},{"id":"hearts","genre":"clubhouse","name":"Hearts","url":"<hub>/?game=hearts","min":4,"max":4,"party":"query","hub":true,"icon":"♥","blurb":"Dodge the hearts and the Queen of Spades. Lowest score wins.","category":"cards"},{"id":"crazyeights","genre":"clubhouse","name":"Crazy Eights","url":"<hub>/?game=crazyeights","min":2,"max":8,"party":"query","hub":true,"icon":"8","blurb":"Match the suit or rank. Eights are wild. Empty your hand first.","category":"cards"},{"id":"gofish","genre":"clubhouse","name":"Go Fish","url":"<hub>/?game=gofish","min":2,"max":6,"party":"query","hub":true,"icon":"≈","blurb":"Ask for a rank, collect books of four.","category":"cards"},{"id":"rummy","genre":"clubhouse","name":"Gin Rummy","url":"<hub>/?game=rummy","min":2,"max":2,"party":"query","hub":true,"icon":"♣","blurb":"Meld, knock or go gin. First to 100.","category":"cards"},{"id":"blackjack","genre":"clubhouse","name":"Blackjack","url":"<hub>/?game=blackjack","min":1,"max":7,"party":"query","hub":true,"icon":"21","blurb":"Beat the dealer. Ten rounds, most chips wins.","category":"cards"},{"id":"dice","genre":"clubhouse","name":"Yacht Dice","url":"<hub>/?game=dice","min":1,"max":8,"party":"query","hub":true,"icon":"⚄","blurb":"Five dice, three rolls, thirteen boxes. Chase the Yacht.","category":"dice"},{"id":"checkers","genre":"clubhouse","name":"Checkers","url":"<hub>/?game=checkers","min":2,"max":2,"party":"query","hub":true,"icon":"●","blurb":"Jump, capture and crown kings on the classic wooden board.","category":"board"},{"id":"chess","genre":"clubhouse","name":"Chess","url":"<hub>/?game=chess","min":2,"max":2,"party":"query","hub":true,"icon":"♞","blurb":"The royal game: castling, en passant, promotion, checkmate.","category":"board"},{"id":"dominoes","genre":"clubhouse","name":"Dominoes","url":"<hub>/?game=dominoes","min":2,"max":4,"party":"query","hub":true,"icon":"▮","blurb":"Double-six. Draw game with a boneyard for 2-3, block game for 4.","category":"board"},{"id":"spades","genre":"clubhouse","name":"Spades","url":"<hub>/?game=spades","min":4,"max":4,"party":"query","hub":true,"icon":"♠","blurb":"Partners bid and take tricks. Spades are trump. First to 250.","category":"cards"},{"id":"cribbage","genre":"clubhouse","name":"Cribbage","url":"<hub>/?game=cribbage","min":2,"max":4,"party":"query","hub":true,"icon":"❖","blurb":"Peg around the board to 121.","category":"cards"},{"id":"backgammon","genre":"clubhouse","name":"Backgammon","url":"<hub>/?game=backgammon","min":2,"max":2,"party":"query","hub":true,"icon":"⚁","blurb":"Roll, race and bear off your fifteen checkers first.","category":"board"},{"id":"euchre","genre":"clubhouse","name":"Euchre","url":"<hub>/?game=euchre","min":4,"max":4,"party":"query","hub":true,"icon":"J","blurb":"Partners, bowers and going alone. First team to 10.","category":"cards"},{"id":"president","genre":"clubhouse","name":"President","url":"<hub>/?game=president","min":3,"max":8,"party":"query","hub":true,"icon":"♛","blurb":"Shed your cards first. Twos are high. Scum pays tribute.","category":"cards"},{"id":"cheat","genre":"clubhouse","name":"Cheat","url":"<hub>/?game=cheat","min":3,"max":8,"party":"query","hub":true,"icon":"?","blurb":"Lay cards face-down, claim a rank, and call out the liars.","category":"cards"},{"id":"thirtyone","genre":"clubhouse","name":"Thirty-One","url":"<hub>/?game=thirtyone","min":2,"max":8,"party":"query","hub":true,"icon":"31","blurb":"Three cards, one suit, knock before the table catches up.","category":"cards"},{"id":"oldmaid","genre":"clubhouse","name":"Old Maid","url":"<hub>/?game=oldmaid","min":2,"max":8,"party":"query","hub":true,"icon":"♕","blurb":"Pair them off, pass the queen, and do not be the one left holding her.","category":"cards"},{"id":"liarsdice","genre":"clubhouse","name":"Liar's Dice","url":"<hub>/?game=liarsdice","min":2,"max":8,"party":"query","hub":true,"icon":"⚂","blurb":"Five dice under a cup. Bid, bluff, and call the liar.","category":"dice"},{"id":"farkle","genre":"clubhouse","name":"Farkle","url":"<hub>/?game=farkle","min":2,"max":8,"party":"query","hub":true,"icon":"⚅","blurb":"Six dice, push your luck, bank before you farkle.","category":"dice"},{"id":"csparty","genre":"mainevents","name":"CS Party","url":"https://csparty-lobby.brandon-444.workers.dev/","min":1,"max":4,"party":"query","roomParam":"code","icon":"🎲","list":{"path":"api/public","format":"csparty"},"blurb":"A Mario Party-style board game inside Counter-Strike 1.6. Up to 4 players, bots fill empty seats."},{"id":"7dtz","genre":"mainevents","name":"7 Days to Zelda","url":"https://zelda.phatt.vip/","min":1,"max":4,"party":"query","roomParam":"camp","icon":"🗡","list":{"path":"api/rooms","format":"7dtz"},"blurb":"Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids."},{"id":"medieval","genre":"mainevents","name":"Medieval II","url":"https://medieval.phatt.vip/","min":1,"max":8,"party":"query","roomParam":"room","icon":"🏰","blurb":"Medieval II: Total War in your browser, built from your own Steam install. LAN battles with friends."}]};
   const entry = (id) => CATALOG.games.find((g) => g.id === id) || null;
   const gameName = (id) => (id === 'clubhouse' ? 'the Clubhouse' : (entry(id) || {}).name || (id ? id[0].toUpperCase() + id.slice(1) : 'somewhere'));
   const gameIcon = (id) => (id === 'clubhouse' ? '♣' : (entry(id) || {}).icon || '🎮');
@@ -54,6 +61,108 @@
   const freshMember = !hex32(q.get('m')) && !hex32(ls.get(LS_MEMBER)); // minted right here: the hub cannot know this token yet
   let member = freshMember ? newToken() : hex32(q.get('m')) ? q.get('m') : ls.get(LS_MEMBER);
   ls.set(LS_MEMBER, member);
+  // ---- PHATT ID (PHA-4166) ---- the hub ties a PHATT ID to one member token (server/phattid.js). Before saying hello we ask
+  // <hub>/auth/phatt-id/me (its cookie rides along: every *.phatt.vip page is same-site with the hub). Signed in: that token
+  // and name are mine. Not signed in: one quiet trip through PHATT ID per tab (prompt=none) in case I am logged on there;
+  // it comes back with ?pid=ok|guest|error, and a page carrying ?pid never makes the trip again (no loops, even without
+  // sessionStorage or cookies). Log off sets phatt.pid.off so the trip stops until I log on again.
+  const LS_PID = 'phatt.pid.user', LS_PID_NAME = 'phatt.pid.name', LS_PID_OFF = 'phatt.pid.off', SS_PID_TRIED = 'phatt.pid.tried';
+  const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* private mode */ } } };
+  const isGuestName = (n) => !n || /^guest\s*\d*$/i.test(String(n).trim());
+  let pid = null, pidEnabled = false, resolveIdentity;
+  const identityReady = new Promise((r) => { resolveIdentity = r; });
+  const pidFlag = q.get('pid');
+  if (pidFlag) { ss.set(SS_PID_TRIED, '1'); try { const u = new URL(location.href); u.searchParams.delete('pid'); history.replaceState(history.state, '', u.toString()); } catch { /* old browser */ } }
+  const pidUrl = (silent) => HUB + '/auth/phatt-id/login?' + (silent ? 'silent=1&' : '') + 'm=' + member + '&to=' + encodeURIComponent(location.href);
+  function checkIdentity() {
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null;
+    const timer = setTimeout(() => ctl && ctl.abort(), 3500);
+    return fetch(HUB + '/auth/phatt-id/me', { mode: 'cors', credentials: 'include', cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null).then((me) => {
+        clearTimeout(timer);
+        if (!me || !me.enabled) return null;
+        pidEnabled = true;
+        if (me.signedIn && hex32(me.member)) {
+          if (member !== me.member) { member = me.member; ls.set(LS_MEMBER, member); }
+          usePid(me);
+          ls.set(LS_PID_OFF, null);
+          return pid;
+        }
+        ls.set(LS_PID, null); ls.set(LS_PID_NAME, null);
+        const top = (() => { try { return window.top === window; } catch { return false; } })();
+        if (!pidFlag && !ss.get(SS_PID_TRIED) && !ls.get(LS_PID_OFF) && top && navigator.cookieEnabled !== false && /^https:/.test(HUB)) {
+          ss.set(SS_PID_TRIED, '1');
+          location.replace(pidUrl(true));
+          return 'redirect';
+        }
+        return null;
+      });
+  }
+  // A PHATT ID's name is the hub's: the style its member picked (username, the default; first name; first and last name),
+  // so it is the same in every game. The name box offers the three instead of a free-text name.
+  function usePid(me) {
+    const was = ls.get(LS_PID_NAME);
+    pid = { username: me.username || '', name: me.name || '', display: me.display || me.username || 'Member', nameStyle: me.nameStyle || 'username', names: me.names || null, canEditUsername: !!me.canEditUsername };
+    if (profile.name !== pid.display) { profile = { ...profile, name: pid.display }; ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar || null })); }
+    ls.set(LS_PID, pid.username); ls.set(LS_PID_NAME, pid.display);
+    // Poker Night keeps its own name (pn_mp_profile, 16 chars) and its built page runs before this script, so it never
+    // reads PhattParty.me: a nameless Poker Night, or one still on my last PHATT ID name, takes this one (its lobby name box too)
+    if (GAME === 'pokernight') {
+      try {
+        const pn = JSON.parse(localStorage.getItem('pn_mp_profile') || 'null') || {};
+        const old = pn.name;
+        if (isGuestName(old) || (was && old === was.slice(0, 16))) {
+          pn.name = pid.display.slice(0, 16); localStorage.setItem('pn_mp_profile', JSON.stringify(pn));
+          const box = document.querySelector('input.name');
+          if (box && (!box.value.trim() || box.value === old)) { box.value = pn.name; box.dispatchEvent(new Event('input', { bubbles: true })); }
+        }
+      } catch { /* private mode */ }
+    }
+  }
+  // the choices this PHATT ID has, each with the name it gives: [{style, value, label, on}]; a name that repeats one above is left out
+  function nameStyleOptions(p) {
+    const n = p.names || { username: p.username }, out = [{ style: 'username', value: n.username || p.username, label: 'Username' }];
+    if (n.first && n.first !== out[0].value) out.push({ style: 'first', value: n.first, label: 'First name' });
+    if (n.full && !out.some((o) => o.value === n.full)) out.push({ style: 'full', value: n.full, label: 'First and last name' });
+    const cur = out.some((o) => o.style === p.nameStyle) ? p.nameStyle : 'username';
+    return out.map((o) => ({ ...o, on: o.style === cur }));
+  }
+  // the member picks how the games show them; the hub saves it on their PHATT ID and renames them everywhere it can see
+  function setNameStyle(style) {
+    if (!pid) return Promise.reject(new Error('not logged on'));
+    return fetch(HUB + '/auth/phatt-id/name', { method: 'POST', mode: 'cors', credentials: 'include', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ style }) })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('name ' + r.status)))).then((me) => {
+        usePid(me);
+        api.setProfile({ name: pid.display });
+        emit('identity', pid); emit('me', api.me);
+        return pid;
+      });
+  }
+  // Edit username: the hub checks it and renames the PHATT ID in Authentik, so it is their log-on name too. Rejects with the
+  // hub's own words ("That username is taken. Pick another.") for the page to show.
+  function setUsername(username) {
+    if (!pid) return Promise.reject(new Error('You are not logged on.'));
+    return fetch(HUB + '/auth/phatt-id/username', { method: 'POST', mode: 'cors', credentials: 'include', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username }) })
+      .catch(() => null).then((r) => {
+        if (!r) throw new Error('Could not reach the arcade. Try again.');
+        return r.json().catch(() => ({})).then((me) => {
+          if (!r.ok) throw new Error(me.error || 'Could not change your username. Try again.');
+          usePid(me);
+          api.setProfile({ name: pid.display });
+          emit('identity', pid); emit('me', api.me);
+          return pid;
+        });
+      });
+  }
+  function logOff() {
+    return fetch(HUB + '/auth/phatt-id/logout', { method: 'POST', mode: 'cors', credentials: 'include' }).catch(() => null).then(() => {
+      // a fresh guest on this browser: the PHATT ID's token stays with the account (and needs its cookie anyway)
+      ls.set(LS_PID, null); ls.set(LS_PID_NAME, null); ls.set(LS_PID_OFF, '1'); ls.set(LS_MEMBER, newToken()); ls.set(LS_PROFILE, null); ls.set(LS_CODE, null);
+      try { localStorage.removeItem('clubhouse.profile'); } catch { /* private mode */ }
+      location.reload();
+    });
+  }
+  // ---- /PHATT ID ----
   const cleanCode = (c) => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6);
   let wantCode = /^[A-Z2-9]{6}$/.test(q.get('party') || '') ? q.get('party').toUpperCase() : (ls.get(LS_CODE) || null);
   let profile = (() => { try { return JSON.parse(ls.get(LS_PROFILE) || 'null') || {}; } catch { return {}; } })();
@@ -75,7 +184,7 @@
   const send = (m) => { if (ws && ws.readyState === 1 && (ws.__said || m.t === 'hello' || m.t === 'ping')) { ws.send(JSON.stringify(m)); return true; } return false; };
   function hello() {
     if (ws) ws.__said = true;
-    send({ t: 'hello', party: createNext ? undefined : wantCode || undefined, member, name: profile.name || 'Guest', avatar: profile.avatar || null, game: GAME, create: createNext || undefined, level: profile.level, title: profile.title });
+    send({ t: 'hello', party: createNext ? undefined : wantCode || undefined, member, name: profile.name || 'Guest', avatar: profile.avatar || null, game: GAME, create: createNext || undefined, level: profile.level, title: profile.title, dnt: ANA_DNT ? 1 : undefined }); // (--- analytics --- dnt)
     createNext = false;
     if (Object.keys(state.where).length) send({ t: 'where', ...state.where });
     if (state.localInventory && state.localInventory.length) send({ t: 'inventory', items: state.localInventory });
@@ -100,7 +209,7 @@
     if (m.t === 'pong') return;
     if (m.t === 'party') {
       const wasCode = state.code;
-      state.code = m.code || null; state.host = m.host || null; state.public = !!m.public; state.members = m.members || []; state.venue = m.venue || null; state.chat = (m.chat || []).map(partyLine);
+      state.code = m.code || null; state.host = m.host || null; state.public = !!m.public; state.members = m.members || []; state.venue = m.venue || null; state.rules = m.rules || {}; state.chat = (m.chat || []).map(partyLine);
       if (m.you && hex32(m.you) && m.you !== member) { member = m.you; ls.set(LS_MEMBER, member); }
       ls.set(LS_CODE, state.code);
       const mine = state.members.find((x) => x.id === member);
@@ -118,6 +227,7 @@
     if (m.t === 'goto') { onGoto(m.venue); return; }
     if (m.t === 'chat') { const l = partyLine(m.line); state.chat.push(l); if (state.chat.length > 50) state.chat.shift(); addLine('party', l); emit('chat', m.line); return; }
     if (m.t === 'inventory') { state.inventory = m.items || []; emit('inventory', state.inventory.slice()); return; }
+    if (m.t === 'progress') { const w = pendingProgress.shift(); if (w) { clearTimeout(w.timer); w.res(m); } emit('progress', m); return; }
     if (m.t === 'hi') {
       chat.you = m.you; chat.online = m.online || 0; chat.squelch = new Set(m.squelch || []); setFilterView(m.filter !== false);
       if (m.you && m.you.name && m.you.name !== profile.name && m.you.name !== 'Guest' && !profile.name) { profile.name = m.you.name; }
@@ -207,7 +317,8 @@
   const venueUrl = (v) => { const g = entry(v.game) || {}; return withParty(v.url, { room: v.room, hash: g.party === 'hash', roomParam: g.roomParam }); };
   const inviteUrl = () => withParty(state.venue ? venueUrl(state.venue) : HUB + '/', { code: state.code }).replace(/([?&])m=[0-9a-f]{32}&?/, '$1').replace(/[?&]$/, '');
   const isHere = (v) => !!v && (v.game === GAME || (GAME === 'clubhouse' && !!(entry(v.game) || {}).hub));
-  function go(url) { const g = guard(); if (g && !confirm(g + '\n\nLeave anyway?')) return; location.href = url; }
+  function go(url) { const g = guard(); if (g && !confirm(g + '\n\nLeave anyway?')) return; closeDrawer(); if (navTo && navTo(url)) return; location.href = url; }
+  let navTo = null; // a one-page surface (the Clubhouse hub) routes its own urls: fn(url) → true when it did
 
   // ---- moving the party ----
   let banner = null, bannerTimer = null;
@@ -257,10 +368,41 @@
   }
   function hideBanner() { clearInterval(bannerTimer); bannerTimer = null; if (banner) { banner.remove(); banner = null; } }
 
+  // ---- rejoin (PHA-4335): a Clubhouse seat held for me (I dropped, closed the tab, or the hub restarted) ----
+  // Every surface but the hub itself (which has its own lobby banner) asks the hub once on load, and again when Games opens:
+  // "You still have a seat at Hearts · Rejoin". Rejoin takes me to that table, where the hub puts me back in the same seat.
+  let held = [];
+  const SS_HELD_SEEN = 'phatt.dock.heldSeen';
+  function heldUrl(h) { return withParty(HUB + '/?table=' + encodeURIComponent(h.table)); }
+  function heldWith(h) { return h.people.concat(h.bots ? [h.bots + (h.bots === 1 ? ' bot' : ' bots')] : []).join(', ').replace(/, ([^,]*)$/, ' and $1'); }
+  function heldText(h) { const w = heldWith(h); return 'You still have a seat at ' + h.gameName + (w ? ' with ' + w : '') + '.'; }
+  function checkHeld(showBanner) {
+    if (GAME === 'clubhouse') return Promise.resolve([]);
+    return fetch(HUB + '/api/held/' + member, { mode: 'cors', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      held = (d && Array.isArray(d.held)) ? d.held : [];
+      const h = held[0];
+      if (showBanner && h && !banner && ss.get(SS_HELD_SEEN) !== h.table) {
+        ss.set(SS_HELD_SEEN, h.table);
+        banner = el('div', 'banner'); banner.setAttribute('role', 'status');
+        const box = el('div', 'bbody'); box.appendChild(el('p', null, heldText(h)));
+        const row = el('div', 'row'), go2 = el('a', 'btn', 'Rejoin'), later = button('Not now', 'btn ghost');
+        go2.href = heldUrl(h); go2.onclick = (e) => { e.preventDefault(); anaTrack('rejoin_click', { game: h.game }); hideBanner(); go(go2.href); }; // (--- analytics ---)
+        later.onclick = () => hideBanner();
+        row.appendChild(go2); row.appendChild(later); box.appendChild(row);
+        banner.appendChild(el('span', 'bico', gameIcon(h.game))); banner.appendChild(box);
+        root.appendChild(banner);
+      }
+      if (open && tab === 'games') renderOpenNow();
+      return held;
+    }).catch(() => []);
+  }
+
   // ---- look: the PHATT ARCADE cabinet (same palette as the PHATT GAMING ARCADE selector) ----
   const CSS = [
     ':host{all:initial;position:fixed;left:0;bottom:0;z-index:2147483000;font:13px/1.45 Tahoma,Verdana,"Segoe UI",Arial,sans-serif;color:#f4e8cc;pointer-events:none;--o:#e8702a;--t:#5fb8ac;--c:#f4e8cc;--m:#cdbf9f;--d:#8f8068;--bg:#17110d;--bg2:#241a14;--line:#4a3a2c}',
-    '*{box-sizing:border-box}[hidden]{display:none!important}button{font:inherit;cursor:pointer;color:inherit}',
+    '*{box-sizing:border-box}[hidden]{display:none!important}',
+    '::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-track{background:#0b0806;box-shadow:inset 0 0 4px #000}::-webkit-scrollbar-thumb{background:linear-gradient(90deg,#f08a45,var(--o) 55%,#9c4612);border:2px solid #0b0806;border-radius:8px}::-webkit-scrollbar-thumb:hover{background:linear-gradient(90deg,#ffa565,#f07a32)}::-webkit-scrollbar-corner{background:#0b0806}',
+    '@supports not selector(::-webkit-scrollbar){*{scrollbar-width:thin;scrollbar-color:var(--o) #0b0806}}button{font:inherit;cursor:pointer;color:inherit}',
     'button:focus-visible,input:focus-visible,a:focus-visible{outline:3px solid #fff2a8;outline-offset:2px}',
     // launcher
     '.launch{pointer-events:auto;position:fixed;left:12px;bottom:12px;display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:5px 14px 5px 6px;border-radius:12px;color:var(--c);',
@@ -312,9 +454,18 @@
     '.u{display:flex;align-items:center;gap:8px;width:100%;padding:5px 6px;border-radius:6px;background:none;border:0;text-align:left}.u:hover{background:#2b211a}.u .gi{width:22px;text-align:center;font-size:15px;flex:none}.u .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.u .aw{color:var(--o);font-size:10px}.u.off{opacity:.5}',
     '.compose{display:flex;gap:6px;padding:8px 10px 10px;border-top:1px solid #000;position:relative;background:var(--bg2)}',
     '.hints{position:absolute;left:10px;right:10px;bottom:100%;background:#0e0b09;border:2px solid var(--line);border-radius:8px;padding:4px;max-height:200px;overflow:auto;box-shadow:0 -8px 20px #000a}.hint{display:block;width:100%;text-align:left;padding:4px 8px;border:0;background:none;border-radius:4px;font-size:12px;color:var(--m)}.hint b{color:var(--c);font-family:"Courier New",monospace}.hint:hover,.hint.on{background:#2b211a}',
-    '.namebar{display:flex;gap:6px;padding:8px 10px;background:#2b1a0e;border-bottom:1px solid #000;align-items:center}',
+    '.namebar{display:flex;gap:6px;padding:8px 10px;background:#2b1a0e;border-bottom:1px solid #000;align-items:center;flex-wrap:wrap}',
+    '.pidrow{flex:1 0 100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pidrow .note{flex:1;min-width:0}',
+    '.pidb{display:inline-grid;place-items:center;min-width:22px;height:16px;padding:0 4px;border-radius:4px;background:#5b2fa6;color:#fff;font:700 10px/1 Tahoma,Verdana,sans-serif;letter-spacing:.04em;flex:none}',
+    '.btn.pidon{display:inline-flex;align-items:center;gap:6px;background:#3a2266;border-color:#7b52c7;color:#fff}',
+    '.btn.pidon:hover{background:#4b2d82}',
+    '.nstyles{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap}',
+    '.nstyle{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:44px;padding:5px 10px;border-radius:8px;background:#120d0a;border:2px solid var(--line);color:var(--c);text-align:left;max-width:100%}',
+    '.nstyle b{font-size:13px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nstyle small{font-size:10px;color:var(--m);letter-spacing:.06em;text-transform:uppercase}',
+    '.nstyle.on{border-color:#7b52c7;background:#2a1a4a}.nstyle.on small{color:#cbb6f2}.nstyle:disabled{opacity:.6}',
+    '.uedit{flex:0 0 auto}.uform{flex:1 0 100%;display:flex;flex-direction:column;gap:6px}.uform[hidden]{display:none}.urow{display:flex;gap:6px}.urow .input{flex:1;min-width:0}.uerr{font-size:12px;color:#ff9a8a}.uerr:empty{display:none}',
     // games
-    '.brow{min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.brow .gi{font-size:18px;width:24px;text-align:center;flex:none}.brow .info{flex:1;min-width:0}.brow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .wh{font-size:12px;color:var(--m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}',
+    '.brow.mine{border-color:var(--o)}.brow{min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.brow .gi{font-size:18px;width:24px;text-align:center;flex:none}.brow .info{flex:1;min-width:0}.brow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .wh{font-size:12px;color:var(--m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}',
     '.st{display:inline-block;margin-right:6px;padding:1px 5px;border-radius:4px;font:bold 10px/1.3 "Courier New",monospace;letter-spacing:.08em;vertical-align:1px;background:var(--t);color:#0b2b27}.st.playing{background:var(--o);color:#1a0f06}.st.full{background:#6b5846;color:var(--c)}.st.party{background:#8fd694;color:#0e2a12}',
     '.genre .blurb{font-size:12px;color:var(--d);margin:-2px 0 6px}',
     '.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px}',
@@ -336,6 +487,22 @@
     '@media (max-width:900px){.withpanel .banner{left:50%;width:min(520px,calc(100vw - 20px))}}',
     '@media (max-width:560px){.withpanel .toast{left:8px;right:8px;top:8px;bottom:auto}.panel{left:0;top:0;bottom:0;width:100vw;border-radius:0;box-shadow:none;border:0;padding-bottom:env(safe-area-inset-bottom)}.launch{left:8px;bottom:8px;min-height:44px;padding:4px 8px 4px 5px}.launch .lbl,.launch .stack{display:none}.launch.open{display:none}.toast{left:8px;bottom:62px}}',
     '@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}',
+  ].join('\n');
+  // the launcher in a page's top bar (dockInto): its own shadow root in the bar, the cabinet look at bar height
+  const BAR_CSS = [
+    ':host{all:initial;display:inline-flex;vertical-align:middle;position:relative;font:13px/1.45 Tahoma,Verdana,"Segoe UI",Arial,sans-serif;color:#f4e8cc;--o:#e8702a;--t:#5fb8ac;--c:#f4e8cc}',
+    '.launch.inbar{position:relative;left:auto;bottom:auto;min-height:40px;padding:3px 12px 3px 4px;gap:7px;border-radius:10px;box-shadow:0 2px 0 var(--o),0 4px 0 #000,0 6px 14px #0008}',
+    '.launch.inbar:hover{box-shadow:0 3px 0 var(--o),0 5px 0 #000,0 8px 16px #0008}.launch.inbar:active{box-shadow:0 1px 0 var(--o),0 2px 0 #000}',
+    '.launch.inbar.open{display:inline-flex;background:linear-gradient(#3a2b20,#1f1712);box-shadow:0 1px 0 var(--o),0 2px 0 #000;transform:translateY(1px)}',
+    '.launch.inbar .coin{width:32px;height:32px;margin:-3px 0}.launch.inbar .lbl .wma{height:15px;margin:1px 0 2px}.launch.inbar .lbl small{font-size:10.5px}',
+    '.launch.inbar .stack .av{width:22px;height:22px;font-size:10px}.launch.inbar .badge{top:-7px;right:-7px;min-width:20px;height:20px;font-size:11px}',
+    '@media (max-width:640px){.launch.inbar{padding:3px 5px 3px 4px;min-height:36px}.launch.inbar .lbl,.launch.inbar .stack{display:none}.launch.inbar .coin{width:28px;height:28px}}',
+  ].join('\n');
+  const TOP_CSS = [ // the floating layer when the launcher is in a top bar: panel and toasts hang from the bar, on the right
+    '.top .panel{left:auto;right:12px;top:var(--top,64px);bottom:12px;animation:drop .16s ease-out}@keyframes drop{from{transform:translateY(-10px);opacity:0}}',
+    '.top .toast{left:auto;right:12px;top:var(--top,64px);bottom:auto}.top.withpanel .toast{left:auto;right:448px;top:var(--top,64px);bottom:auto}',
+    '.top.withpanel .banner{left:calc(50% - 218px)}@media (max-width:900px){.top.withpanel .banner{left:50%}}',
+    '@media (max-width:560px){.top .panel{left:0;right:0;top:0;bottom:0;animation:rise .16s ease-out}.top.withpanel .toast,.top .toast{left:8px;right:8px;top:8px}}',
   ].join('\n');
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -397,17 +564,26 @@
   function build() {
     hostEl = el('div'); hostEl.setAttribute('data-phatt-party', '');
     root = hostEl.attachShadow({ mode: 'open' });
-    const style = el('style'); style.textContent = CSS; root.appendChild(style);
+    const style = el('style'); style.textContent = CSS + '\n' + TOP_CSS; root.appendChild(style);
     shell = el('div', 'shell'); root.appendChild(shell); root = shell; // everything renders into the shell (it carries .withpanel)
     launch = button('', 'launch'); launch.setAttribute('aria-haspopup', 'dialog'); launch.setAttribute('aria-expanded', 'false');
     launch.onclick = () => (open ? closeDrawer() : openDrawer());
     root.appendChild(launch);
     const sel = script && script.dataset.mount; mountEl = (sel && document.querySelector(sel)) || document.body;
     mountEl.appendChild(hostEl);
-    document.documentElement.setAttribute('data-phatt-dock', '');
+    if (barEl) placeInBar(); else document.documentElement.setAttribute('data-phatt-dock', '');
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && open && !(e.composedPath()[0] || {}).value) { closeDrawer(); launch.focus(); } });
     render();
   }
+  // dockInto(el): the launcher moves into el (a top-bar slot) under its own shadow root; the panel layer stays on <body>
+  let barEl = null;
+  function placeInBar() {
+    const r = barEl.shadowRoot || barEl.attachShadow({ mode: 'open' });
+    if (!r.querySelector('style')) { const st = el('style'); st.textContent = CSS + '\n' + BAR_CSS; r.appendChild(st); }
+    r.appendChild(launch); launch.classList.add('inbar'); shell.classList.add('top');
+    document.documentElement.removeAttribute('data-phatt-dock');
+  }
+  function dockInto(target) { if (!target) return; barEl = target; if (launch) { placeInBar(); renderLauncher(); } }
   function pulse() { launch.classList.remove('pulse'); void launch.offsetWidth; launch.classList.add('pulse'); }
   let toastEl = null, toastTimer = 0;
   function toast(msg, onClick) {
@@ -439,6 +615,8 @@
     if (t) { tab = t; ls.set(LS_TAB, tab); }
     if (open) { renderTabs(); renderTab(); return; }
     open = true;
+    anaTrack('dock_open', { props: { tab } }); // --- analytics ---
+    if (barEl) { const bar = barEl.closest('header,nav,.topbar') || barEl; hostEl.style.setProperty('--top', Math.round(bar.getBoundingClientRect().bottom + 8) + 'px'); }
     panel = el('aside', 'panel'); panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-label', 'PHATT Arcade');
     headerEl = el('div', 'hd'); tabsEl = el('div', 'tabs'); tabsEl.setAttribute('role', 'tablist'); bodyEl = el('div', 'body');
     panel.appendChild(headerEl); panel.appendChild(tabsEl); panel.appendChild(bodyEl);
@@ -456,6 +634,7 @@
     const chip = button('', 'mechip', 'Change your name'); chip.appendChild(avatarNode(me));
     if (me.level) chip.appendChild(el('span', 'lvl', String(me.level)));
     chip.appendChild(el('span', 'nm', me.name || 'Guest'));
+    if (pid) { const b = el('span', 'pidb', 'ID'); b.title = 'Logged on with PHATT ID as ' + pid.username; chip.appendChild(b); }
     if (chat.you && chat.you.away != null) chip.appendChild(el('span', 'away', 'away'));
     chip.onclick = () => { openDrawer('chat'); showNameBar(true); };
     headerEl.appendChild(chip);
@@ -528,8 +707,60 @@
     const save = button('Save', 'btn small');
     const done = () => { const n = inp.value.trim(); if (!n) return; api.setProfile({ name: n }); emit('me', api.me); nameBarEl.hidden = true; renderHeader(); inputEl && inputEl.focus(); };
     save.onclick = done; inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); done(); } else if (e.key === 'Escape') { nameBarEl.hidden = true; } };
+    if (pid) { showNameStyles(); return; }
     nameBarEl.appendChild(lab); nameBarEl.appendChild(inp); nameBarEl.appendChild(save);
+    if (pidEnabled) {
+      const row = el('div', 'pidrow');
+      if (pid) {
+        row.appendChild(el('span', 'pidb', 'ID')); row.appendChild(el('span', 'note', 'Logged on with PHATT ID as ' + pid.username));
+        const off = button('Log off', 'btn quiet small'); off.onclick = () => { off.disabled = true; logOff(); }; row.appendChild(off);
+      } else {
+        const on = button('', 'btn small pidon', 'Log on with your PHATT ID: your name, level and trophies follow you to every game');
+        on.appendChild(el('span', 'pidb', 'ID')); on.appendChild(document.createTextNode('Log on with PHATT ID'));
+        on.onclick = () => { location.href = pidUrl(false); };
+        row.appendChild(on); row.appendChild(el('span', 'note', 'Keeps your name, level and trophies in every game.'));
+      }
+      nameBarEl.appendChild(row);
+    }
     if (focus) setTimeout(() => inp.focus(), 0);
+  }
+  // logged on: "Show my name as" username / first name / first and last name (only the ones this PHATT ID has)
+  function showNameStyles() {
+    nameBarEl.appendChild(el('span', 'note', 'Show my name as'));
+    const opts = el('div', 'nstyles'); opts.setAttribute('role', 'radiogroup'); opts.setAttribute('aria-label', 'Show my name as');
+    for (const o of nameStyleOptions(pid)) {
+      const b = button('', 'nstyle' + (o.on ? ' on' : ''));
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(o.on));
+      b.appendChild(el('b', '', o.value)); b.appendChild(el('small', '', o.label));
+      b.onclick = () => {
+        if (o.on) { nameBarEl.hidden = true; return; }
+        for (const x of opts.children) x.disabled = true;
+        setNameStyle(o.style).then(() => { renderHeader(); showNameBar(false); }, () => { for (const x of opts.children) x.disabled = false; });
+      };
+      opts.appendChild(b);
+    }
+    nameBarEl.appendChild(opts);
+    if (pid.canEditUsername) {
+      const ed = button('✎ Edit username', 'btn quiet small uedit'); ed.setAttribute('aria-expanded', 'false');
+      const form = el('div', 'uform'); form.hidden = true;
+      const inp = el('input', 'input grow'); inp.maxLength = 20; inp.value = pid.username; inp.setAttribute('aria-label', 'New username');
+      inp.autocomplete = 'username'; inp.setAttribute('autocapitalize', 'none'); inp.spellcheck = false;
+      const ok = button('Save', 'btn small'), err = el('div', 'uerr'); err.setAttribute('role', 'alert');
+      const line = el('div', 'urow'); line.appendChild(inp); line.appendChild(ok);
+      form.appendChild(el('span', 'note', 'New username. It is your PHATT ID log-on name too.')); form.appendChild(line); form.appendChild(err);
+      ed.onclick = () => { form.hidden = !form.hidden; ed.setAttribute('aria-expanded', String(!form.hidden)); if (!form.hidden) { inp.focus(); inp.select(); } };
+      const save = () => {
+        const v = inp.value.trim(); if (!v || v === pid.username) { form.hidden = true; ed.setAttribute('aria-expanded', 'false'); return; }
+        ok.disabled = inp.disabled = true; err.textContent = '';
+        setUsername(v).then(() => { renderHeader(); showNameBar(false); }, (e) => { ok.disabled = inp.disabled = false; err.textContent = e.message; inp.focus(); });
+      };
+      ok.onclick = save; inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } else if (e.key === 'Escape') { nameBarEl.hidden = true; } };
+      nameBarEl.appendChild(ed); nameBarEl.appendChild(form);
+    }
+    const row = el('div', 'pidrow');
+    row.appendChild(el('span', 'pidb', 'ID')); row.appendChild(el('span', 'note', 'Logged on as ' + pid.username + '. Same name in every game.'));
+    const off = button('Log off', 'btn quiet small'); off.onclick = () => { off.disabled = true; logOff(); }; row.appendChild(off);
+    nameBarEl.appendChild(row);
   }
   function renderChips() {
     if (!chipsEl) return;
@@ -630,6 +861,12 @@
     if (!state.connected) { toast('Still connecting to the arcade.'); return; }
     if ((cmd === '/name' || cmd === '/nick') && text.split(' ').slice(1).join(' ').trim()) { profile.name = text.split(' ').slice(1).join(' ').trim().slice(0, 20); ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar })); }
     send({ t: 'say', ch: chat.view, text });
+    { // --- analytics --- a chat line counted by channel kind (commands that are not lines are not counted; never the text)
+      const c = text[0] === '/' ? cmd : '';
+      const ch = /^\/(w|whisper|msg|m|tell|pm|r|reply|rw)$/.test(c) ? 'whisper' : /^\/(p|party)$/.test(c) ? 'party' : /^\/(t|table)$/.test(c) ? 'table'
+        : c && !/^\/(me|emote|roll|random|dice)$/.test(c) ? '' : chat.view === 'party' || chat.view === 'table' ? chat.view : (chat.general.name || 'Arcade').toLowerCase() === 'arcade' ? 'arcade' : 'channel';
+      if (ch) anaTrack('chat_send', { props: { ch } });
+    }
     inputEl.value = ''; renderHints();
   }
 
@@ -646,7 +883,7 @@
     if (state.code) sc.appendChild(el('div', 'note', host ? 'You are the host: Bring party takes everyone. Go alone takes just you.' : ((state.members.find((m) => m.id === state.host) || {}).name || 'The host') + ' picks where the party goes. Join takes just you.'));
     const s1 = el('div', 'sec', 'Open now'); const rf = button('Refresh', 'btn ghost small r'); rf.onclick = () => loadBrowse(true); s1.appendChild(rf); sc.appendChild(s1);
     openNowEl = el('div'); openNowEl.style.display = 'grid'; openNowEl.style.gridTemplateColumns = 'minmax(0,1fr)'; openNowEl.style.gap = '6px'; sc.appendChild(openNowEl);
-    renderOpenNow(); loadBrowse(false);
+    renderOpenNow(); loadBrowse(false); checkHeld(false);
     browseTimer = setInterval(() => { if (open && tab === 'games') loadBrowse(true); else clearInterval(browseTimer); }, 8000);
     const n = state.members.filter((m) => m.online).length || 1;
     CATALOG.genres.forEach((genre) => {
@@ -668,17 +905,24 @@
     t.appendChild(el('span', 'n', g.name));
     t.appendChild(el('span', 'p', players(g) + (host && n < g.min && g.hub ? ' · bots fill in' : '')));
     if (here) { t.classList.add('here'); t.appendChild(el('span', 'herel', 'THE PARTY IS HERE')); }
-    if (!host) { t.href = urlFor(g.id); t.title = 'Play ' + g.name; t.onclick = (e) => { e.preventDefault(); go(t.href); }; return t; }
+    if (!host) { t.href = urlFor(g.id); t.title = 'Play ' + g.name; t.onclick = (e) => { e.preventDefault(); anaTrack('game_open', { game: g.id }); go(t.href); }; return t; } // (--- analytics --- game_open)
     if (why) t.appendChild(el('span', 'why', why));
     const ta = el('div', 'ta');
-    const bring = button('Bring party', 'btn small' + (why ? ' dis' : '')); bring.onclick = () => { if (api.goto(g.id)) { tab = 'party'; renderTabs(); renderTab(); } };
-    const alone = button('Go alone', 'btn ghost small'); alone.onclick = () => go(urlFor(g.id));
+    const bring = button('Bring party', 'btn small' + (why ? ' dis' : '')); bring.onclick = () => { if (api.goto(g.id)) { anaTrack('game_open', { game: g.id, props: { party: 1 } }); tab = 'party'; renderTabs(); renderTab(); } };
+    const alone = button('Go alone', 'btn ghost small'); alone.onclick = () => { anaTrack('game_open', { game: g.id }); go(urlFor(g.id)); }; // (--- analytics --- game_open)
     ta.appendChild(bring); ta.appendChild(alone); t.appendChild(ta);
     return t;
   }
   function renderOpenNow() {
     if (!openNowEl) return;
     openNowEl.textContent = '';
+    held.forEach((h) => { // --- rejoin --- my held Clubhouse seat comes first
+      const r = el('div', 'brow mine'); r.appendChild(el('span', 'gi', gameIcon(h.game)));
+      const info = el('div', 'info'); info.appendChild(el('div', 'nm', 'Your seat at ' + h.gameName));
+      const wh = el('div', 'wh'); wh.appendChild(el('span', 'st waiting', 'HELD')); wh.appendChild(document.createTextNode(heldWith(h) ? 'with ' + heldWith(h) : 'held for you')); info.appendChild(wh); r.appendChild(info);
+      const acts = el('div', 'acts'), a = el('a', 'btn small', 'Rejoin'); a.href = heldUrl(h); a.onclick = (e) => { e.preventDefault(); anaTrack('rejoin_click', { game: h.game }); go(a.href); }; acts.appendChild(a); r.appendChild(acts); // (--- analytics --- rejoin_click)
+      openNowEl.appendChild(r);
+    });
     const d = browseData, host = api.isHost;
     if (!d) { openNowEl.appendChild(el('div', 'muted', browseAt ? 'The arcade is not answering right now.' : 'Looking around the arcade…')); return; }
     const parties = (d.parties || []).filter((x) => x.code !== state.code);
@@ -778,39 +1022,139 @@
       if (ws && ws.readyState === 1) hello(); else connect();
     });
   }
+  // account progress (report/progress): replies arrive in order as {t:'progress'}; null when the hub is not reachable in 6 s
+  const pendingProgress = [];
+  function askProgress(msg) {
+    return new Promise((res) => {
+      const w = { res, timer: setTimeout(() => { const i = pendingProgress.indexOf(w); if (i >= 0) pendingProgress.splice(i, 1); res(null); }, 6000) };
+      pendingProgress.push(w);
+      const go = () => { if (!pendingProgress.includes(w) || send(msg)) return; setTimeout(go, 300); }; // not said hello yet: retry until the timeout
+      go();
+    });
+  }
   const api = {
     get code() { return state.code; },
     get member() { return member; },
     get me() { const m = state.members.find((x) => x.id === member); return { id: member, name: (m && m.name) || profile.name || (chat.you && chat.you.name) || null, avatar: m ? m.avatar : profile.avatar || null, level: m ? m.level : profile.level || null, title: m ? m.title : null }; },
     get members() { return state.members.slice(); },
     get venue() { return state.venue; },
+    get rules() { return state.rules || {}; }, // game id -> the host's last table rules there (Clubhouse validates them)
     get host() { return state.host; },
     get isHost() { return !!state.code && state.host === member; },
     get inventory() { return state.inventory.slice(); },
     get catalog() { return CATALOG; },
     get connected() { return state.connected; },
     game: GAME, hub: HUB, ready,
+    identity: identityReady,                         // resolves with the PHATT ID ({username, name, display}) or null, before hello
+    get phattId() { return pid; },
+    get phattIdEnabled() { return pidEnabled; },
+    logOn() { location.href = pidUrl(false); },
+    logOff,
+    setNameStyle,                                    // 'username' | 'first' | 'full' -> resolves with the updated PHATT ID
+    setUsername,                                     // renames the PHATT ID (its log-on name too); rejects with the hub's reason
+    nameStyleOptions() { return pid ? nameStyleOptions(pid) : []; },
     create(p) { if (p && (p.name || p.avatar)) { profile = { ...profile, name: p.name || profile.name, avatar: p.avatar === undefined ? profile.avatar : p.avatar }; ls.set(LS_PROFILE, JSON.stringify(profile)); } return startJoin(null, true); },
     join(code) { code = cleanCode(code); if (code.length !== 6) return Promise.reject(new Error('bad code')); return startJoin(code, false); },
-    leave() { if (!state.code) return; send({ t: 'leave' }); ls.set(LS_CODE, null); wantCode = null; state.code = null; state.members = []; state.venue = null; state.chat = []; state.host = null; if (chat.view === 'party') chat.view = 'general'; hideBanner(); render(); if (open) renderTab(); emit('party', snapshot()); },
+    leave() { if (!state.code) return; send({ t: 'leave' }); ls.set(LS_CODE, null); wantCode = null; state.code = null; state.members = []; state.venue = null; state.rules = {}; state.chat = []; state.host = null; if (chat.view === 'party') chat.view = 'general'; hideBanner(); render(); if (open) renderTab(); emit('party', snapshot()); },
     goto(gameId, opts) { opts = opts || {}; const g = entry(gameId); if (!g) { toast('Unknown game'); return false; } if (!api.isHost) { toast('Only the host can bring the party'); return false; } return send({ t: 'goto', game: gameId, url: urlFor(gameId, { bare: true }), room: opts.room || undefined }); },
+    setRules(game, values) { if (state.code && api.isHost) { (state.rules = state.rules || {})[game] = values; send({ t: 'rules', game, values }); } },
     setWhere(w) { w = w || {}; const msg = {}; ['room', 'status', 'game'].forEach((k) => { if (k in w) { msg[k] = w[k] == null ? null : String(w[k]); state.where[k] = msg[k]; } }); send({ t: 'where', ...msg }); },
     setProfile(p) { p = p || {}; profile = { ...profile, ...p }; ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar })); if (!send({ t: 'profile', name: profile.name, avatar: profile.avatar || null, level: profile.level, title: profile.title })) profileDirty = true; else if (!state.code) profileDirty = true; render(); },
     setInventory(items) { state.localInventory = Array.isArray(items) ? items.slice() : []; if (state.code) send({ t: 'inventory', items: state.localInventory }); },
+    report(game, result) { return askProgress({ t: 'report', game, result }); },
+    progress() { return askProgress({ t: 'progress' }); },
     setGuard(fn) { guard = typeof fn === 'function' ? fn : () => ''; },
     on(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); return () => { listeners[ev] = (listeners[ev] || []).filter((f) => f !== fn); }; },
     off(ev, fn) { listeners[ev] = (listeners[ev] || []).filter((f) => f !== fn); },
+    setNavigator(fn) { navTo = typeof fn === 'function' ? fn : null; },
+    dockInto,
     urlFor, isHere, open: (t) => openDrawer(t), close: closeDrawer, toast,
   };
   window.PhattParty = api;
+
+  // ---- analytics (PHA-4335) ---- docs/ANALYTICS.md. Beacons to <hub>/api/ev: page_view on load, page_leave when hidden or
+  // gone (visible ms), dock_open, chat_send (a count, never the text), game_open, rejoin_click. Batched for 1 s (at once on
+  // leave), text/plain so sendBeacon needs no preflight. DNT / GPC: nothing is sent and the hellos carry dnt:1.
+  // Self-contained for the older dock copies: needs only HUB, GAME and `member` (the token, read at send time); waits for
+  // `identityReady` (the PHATT ID check) when that dock has it, so the view goes out under the token the page settles on.
+  // Page API: PhattParty.track(e, fields) / PhattParty.pageview(path?) (the hub page calls it on its in-page route changes).
+  const ANA_DNT = (() => { try { return navigator.doNotTrack === '1' || window.doNotTrack === '1' || navigator.globalPrivacyControl === true; } catch (e) { return false; } })();
+  const ana = { q: [], timer: 0, ready: false, path: '', shownAt: 0, left: false };
+  function anaPath(p) { // the hub's ?game=x → /game/x, ?table= → /table; no query string anywhere else
+    if (p) return String(p).split(/[?#]/)[0].slice(0, 200);
+    const u = new URLSearchParams(location.search), g = u.get('game');
+    if (GAME === 'clubhouse' && u.has('table')) return '/table';
+    if (GAME === 'clubhouse' && g && /^[a-z0-9_-]{1,32}$/.test(g)) return '/game/' + g;
+    return location.pathname.slice(0, 200);
+  }
+  function anaSend(beacon) {
+    clearTimeout(ana.timer); ana.timer = 0;
+    if (!ana.ready || !ana.q.length) return;
+    const now = Date.now();
+    while (ana.q.length) {
+      const ev = ana.q.splice(0, 25).map((x) => { const o = Object.assign({}, x); o.age = Math.max(0, now - x.t); delete o.t; return o; });
+      const body = JSON.stringify({ v: 1, m: member, site: GAME, ev: ev });
+      if (body.length > 8000) continue; // (an event this big is a bug in the page; never block the rest)
+      let sent = false;
+      try { if (navigator.sendBeacon) sent = navigator.sendBeacon(HUB + '/api/ev', new Blob([body], { type: 'text/plain' })); } catch (e) { sent = false; }
+      if (!sent) { try { fetch(HUB + '/api/ev', { method: 'POST', mode: 'cors', keepalive: !!beacon, headers: { 'content-type': 'text/plain' }, body: body }).catch(() => {}); } catch (e) { /* offline */ } }
+    }
+  }
+  function anaTrack(e, f) {
+    if (ANA_DNT || typeof e !== 'string') return;
+    const x = Object.assign({}, f || {}); x.e = e; x.t = Date.now();
+    ana.q.push(x); if (ana.q.length > 200) ana.q.shift();
+    if (!ana.timer) ana.timer = setTimeout(anaSend, 1000);
+  }
+  function anaLeave(beacon) { // the visible time on this view since it was shown (or the tab came back)
+    if (ana.left || !ana.shownAt) return;
+    ana.left = true; anaTrack('page_leave', { path: ana.path, dur: Date.now() - ana.shownAt }); anaSend(beacon);
+  }
+  function anaView(path, landing) {
+    if (!landing) anaLeave(false); // an in-page route change: the last view ends here
+    ana.path = anaPath(path); ana.shownAt = Date.now(); ana.left = document.visibilityState === 'hidden';
+    const f = { path: ana.path };
+    if (landing) {
+      let ref = ''; try { ref = document.referrer ? new URL(document.referrer).origin + '/' : ''; } catch (e) { ref = ''; }
+      if (ref && new URL(ref).host === location.host) ref = '';
+      const u = new URLSearchParams(location.search), src = (u.get('utm_source') || '').slice(0, 40), camp = (u.get('utm_campaign') || '').slice(0, 40);
+      let pend = null; try { pend = JSON.parse(sessionStorage.getItem('phatt.ana.pend') || 'null'); sessionStorage.removeItem('phatt.ana.pend'); } catch (e) { pend = null; }
+      f.ref = ref || (pend && pend.ref) || ''; f.utm = src ? src + (camp ? '/' + camp : '') : (pend && pend.utm) || '';
+      ana.land = f;
+    }
+    anaTrack('page_view', f);
+  }
+  if (!ANA_DNT) {
+    anaView(null, true);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'hidden') anaLeave(true);
+      else { ana.shownAt = Date.now(); ana.left = false; }
+    });
+    window.addEventListener('pagehide', () => {
+      // left before the dock knew who I am (the one quiet PHATT ID trip): nothing goes; the next page carries ref/utm on
+      if (!ana.ready) { try { if (ana.land && (ana.land.ref || ana.land.utm)) sessionStorage.setItem('phatt.ana.pend', JSON.stringify({ ref: ana.land.ref, utm: ana.land.utm })); } catch (e) { /* private mode */ } ana.q = []; return; }
+      anaLeave(true);
+    });
+    const go = () => { ana.ready = true; if (ana.q.length && !ana.timer) ana.timer = setTimeout(anaSend, 1000); };
+    const idp = typeof identityReady !== 'undefined' && identityReady && identityReady.then ? identityReady : null;
+    if (idp) { idp.then(go, go); setTimeout(go, 6000); } else go();
+  }
+  api.track = (e, f) => anaTrack(e, f);
+  api.pageview = (p) => { if (!ANA_DNT) anaView(p, false); };
+  api.dnt = ANA_DNT;
+  // ---- /analytics ----
 
   // ---- boot ----
   function boot() {
     build();
     fetch(HUB + '/api/catalog', { mode: 'cors' }).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && Array.isArray(c.games) && c.games.length) { CATALOG = c; if (open && tab === 'games') renderTab(); } }).catch(() => {});
-    if (!wantCode) { hadSnapshot = true; resolveReady(api); }
+    // ready (no party to wait for) only after the PHATT ID answer, so pages that copy PhattParty.me.name on ready get the right one
+    checkIdentity().then((r) => { if (r === 'redirect') return; resolveIdentity(r); if (pid) { emit('identity', pid); emit('me', api.me); render(); } if (!wantCode) { hadSnapshot = true; resolveReady(api); } afterIdentity(); });
+  }
+  function afterIdentity() {
     // A surface that has never seen me (no name on this origin yet) asks the hub who I am before saying hello: a hello
     // without a name introduces me as Guest and the party forgets the name and avatar I carried from the last game.
+    setTimeout(() => checkHeld(true), 1200); // --- rejoin --- (after the party's own arrival banner, which wins if both want the spot)
     if (profile.name || freshMember || !wantCode) connect();
     else fetch(HUB + '/api/party/' + wantCode + '/member/' + member, { mode: 'cors' }).then((r) => (r.ok ? r.json() : null)).then((m) => { if (m && m.name && m.name !== 'Guest') profile = { ...profile, name: m.name, avatar: m.avatar || null }; }).catch(() => {}).then(connect);
   }
