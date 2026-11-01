@@ -257,6 +257,36 @@
   }
   function hideBanner() { clearInterval(bannerTimer); bannerTimer = null; if (banner) { banner.remove(); banner = null; } }
 
+  // ---- rejoin (PHA-4335): a Clubhouse seat held for me (I dropped, closed the tab, or the hub restarted) ----
+  // Every surface but the hub itself (which has its own lobby banner) asks the hub once on load, and again when Games opens:
+  // "You still have a seat at Hearts · Rejoin". Rejoin takes me to that table, where the hub puts me back in the same seat.
+  let held = [];
+  const SS_HELD_SEEN = 'phatt.dock.heldSeen';
+  const ss = { get: (k) => { try { return sessionStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { sessionStorage.setItem(k, v); } catch { /* private mode */ } } };
+  function heldUrl(h) { return withParty(HUB + '/?table=' + encodeURIComponent(h.table)); }
+  function heldWith(h) { return h.people.concat(h.bots ? [h.bots + (h.bots === 1 ? ' bot' : ' bots')] : []).join(', ').replace(/, ([^,]*)$/, ' and $1'); }
+  function heldText(h) { const w = heldWith(h); return 'You still have a seat at ' + h.gameName + (w ? ' with ' + w : '') + '.'; }
+  function checkHeld(showBanner) {
+    if (GAME === 'clubhouse') return Promise.resolve([]);
+    return fetch(HUB + '/api/held/' + member, { mode: 'cors', cache: 'no-store' }).then((r) => (r.ok ? r.json() : null)).then((d) => {
+      held = (d && Array.isArray(d.held)) ? d.held : [];
+      const h = held[0];
+      if (showBanner && h && !banner && ss.get(SS_HELD_SEEN) !== h.table) {
+        ss.set(SS_HELD_SEEN, h.table);
+        banner = el('div', 'banner'); banner.setAttribute('role', 'status');
+        const box = el('div', 'bbody'); box.appendChild(el('p', null, heldText(h)));
+        const row = el('div', 'row'), go2 = el('a', 'btn', 'Rejoin'), later = button('Not now', 'btn ghost');
+        go2.href = heldUrl(h); go2.onclick = (e) => { e.preventDefault(); hideBanner(); go(go2.href); };
+        later.onclick = () => hideBanner();
+        row.appendChild(go2); row.appendChild(later); box.appendChild(row);
+        banner.appendChild(el('span', 'bico', gameIcon(h.game))); banner.appendChild(box);
+        root.appendChild(banner);
+      }
+      if (open && tab === 'games') renderOpenNow();
+      return held;
+    }).catch(() => []);
+  }
+
   // ---- look: the PHATT ARCADE cabinet (same palette as the PHATT GAMING ARCADE selector) ----
   const CSS = [
     ':host{all:initial;position:fixed;left:0;bottom:0;z-index:2147483000;font:13px/1.45 Tahoma,Verdana,"Segoe UI",Arial,sans-serif;color:#f4e8cc;pointer-events:none;--o:#e8702a;--t:#5fb8ac;--c:#f4e8cc;--m:#cdbf9f;--d:#8f8068;--bg:#17110d;--bg2:#241a14;--line:#4a3a2c}',
@@ -314,7 +344,7 @@
     '.hints{position:absolute;left:10px;right:10px;bottom:100%;background:#0e0b09;border:2px solid var(--line);border-radius:8px;padding:4px;max-height:200px;overflow:auto;box-shadow:0 -8px 20px #000a}.hint{display:block;width:100%;text-align:left;padding:4px 8px;border:0;background:none;border-radius:4px;font-size:12px;color:var(--m)}.hint b{color:var(--c);font-family:"Courier New",monospace}.hint:hover,.hint.on{background:#2b211a}',
     '.namebar{display:flex;gap:6px;padding:8px 10px;background:#2b1a0e;border-bottom:1px solid #000;align-items:center}',
     // games
-    '.brow{min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.brow .gi{font-size:18px;width:24px;text-align:center;flex:none}.brow .info{flex:1;min-width:0}.brow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .wh{font-size:12px;color:var(--m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}',
+    '.brow.mine{border-color:var(--o)}.brow{min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.brow .gi{font-size:18px;width:24px;text-align:center;flex:none}.brow .info{flex:1;min-width:0}.brow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .wh{font-size:12px;color:var(--m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}',
     '.st{display:inline-block;margin-right:6px;padding:1px 5px;border-radius:4px;font:bold 10px/1.3 "Courier New",monospace;letter-spacing:.08em;vertical-align:1px;background:var(--t);color:#0b2b27}.st.playing{background:var(--o);color:#1a0f06}.st.full{background:#6b5846;color:var(--c)}.st.party{background:#8fd694;color:#0e2a12}',
     '.genre .blurb{font-size:12px;color:var(--d);margin:-2px 0 6px}',
     '.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px}',
@@ -646,7 +676,7 @@
     if (state.code) sc.appendChild(el('div', 'note', host ? 'You are the host: Bring party takes everyone. Go alone takes just you.' : ((state.members.find((m) => m.id === state.host) || {}).name || 'The host') + ' picks where the party goes. Join takes just you.'));
     const s1 = el('div', 'sec', 'Open now'); const rf = button('Refresh', 'btn ghost small r'); rf.onclick = () => loadBrowse(true); s1.appendChild(rf); sc.appendChild(s1);
     openNowEl = el('div'); openNowEl.style.display = 'grid'; openNowEl.style.gridTemplateColumns = 'minmax(0,1fr)'; openNowEl.style.gap = '6px'; sc.appendChild(openNowEl);
-    renderOpenNow(); loadBrowse(false);
+    renderOpenNow(); loadBrowse(false); checkHeld(false);
     browseTimer = setInterval(() => { if (open && tab === 'games') loadBrowse(true); else clearInterval(browseTimer); }, 8000);
     const n = state.members.filter((m) => m.online).length || 1;
     CATALOG.genres.forEach((genre) => {
@@ -679,6 +709,13 @@
   function renderOpenNow() {
     if (!openNowEl) return;
     openNowEl.textContent = '';
+    held.forEach((h) => { // --- rejoin --- my held Clubhouse seat comes first
+      const r = el('div', 'brow mine'); r.appendChild(el('span', 'gi', gameIcon(h.game)));
+      const info = el('div', 'info'); info.appendChild(el('div', 'nm', 'Your seat at ' + h.gameName));
+      const wh = el('div', 'wh'); wh.appendChild(el('span', 'st waiting', 'HELD')); wh.appendChild(document.createTextNode(heldWith(h) ? 'with ' + heldWith(h) : 'held for you')); info.appendChild(wh); r.appendChild(info);
+      const acts = el('div', 'acts'), a = el('a', 'btn small', 'Rejoin'); a.href = heldUrl(h); a.onclick = (e) => { e.preventDefault(); go(a.href); }; acts.appendChild(a); r.appendChild(acts);
+      openNowEl.appendChild(r);
+    });
     const d = browseData, host = api.isHost;
     if (!d) { openNowEl.appendChild(el('div', 'muted', browseAt ? 'The arcade is not answering right now.' : 'Looking around the arcade…')); return; }
     const parties = (d.parties || []).filter((x) => x.code !== state.code);
@@ -809,6 +846,7 @@
     build();
     fetch(HUB + '/api/catalog', { mode: 'cors' }).then((r) => (r.ok ? r.json() : null)).then((c) => { if (c && Array.isArray(c.games) && c.games.length) { CATALOG = c; if (open && tab === 'games') renderTab(); } }).catch(() => {});
     if (!wantCode) { hadSnapshot = true; resolveReady(api); }
+    setTimeout(() => checkHeld(true), 1200); // --- rejoin --- (after the party's own arrival banner, which wins if both want the spot)
     // A surface that has never seen me (no name on this origin yet) asks the hub who I am before saying hello: a hello
     // without a name introduces me as Guest and the party forgets the name and avatar I carried from the last game.
     if (profile.name || freshMember || !wantCode) connect();
