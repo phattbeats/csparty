@@ -44,7 +44,17 @@
   const TOUCH_ARGS = TOUCH || params.has("touch") ? ["+touch_enable", "1", "+setinfo", "_csp_touch", "1"] : [];
   // The lobby's seat id for this player (lobby/ hands it over as ?pid=): a dropped player gets their own seat back
   // even if someone else in the party has the same name. Keys starting with _ never reach other clients.
-  const PID_ARGS = /^[\w-]{6,24}$/.test(params.get("pid") || "") ? ["+setinfo", "_csp_pid", params.get("pid")] : [];
+  // Games opened without a lobby link get one too: a random id kept per tab (sessionStorage survives the rejoin reload),
+  // so every game reconnects by id and not by name.
+  const PID = (() => {
+    const given = params.get("pid"); if (/^[\w-]{6,24}$/.test(given || "")) return given;
+    try {
+      let v = sessionStorage.getItem("csp_pid");
+      if (!/^[\w-]{6,24}$/.test(v || "")) { v = "d" + [...crypto.getRandomValues(new Uint8Array(9))].map((b) => (b % 36).toString(36)).join(""); sessionStorage.setItem("csp_pid", v); }
+      return v;
+    } catch { return ""; }
+  })();
+  const PID_ARGS = PID ? ["+setinfo", "_csp_pid", PID] : [];
 
   // engine pieces that live next to the page; written into the engine's filesystem before start
   const LIBS = {

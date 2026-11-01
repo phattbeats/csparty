@@ -251,3 +251,7 @@ orphans reaped by the container runtime (PID 1 exit takes the whole PID namespac
 
 **Not done:** browser e2e with real players, a long CPU/upload measurement, the friends' server as slot 0, per-process `ulimit`/cgroup
 limits, and the live deploy (merge onto newest main, peers==0 / no-humans gate).
+
+### Reconnect in every game (PHA-4475)
+
+`boot.js` always sets `_csp_pid`: the lobby's `?pid=` when there is one, else a random per-tab id in `sessionStorage` (`csp_pid`). Direct-link and friends'-server games therefore hold and return a dropped player's seat by id (`csp_seat_grace`, 90 s) the same way lobby games do; name matching stays as the fallback for old clients. The page's lost-party card auto-rejoins (up to 5 tries). Not covered: a crashed lobby server loses its seats with its slot dir (process mode), so a rejoin there lands in a fresh match.
