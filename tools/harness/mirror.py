@@ -1,5 +1,5 @@
 import sys,re,os,urllib.request,base64,concurrent.futures as cf,urllib.parse
-A=base64.b64encode(b'phatt:WzPyR-fLAH2-2fGgk-kQDo3-ToYtr').decode()
+A=base64.b64encode(b'phatt:' + os.environ.get('NEXTCLOUD_PASS','').encode()).decode()
 ROOT='https://cloud.example.com'; BASE='/remote.php/dav/files/phatt/cloud/csparty/Half-Life/'
 SKIP=re.compile(r'^(valve/(maps|media|overviews)|cstrike/(media|overviews|cl_dlls|dlls))/',re.I)
 def req(path,method='GET',depth=None):
