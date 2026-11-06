@@ -179,6 +179,7 @@ const startLobby = async (code) => {
   try {
     await pickPort(l);
     if (!l.port) throw new Error("no free port");
+    await ensureNetwork();   // a docker prune or daemon reset can drop it after startup
     await docker("DELETE", `/containers/csp-lobby-${code}?force=1`).catch(() => {});   // left over from a crash
     const c = await docker("POST", `/containers/create?name=csp-lobby-${code}`, containerSpec(l));
     l.id = c.Id;
