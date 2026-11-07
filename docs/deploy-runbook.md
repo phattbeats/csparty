@@ -566,3 +566,19 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   then restore `csparty-up.sh.pre-pha4335` (RELAY_IMAGE 0.4.38).
 - The public lobby list is the Worker's (`https://csparty-lobby.brandon-444.workers.dev/api/public`); the relay at
   csparty.phatt.vip has no `/api/*` and its page ignores `?code=`.
+
+## PHA-3990: lobby pool-agent revived on live (agent/relay 0.4.40, 2026-11-07)
+- **Found:** the live pool-agent had been refused with 401 by the lobby Worker since 2026-10-23 (Worker `LOBBY_SECRET` no longer
+  matched the RAID `.env`), so `/api/capacity` showed `hosts: []` and every lobby fell back to the static pool. Also missing: the
+  `cs-party-server:0.5.38-vq` tag (live server ran it as `test4367`) and the `csp-lobbies` network (agent only made it at boot).
+- **Fixed on live:** `LOBBY_SECRET` re-put on the Worker (Brandon@phatt.tech account), image re-tagged, agent restarted.
+- **0.4.40** (`patch-relay40-pha3990/`, FROM 0.4.39 + `web/pool-agent.js` 0.1.2): `ensureNetwork()` before every lobby start. The
+  repo's `pool-agent.js` had been behind live (PHA-4382's docker-proxy `DOCKER_HOST` support was never committed); this commit syncs it.
+  `deploy0440-pha3990.sh` gates on peers 0, 0 running lobbies, live relay 0.4.39; swaps relay + agent (server untouched). Rollback:
+  containers `cs-party-relay-pha3990old` / `cs-party-agent-pha3990old`, `csparty-up.sh.pre-pha3990`.
+- **Worker account:** `CLOUDFLARE_PHATT_TECH` (+ `CLOUDFLARE_ACCOUNT_ID=d444596cbb456a629e7d40071e47eb23`) is the account that owns
+  `csparty-lobby`. `CLOUDFLARE_TOKEN_WORKERS` / `_PHATT_VIP` are PHATT MEDIA CLUB, which holds a stray undeployed `csparty-lobby` (PHA-4367).
+- **ADMIN_TOKEN** set on the live Worker; the value is in the RAID `appdata/cs-party/.env` (mode 600). `/api/admin/*` is 401 without it.
+- **Alert gap:** nothing fires when `/api/capacity` shows `hosts: []`; add a check.
+- **pool_live.js on the RAID:** the playwright image was pruned (re-pulled `mcr.microsoft.com/playwright:v1.55.0-noble`); `--device /dev/dri`
+  + `--use-angle=gl-egl` crashes the browser at newPage, so use SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader`).
