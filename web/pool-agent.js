@@ -26,7 +26,7 @@ import http from "node:http";
 import { WebSocket } from "ws";
 
 const env = process.env;
-const VERSION = "0.1.0";
+const VERSION = "0.1.2";
 const HOST_ID = env.RELAY_ID || "raid1";
 const LOBBY_WS = env.LOBBY_WS || "";
 const SECRET = env.LOBBY_SECRET || "";
@@ -44,6 +44,9 @@ const READY_MS = 1000 * +(env.READY_SECS || 300);       // map load on a busy ho
 const MAX_MATCH_MS = 1000 * +(env.MAX_MATCH_SECS || 10800);
 const NET = "csp-lobbies";
 const DOCKER_SOCK = env.DOCKER_SOCK || "/var/run/docker.sock";
+// DOCKER_HOST=tcp://127.0.0.1:2376 is a docker socket proxy (PHA-4382: no raw docker.sock in this container); else the unix socket
+const DOCKER_TCP = /^tcp:\/\/([^:/]+):(\d+)/.exec(env.DOCKER_HOST || "");
+const dockerTarget = DOCKER_TCP ? { host: DOCKER_TCP[1], port: +DOCKER_TCP[2] } : { socketPath: DOCKER_SOCK };
 let drain = env.DRAIN === "1";
 const EXTRA_CVARS = (env.EXTRA_CVARS || "").split(";").map((c) => c.trim()).filter(Boolean);
 
@@ -53,7 +56,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ------------------------------------------------------------------------------------------------ docker
 // The Engine API over the unix socket. API 1.41 is Docker 20.10+.
 const docker = (method, path, body, { raw = false, timeout = 30000 } = {}) => new Promise((resolve, reject) => {
-  const req = http.request({ socketPath: DOCKER_SOCK, path: `/v1.41${path}`, method, timeout,
+  const req = http.request({ ...dockerTarget, path: `/v1.41${path}`, method, timeout,
     headers: body ? { "Content-Type": "application/json" } : {} }, (res) => {
     if (raw && res.statusCode < 300) return resolve(res);
     let d = ""; res.setEncoding("utf8");
