@@ -591,3 +591,18 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   `/admin/admin.js` changed. Version `ccc8d4a3-ee3d-4baf-8c15-bd370f79c09e`; rollback `npx wrangler rollback bdd72d88-94ac-4575-8fc3-b106b702bcef`.
 - Admin screenshots: `appdata/cs-party/shots-3991/shot.js` in the RAID playwright image (SwiftShader), node_modules from
   `test4367/work`, token read from the mounted `.env`; `/api/admin/action` is blocked in the script so it never changes anything.
+
+## PHA-3992: lobby public hardening (Phase 4, 2026-11-08 ~06:04 UTC)
+- main fbfca35. Per-IP limits (30 code lookups / 20 lobby joins a minute, `[[ratelimits]]` `LOOKUP_LIMIT` / `JOIN_LIMIT`: accepted on
+  the free plan), the name / party-name filter (`obscenity`), queue wait timer + "N parties waiting" on the home screen, abuse-panel
+  labels, privacy note. Turnstile code is in but **off** until `TURNSTILE_SITEKEY` (var) and `TURNSTILE_SECRET` (secret) are set.
+- Gate in the same command: relay peers 0, 0 lobby servers and 0 queued, `/api/public` empty; just before, rcon status showed 4 bots and
+  0 humans and `/api/admin/live` 0 lobbies. Deployed with `CLOUDFLARE_API_TOKEN=$CLOUDFLARE_PHATT_TECH CLOUDFLARE_ACCOUNT_ID=d444596c... npx wrangler deploy`.
+  Version `6f4d388d-7753-4d5c-a8cd-80e0b529b8f9`; rollback `npx wrangler rollback ccc8d4a3-ee3d-4baf-8c15-bd370f79c09e`.
+- Live check: obscene party name dropped, "b1tch" became "Player" with the page told why; lookups got 429 after the binding caught up
+  (eventually consistent: about 50 got through across two runs, then 109 of the next 120 were refused). Abuse panel showed all three.
+- Turnstile widget: the agents' Cloudflare tokens only read Turnstile. Once a widget exists for
+  `csparty-lobby.brandon-444.workers.dev`: put its site key in `wrangler.toml` `[vars]` `TURNSTILE_SITEKEY`,
+  `npx wrangler secret put TURNSTILE_SECRET`, deploy through the same gate.
+- Browser pass on the RAID (playwright image, `appdata/cs-party/test3992/`): `lobby/test/harden_shots.cjs` against `wrangler dev`
+  with the Turnstile test keys.
