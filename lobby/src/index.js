@@ -21,7 +21,7 @@
 // per lobby. A lobby goes to a pool-agent first, then to a free static POOL server, else it queues (first come,
 // first served, with its place in line shown).
 import { DurableObject } from "cloudflare:workers";
-import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, title, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree } from "./util.js";
+import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, title, rude, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree, allow, turnstileOk } from "./util.js";
 import { EVENTS, datapoint, blob, num, secs, hourOf, dayOf, ttsBucket } from "./analytics.js";
 import { adminFetch, ingestFetch, adminOp } from "./admin.js";
 
@@ -37,6 +37,26 @@ const ORPHAN_MS = 10 * 60e3;          // its agent gone this long: the lobby's m
 const START_FAILS = 3;                // lobby servers failing to start in a row before the lobby gives up
 const ACTIVE_MS = 30 * 60e3;          // the directory probes servers every minute while a lobby changed this recently
 const VIA = new Set(["code", "link", "public", "quick", "create"]);
+// Per-IP limits (#3992, design section 10), each per minute. Overridden by the [[ratelimits]] bindings when present.
+const LOOKUPS_PER_MIN = 30;           // GET /api/lobbies/:code and quick play joins: a code is 1 in 29M, so this stops guessing
+const JOINS_PER_MIN = 20;             // lobby WebSocket opens (a reconnecting tab backs off to one every 10 s)
+const TOO_MANY = "Too many tries from here. Wait a minute and try again.";
+// a limited IP is counted for the abuse panel once a minute, not on every refused request
+const limitSeen = new Map();
+const countLimited = (dir, what, ik) => {
+  const k = `${what}|${ik}|${Math.floor(Date.now() / 60e3)}`;
+  if (limitSeen.has(k)) return;
+  if (limitSeen.size > 5000) limitSeen.clear();
+  limitSeen.set(k, 1);
+  return dir.record("", [{ e: "rate_limited", b: [what] }]).catch(() => {});
+};
+// a WebSocket refused with a reason the page can show (a refused upgrade just looks like a network error)
+const refuseSocket = (code, reason) => {
+  const [client, server] = Object.values(new WebSocketPair());
+  server.accept();
+  server.close(code, reason);
+  return new Response(null, { status: 101, webSocket: client });
+};
 
 // Party key for one lobby on one server: CODE.EXPIRY.SIG. web/relay.js checks it the same way (lobbyKeyOk).
 export const lobbyToken = async (secret, slotId, code, exp) =>
@@ -74,8 +94,14 @@ export default {
     const cc = blob(req.headers.get("cf-ipcountry") || "");
     if (p.startsWith("/api/admin/")) return adminFetch(req, env, dir, await ipKey(ip, env));
     if (p === "/api/events" && req.method === "POST") return ingestFetch(req, env, dir);
-    if (p === "/api/status" && req.method === "GET") return json(await dir.status());
+    // turnstile: the site key when making a party needs a Turnstile token (body.ts), "" when it doesn't
+    if (p === "/api/status" && req.method === "GET") return json({ ...(await dir.status()), turnstile: env.TURNSTILE_SECRET && env.TURNSTILE_SITEKEY || "" });
     const makeLobby = async (body, pub, seeking, via) => {
+      if (!(await turnstileOk(env, body.ts, ip))) {
+        await dir.record("", [{ e: "rejected", b: ["turnstile"] }]);
+        return json({ error: "Couldn't check that you're a person. Try again.", turnstile: true }, 403);
+      }
+      if (body.title && rude(body.title)) await dir.record("", [{ e: "rejected", b: ["title"] }]);
       const r = await dir.reserveCode(await ipKey(ip, env), await pidKey(body.pid, env));
       if (r.error) return json({ error: r.error }, r.status || 429);
       if (r.publicOff) pub = seeking = false;
@@ -88,6 +114,8 @@ export default {
       if (!PID_RE.test(body.pid || "")) return json({ error: "bad player id" }, 400);
       if (p === "/api/lobbies") return makeLobby(body, !!body.public, !!body.seeking, "create");
       // quick play: the fullest open public lobby (one looking for players first); none: start one that is
+      const ik = await ipKey(ip, env);
+      if (!(await allow(env.LOOKUP_LIMIT, ik, LOOKUPS_PER_MIN))) { await countLimited(dir, "lookup", ik); return json({ error: TOO_MANY }, 429); }
       for (let i = 0; i < 3; i++) {
         const code = await dir.quickMatch();
         if (!code) break;
@@ -118,20 +146,17 @@ export default {
       const code = m[1].toUpperCase();
       if (!CODE_RE.test(code)) return json({ error: "no such lobby" }, 404);
       const lobby = env.LOBBY.get(env.LOBBY.idFromName(code));
+      const ik = await ipKey(ip, env);
       if (!m[2]) {
+        if (!(await allow(env.LOOKUP_LIMIT, ik, LOOKUPS_PER_MIN))) { await countLimited(dir, "lookup", ik); return json({ error: TOO_MANY }, 429); }
         const info = req.method === "GET" ? await lobby.info() : null;
         return info ? json(info) : json({ error: "no such lobby" }, 404);
       }
       if (req.headers.get("Upgrade") !== "websocket") return json({ error: "websocket only" }, 426);
+      if (!(await allow(env.JOIN_LIMIT, ik, JOINS_PER_MIN))) { await countLimited(dir, "join", ik); return refuseSocket(4029, TOO_MANY); }
       // what the lobby may know about this connection, set here so a client can't supply it
-      const ik = await ipKey(ip, env), pid = url.searchParams.get("pid") || "";
-      if (PID_RE.test(pid) && (await dir.gate(ik, await pidKey(pid, env))).banned) {
-        // accept and close at once with a reason the page shows (a refused upgrade just looks like a network error)
-        const [client, server] = Object.values(new WebSocketPair());
-        server.accept();
-        server.close(4003, "You can't join parties right now.");
-        return new Response(null, { status: 101, webSocket: client });
-      }
+      const pid = url.searchParams.get("pid") || "";
+      if (PID_RE.test(pid) && (await dir.gate(ik, await pidKey(pid, env))).banned) return refuseSocket(4003, "You can't join parties right now.");
       const h = new Headers(req.headers);
       h.set("X-CSP-IpKey", ik); h.set("X-CSP-CC", cc);
       return lobby.fetch(new Request(req, { headers: h }));
@@ -202,6 +227,11 @@ export class Lobby extends DurableObject {
     if (char >= 0 && !this.charTaken(char, pid)) m.char = char;
     return m;
   }
+  // a filtered name (util.js nick) became "Player": say so, so the page can clear the name box
+  nameRefused(ws, pid, m) {
+    this.ev("rejected", ["name"], [], { pid, cc: m.cc, n: m.n });
+    this.send(ws, { t: "error", msg: "That name isn't allowed here, so you're \"Player\". Leave the party to pick another.", name: true });
+  }
   charTaken(char, pid) { return Object.entries(this.s.members).some(([p, m]) => p !== pid && m.char === char); }
   removeMember(pid, reason) {
     const s = this.s, m = s.members[pid];
@@ -228,6 +258,7 @@ export class Lobby extends DurableObject {
     const s = this.s, old = s.members[pid], gone = old?.gone || 0;
     const m = this.addMember(pid, nick(url.searchParams.get("name")), charOf(url.searchParams.get("char")));
     m.cc = cc;
+    if (rude(url.searchParams.get("name"))) this.nameRefused(server, pid, m);
     if (!old) {
       const via = VIA.has(url.searchParams.get("via")) ? url.searchParams.get("via") : "code";
       const seat = s.order.indexOf(pid), second = s.order.length >= 2 && !s.f.second;
@@ -250,7 +281,7 @@ export class Lobby extends DurableObject {
     const s = this.s, isHost = s.host === pid, open = s.state === "open";
     s.error = "";
     switch (msg.t) {
-      case "name": m.name = nick(msg.name); break;
+      case "name": m.name = nick(msg.name); if (rude(msg.name)) this.nameRefused(ws, pid, m); break;
       case "char": {
         const c = charOf(msg.char);
         if (c >= 0 && this.charTaken(c, pid)) { this.send(ws, { t: "error", msg: "Someone already picked that character." }); return; }
@@ -534,7 +565,7 @@ export class Lobby extends DurableObject {
     return {
       t: "state", code: s.code, title: s.title || "", state: s.state, public: s.public, seeking: s.seeking, fill, seats: SEATS, minHumans: +(this.env.MIN_HUMANS || 2),
       you: me?.n ?? 0, host: s.members[s.host]?.n ?? 0, startsIn, error: s.error, go, notice,
-      queuePos: s.state === "queued" ? s.queuePos || 0 : 0, progress: s.match?.progress || null,
+      queuePos: s.state === "queued" ? s.queuePos || 0 : 0, queuedMs: s.state === "queued" && s.queuedAt ? Date.now() - s.queuedAt : 0, progress: s.match?.progress || null,
       members: s.order.map((p, i) => {
         const m = s.members[p];
         return { n: m.n, name: m.name, char: m.char, ready: m.ready, online: on.has(p), role: i < SEATS ? "player" : "spectator" };
@@ -591,7 +622,8 @@ export class Directory extends DurableObject {
   noticeNow() { const n = this.kv("notice"); return n && n.until > Date.now() ? n : null; }
   status() {
     const c = this.cfg();
-    return { paused: c.paused, message: c.paused ? c.pauseMsg || "New parties are paused for maintenance. Back soon." : "", notice: this.noticeNow()?.text || "" };
+    return { paused: c.paused, message: c.paused ? c.pauseMsg || "New parties are paused for maintenance. Back soon." : "", notice: this.noticeNow()?.text || "",
+      queued: this.sql.exec("SELECT COUNT(*) AS n FROM queue WHERE seen > ?", Date.now() - 60e3).one().n };
   }
   banned(...keys) {
     const now = Date.now();

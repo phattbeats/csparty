@@ -20,6 +20,30 @@
   if (!CHARS[myChar]) myChar = -1;
   const myName = () => $("name").value.trim().slice(0, 20) || "Player";
 
+  // Cloudflare Turnstile (#3992): making a party needs a token when /api/status names a site key. The widget is
+  // invisible unless Cloudflare wants a click, and loads only then. Tokens are single use: one per create.
+  let tsKey = "", tsWidget = null, tsWait = null, statusP = null;
+  const tsLoad = () => tsLoad.p ||= new Promise((ok, no) => {
+    const sc = document.createElement("script");
+    sc.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"; sc.async = true;
+    sc.onload = ok; sc.onerror = () => { tsLoad.p = null; no(new Error("Couldn't load the human check. Check your connection.")); };
+    document.head.append(sc);
+  });
+  async function humanToken() {
+    await statusP;   // the site key comes with /api/status
+    if (!tsKey) return "";
+    await tsLoad();
+    return new Promise((ok, no) => {
+      tsWait = { ok, no };
+      const done = (f, v) => { const w = tsWait; tsWait = null; w?.[f](v); };
+      if (tsWidget == null) tsWidget = turnstile.render("#turnstile", { sitekey: tsKey, action: "create", execution: "execute", appearance: "interaction-only",
+        callback: (t) => done("ok", t), "error-callback": () => { done("no", new Error("The human check failed. Try again.")); return true; },
+        "expired-callback": () => turnstile.reset(tsWidget), "timeout-callback": () => done("no", new Error("The human check timed out. Try again.")) });
+      else turnstile.reset(tsWidget);
+      turnstile.execute(tsWidget);
+    });
+  }
+
   const homeStatus = (t, err) => { $("home-status").textContent = t; $("home-status").className = "status" + (err ? " err" : ""); };
   const CODE_RE = /^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{5}$/;
 
@@ -28,8 +52,9 @@
     store.set("csp_name", myName());
     $("create").disabled = true; homeStatus("Making a party…");
     try {
+      const ts = await humanToken();
       const r = await fetch("/api/lobbies", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pid, name: myName(), char: myChar, public: $("public").checked, title: $("title").value }) });
+        body: JSON.stringify({ pid, name: myName(), char: myChar, public: $("public").checked, title: $("title").value, ts }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
       enter(j.code, "create");
@@ -40,8 +65,9 @@
     store.set("csp_name", myName());
     $("quick").disabled = true; homeStatus("Looking for a party…");
     try {
+      const ts = await humanToken();   // used only if quick play ends up making a party
       const r = await fetch("/api/quickplay", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pid, name: myName(), char: myChar }) });
+        body: JSON.stringify({ pid, name: myName(), char: myChar, ts }) });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
       enter(j.code, j.created ? "create" : "quick");
@@ -60,7 +86,7 @@
     try {
       const r = await fetch(`/api/lobbies/${code}`);
       if (r.status === 404) { homeStatus(`No party with code ${code}. It may have ended.`, true); history.replaceState(null, "", keepParty("/")); return; }
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
       enter(code, via);
     } catch (e) { homeStatus(String(e.message || e), true); }
   }
@@ -97,14 +123,19 @@
     sock.onopen = () => { retry = 0; $("conn").textContent = "CONNECTED"; $("conn").className = ""; };
     sock.onmessage = (e) => {
       let m; try { m = JSON.parse(e.data); } catch { return; }
-      if (m.t === "state") render(m); else if (m.t === "error") lobbyStatus(m.msg, true); else if (m.t === "closed") closedMsg = m.msg;
+      if (m.t === "state") render(m);
+      else if (m.t === "error") {
+        lobbyStatus(m.msg, true);
+        // a refused name: clear it here, and keep the reason up past the roster update that follows
+        if (m.name) { $("name").value = ""; store.set("csp_name", ""); nameNote = { msg: m.msg, until: Date.now() + 8000 }; }
+      } else if (m.t === "closed") closedMsg = m.msg;
     };
     sock.onclose = (e) => {
       if (sock !== ws || leaving) return;
       $("conn").textContent = "RECONNECTING"; $("conn").className = "off";
       if (e.code === 4000) { lobbyStatus("This party is open in another tab.", true); $("conn").textContent = "OTHER TAB"; return; }
       // an admin closed the party or removed us (or we can't join right now): don't reconnect
-      if (e.code === 4003 || e.code === 4010) { $("conn").textContent = ""; backHome(closedMsg || e.reason || "You left the party."); return; }
+      if (e.code === 4003 || e.code === 4010 || e.code === 4029) { $("conn").textContent = ""; backHome(closedMsg || e.reason || "You left the party."); return; }
       setTimeout(async () => {
         // a lobby that expired answers 404: back to the start screen
         try { if ((await fetch(`/api/lobbies/${code}`)).status === 404) { backHome(`Party ${code} has ended.`); return; } } catch {}
@@ -112,7 +143,7 @@
       }, Math.min(10000, 500 * 2 ** retry++));
     };
   }
-  let closedMsg = "";
+  let closedMsg = "", nameNote = null;
   setInterval(() => { if (ws?.readyState === 1) ws.send("ping"); }, 30000);
   const send = (m) => { if (ws?.readyState === 1) ws.send(JSON.stringify(m)); };
 
@@ -124,7 +155,7 @@
     $("eyebrow").textContent = "PARTY LOBBY"; $("headline").textContent = "Make a party, send the code."; $("subline").textContent = "Up to 4 players. Bots fill the empty seats.";
     homeStatus(msg || "", !!msg);
     closedMsg = "";
-    loadPublic(); loadStatus();
+    loadPublic(); statusP = loadStatus();
     partyWhere();
   }
   $("leave").addEventListener("click", () => { send({ t: "leave" }); backHome(""); });
@@ -157,7 +188,14 @@
   // maintenance and admin messages, above everything
   const banner = (t) => { $("banner").textContent = t || ""; $("banner").hidden = !t; };
   async function loadStatus() {
-    try { const st = await (await fetch("/api/status")).json(); banner(st.message || st.notice); } catch {}
+    try {
+      const st = await (await fetch("/api/status")).json();
+      banner(st.message || st.notice);
+      tsKey = st.turnstile || "";
+      // queue up front: a new party would wait too, so say so before they make one
+      $("busy").hidden = !st.queued || !!st.message;
+      $("busy").textContent = st.queued ? `Every game server is busy: ${st.queued} ${st.queued === 1 ? "party is" : "parties are"} waiting for one. You can still make a party; it gets a place in line.` : "";
+    } catch {}
   }
 
   function render(s) {
@@ -199,7 +237,12 @@
     if (s.go) $("go").href = withPartyQuery(s.go);
 
     clearInterval(countdown);
-    if (s.error) lobbyStatus(s.error, s.state !== "queued");
+    if (s.state === "queued") {
+      // place in line, and how long the party has waited (servers free up as matches end, about 10 to 20 minutes each)
+      const since = Date.now() - (s.queuedMs || 0), msg = s.error || (s.queuePos ? `Every server is busy. You're number ${s.queuePos} in line…` : "Every server is busy. Waiting for one to free up…");
+      const tick = () => { const t = Math.floor((Date.now() - since) / 1000); lobbyStatus(`${msg} Waiting ${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}. Keep this tab open; we start as soon as a server frees up.`); };
+      tick(); countdown = setInterval(tick, 1000);
+    } else if (s.error) lobbyStatus(s.error, true);
     else if (open && s.startsIn > 0) {
       const at = Date.now() + s.startsIn;
       const tick = () => lobbyStatus(`${s.fill ? "Party is full enough. Bots fill the rest. Starting in" : "Everyone's ready. Starting in"} ${Math.max(0, Math.ceil((at - Date.now()) / 1000))}…`);
@@ -209,11 +252,12 @@
       lobbyStatus(online < s.minHumans ? `Waiting for friends (${online}/${s.minHumans} to auto-start). ${isHost ? "Or start now with bots." : ""}`
         : `${ready}/${online} ready.`);
     } else if (s.state === "starting") lobbyStatus("Starting your party's server… (up to a minute or two)");
-    else if (s.state === "queued") lobbyStatus(s.queuePos ? `Every server is busy. You're number ${s.queuePos} in line…` : "Every server is busy. Waiting for one to free up…");
     else if (inMatch) {
       const p = s.progress;   // from the game server: turn and minigame
       lobbyStatus(sawStart ? "Server ready. Joining…" : `Match in progress${p?.turn ? `: turn ${p.turn} of ${p.of}` : ""}${p?.mg ? `, last minigame ${p.mg}` : ""}.`);
     }
+
+    if (nameNote && Date.now() < nameNote.until && !s.error) { clearInterval(countdown); lobbyStatus(nameNote.msg, true); }
 
     // Started while we watched: go. Came back to a lobby mid-match: offer the button, don't bounce them.
     if (inMatch && prev && prev.state !== "in_match") sawStart = true;
@@ -269,8 +313,9 @@
       if (partyMaking) return;
       partyMaking = true; store.set("csp_name", myName()); homeStatus("Making a party for the group…");
       try {
+        const ts = await humanToken();
         const r = await fetch("/api/lobbies", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pid, name: myName(), char: myChar, public: false, title: `${myName()} & friends` }) });
+          body: JSON.stringify({ pid, name: myName(), char: myChar, public: false, title: `${myName()} & friends`, ts }) });
         const j = await r.json();
         if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
         partyJoined = j.code; enter(j.code, "party");
@@ -313,5 +358,5 @@
   // ------------------------------------------------------------------ boot
   const q = new URLSearchParams(location.search).get("code");
   if (q) { $("code").value = q.toUpperCase(); tryJoin(q, "link"); } else loadPublic();
-  loadStatus();
+  statusP = loadStatus();
 })();

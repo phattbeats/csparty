@@ -171,6 +171,23 @@ slot, but can't stop the game server. "Top creating IP hashes" uses a keyed IP h
 - Containers run unprivileged with CPU and memory limits, no volumes except read-only game data.
 - gamedata.zip stays key-protected; public build will need a legal decision on shipping Valve content publicly (flag for Alex, existing key mechanism is a stopgap).
 
+**As built (#3992).**
+- **Turnstile** on making a party (`POST /api/lobbies`, and quick play when it ends up making one). The page loads Cloudflare's script only
+  when `/api/status` names a site key, renders the widget invisible unless Cloudflare wants a click, and gets one token per create.
+  Secret `TURNSTILE_SECRET` + var `TURNSTILE_SITEKEY`; either unset = off. A failed check is a 403 and counts as `rejected:turnstile`.
+  If siteverify itself can't be reached the create goes through (the per-IP create cap still holds).
+- **Per-IP limits**, each a minute: 30 code lookups (`GET /api/lobbies/:code`, quick play), 20 lobby WebSocket opens (refused with
+  close code 4029 and a reason the page shows). Workers rate-limit bindings (`LOOKUP_LIMIT`, `JOIN_LIMIT`), approximate per
+  Cloudflare location; without them, a per-isolate counter. The create cap (10 per 10 min, admin-adjustable) stays exact in the directory.
+  A limited IP is counted once a minute (`rate_limited:lookup|join`), not on every refused request.
+- **Names and party names**: the `obscenity` package's English set plus spaced-out letters joined ("a s s"). A rude name becomes
+  "Player" and the page is told (and clears its name box); a rude party name is dropped. Counted as `rejected:name|title`.
+- **Queue**: the page shows the place in line and how long the party has waited; the home screen says how many parties are waiting
+  before anyone makes one (`/api/status` `queued`).
+- **Abuse panel**: "Errors and abuse" names every rate limit and refusal (Turnstile, filtered names, bans, pause, lobby cap).
+- **Privacy note** on the page adds Turnstile and the name filter.
+- **Valve gamedata**: decision 4 (public is OK). Each lobby's party key still gates its game server.
+
 ## 11. Phased plan
 
 | Phase | Deliverable | Notes |

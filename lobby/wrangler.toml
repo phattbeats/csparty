@@ -40,6 +40,22 @@ class_name = "Directory"
 tag = "v1"
 new_sqlite_classes = ["Lobby", "Directory"]
 
+# Per-IP limits (#3992, src/index.js LOOKUPS_PER_MIN / JOINS_PER_MIN): approximate, per Cloudflare location. Without
+# these bindings the Worker counts per isolate instead.
+[[ratelimits]]
+name = "LOOKUP_LIMIT"
+namespace_id = "3992001"
+simple = { limit = 30, period = 60 }
+
+[[ratelimits]]
+name = "JOIN_LIMIT"
+namespace_id = "3992002"
+simple = { limit = 20, period = 60 }
+
+# Turnstile on making a party (#3992): npx wrangler secret put TURNSTILE_SECRET, and TURNSTILE_SITEKEY below.
+# Either unset = no Turnstile. Test keys for wrangler dev: site key 1x00000000000000000000AA with secret
+# 1x0000000000000000000000000000000AA (always passes) or 2x0000000000000000000000000000000AA (always fails).
+
 [vars]
 # Capacity: game servers that are already running, each behind its own relay (web/relay.js). The relay with
 # RELAY_ID=<id> and the same LOBBY_SECRET accepts this Worker's per-lobby tokens as its party key.
