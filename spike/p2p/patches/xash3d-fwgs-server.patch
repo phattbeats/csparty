@@ -1,0 +1,186 @@
+diff --git a/common/defaults.h b/common/defaults.h
+index 7cd9c1f..2d7b9d2 100644
+--- a/common/defaults.h
++++ b/common/defaults.h
+@@ -73,7 +73,7 @@ SETUP BACKENDS DEFINITIONS
+ // no timer - no xash
+ //
+ #ifndef XASH_TIMER
+-	#if XASH_SDL >= 2
++	#if XASH_SDL >= 2 && !( XASH_EMSCRIPTEN && XASH_DEDICATED ) // CS Party P5: the wasm dedicated server links no SDL
+ 		#define XASH_TIMER TIMER_SDL
+ 	#elif XASH_WIN32
+ 		#define XASH_TIMER TIMER_WIN32
+diff --git a/engine/common/host.c b/engine/common/host.c
+index b23e887..998c3e6 100644
+--- a/engine/common/host.c
++++ b/engine/common/host.c
+@@ -41,6 +41,9 @@ GNU General Public License for more details.
+ 
+ host_parm_t host;	// host parms
+ static jmp_buf return_from_main_buf;
++#if XASH_EMSCRIPTEN && XASH_DEDICATED
++static double csp_oldtime;
++#endif
+ 
+ /*
+ ===============
+@@ -1161,6 +1164,19 @@ static void Host_FreeCommon( void )
+ 	FS_Shutdown();
+ }
+ 
++#if XASH_EMSCRIPTEN && XASH_DEDICATED
++int EXPORT CSP_HostFrame( void )
++{
++	if( host.status == HOST_CRASHED || setjmp( return_from_main_buf ))
++		return -1;
++
++	double newtime = Platform_DoubleTime();
++	COM_Frame( newtime - csp_oldtime );
++	csp_oldtime = newtime;
++	return 0;
++}
++#endif
++
+ static void Sys_Quit_f( void )
+ {
+ 	Sys_Quit( Cmd_Argc() > 1 ? Cmd_Argv( 1 ) : "command" );
+@@ -1335,13 +1351,20 @@ int EXPORT Host_Main( int argc, char **argv, const char *progname, int bChangeGa
+ 	// check after all configs were executed
+ 	HPAK_CheckIntegrity( hpk_custom_file.string );
+ 
++#if XASH_EMSCRIPTEN && XASH_DEDICATED
++	// CS Party P5 (PHA-4004): no ASYNCIFY in the wasm server (it can't unwind through setjmp's JS frames,
++	// and it costs speed). Host_Main returns after init and the host page calls CSP_HostFrame on its own clock.
++	csp_oldtime = oldtime;
++	return 0;
++#endif
++
+ 	// main window message loop
+ 	while( host.status != HOST_CRASHED )
+ 	{
+ 		double newtime = Platform_DoubleTime();
+ 		COM_Frame( newtime - oldtime );
+ 		oldtime = newtime;
+-#if XASH_EMSCRIPTEN
++#if XASH_EMSCRIPTEN && !XASH_DEDICATED
+ 		// hand the thread back to the browser every iteration (ASYNCIFY), or no input,
+ 		// network or rendering events ever get delivered
+ 		emscripten_sleep( 1 );
+diff --git a/engine/common/net_ws.c b/engine/common/net_ws.c
+index 294ce59..df27ea4 100644
+--- a/engine/common/net_ws.c
++++ b/engine/common/net_ws.c
+@@ -25,6 +25,68 @@ GNU General Public License for more details.
+ #include <SDL_thread.h>
+ #endif
+ 
++#if XASH_EMSCRIPTEN
++#include <emscripten.h>
++// CS Party P5 (PHA-4004): a server in a browser tab. Emscripten's sockets can only dial out over a WebSocket
++// and can't accept peers, so when the page installs Module.cspNet, the server socket's datagrams go to JS
++// instead (WebRTC DataChannels in a tab, a dgram bridge under node). Addresses are opaque to the engine:
++// JS hands out one fake IPv4 address per peer and routes replies by it.
++#define CSP_HOOK_SOCKET 0x7ffffff0
++EM_JS( int, CSP_NetHooked, ( int unused ), { return Module.cspNet ? 1 : 0; } );
++EM_JS( void, CSP_NetListen, ( int port ), { Module.cspNet.listen( port ); } );
++EM_JS( int, CSP_NetSend, ( unsigned int ip, int port, const void *buf, int len ), {
++	Module.cspNet.send( ip >>> 0, port, HEAPU8.slice( buf, buf + len ));
++	return len;
++} );
++EM_JS( int, CSP_NetRecv, ( void *buf, int maxlen, unsigned int *ip, int *port ), {
++	const p = Module.cspNet.recv();
++	if( !p ) return -1;
++	const n = Math.min( p.data.length, maxlen );
++	HEAPU8.set( p.data.subarray( 0, n ), buf );
++	HEAPU32[ip >> 2] = p.ip >>> 0;
++	HEAP32[port >> 2] = p.port;
++	return n;
++} );
++
++static int CSP_SendTo( int s, const void *buf, size_t len, int flags, const struct sockaddr *to, socklen_t tolen )
++{
++	if( s != CSP_HOOK_SOCKET )
++		return sendto( s, buf, len, flags, to, tolen );
++	const struct sockaddr_in *sin = (const struct sockaddr_in *)to;
++	return CSP_NetSend( sin->sin_addr.s_addr, ntohs( sin->sin_port ), buf, len );
++}
++
++static int CSP_RecvFrom( int s, void *buf, size_t len, int flags, struct sockaddr *from, socklen_t *fromlen )
++{
++	if( s != CSP_HOOK_SOCKET )
++		return recvfrom( s, buf, len, flags, from, fromlen );
++	unsigned int ip; int port;
++	int n = CSP_NetRecv( buf, len, &ip, &port );
++	if( n < 0 )
++	{
++		errno = EWOULDBLOCK;
++		return -1;
++	}
++	struct sockaddr_in *sin = (struct sockaddr_in *)from;
++	memset( sin, 0, sizeof( *sin ));
++	sin->sin_family = AF_INET;
++	sin->sin_addr.s_addr = ip;
++	sin->sin_port = htons( port );
++	*fromlen = sizeof( *sin );
++	return n;
++}
++
++static int CSP_CloseSocket( int s )
++{
++	return s == CSP_HOOK_SOCKET ? 0 : close( s );
++}
++
++#define sendto CSP_SendTo
++#define recvfrom CSP_RecvFrom
++#undef closesocket
++#define closesocket CSP_CloseSocket
++#endif
++
+ #define NET_USE_FRAGMENTS
+ 
+ #define MAX_LOOPBACK		4
+@@ -1732,6 +1794,14 @@ static void NET_OpenIP( qboolean change_port, int *sockets, const char *net_ifac
+ 			if( !port )
+ 				port = PORT_SERVER; // forcing to default
+ 		}
++#if XASH_EMSCRIPTEN
++		if( family == AF_INET && CSP_NetHooked( 0 ))
++		{
++			CSP_NetListen( port );
++			sockets[NS_SERVER] = CSP_HOOK_SOCKET;
++		}
++		else
++#endif
+ 		sockets[NS_SERVER] = NET_IPSocket( net_iface, port, family );
+ 
+ 		if( !NET_IsSocketValid( sockets[NS_SERVER] ) && Host_IsDedicated( ))
+diff --git a/engine/wscript b/engine/wscript
+index 758292a..33b2f27 100644
+--- a/engine/wscript
++++ b/engine/wscript
+@@ -231,6 +231,16 @@ def build(bld):
+ 		# but dedicated server is enabled. They're both called 'xash' in this case
+ 		server_source = copy(source)
+ 		server_libs = copy(libs)
++		server_linkflags = []
++		if bld.env.DEST_OS == 'emscripten':
++			# CS Party P5 (PHA-4004): dedicated server for a browser Worker or node. Game DLLs are side modules,
++			# game data is mounted by the host page at runtime, datagrams go through Module.cspNet.
++			server_linkflags = ['-O2', '--profiling-funcs', '-sMAIN_MODULE=1',
++				'-sINITIAL_MEMORY=134217728', '-sALLOW_MEMORY_GROWTH=1', '-sSTACK_SIZE=16777216',
++				'-sFORCE_FILESYSTEM=1', '-lnodefs.js', '-sENVIRONMENT=web,worker,node',
++				'-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,callMain,ccall,cwrap,addFunction,HEAP8',
++				'-sALLOW_TABLE_GROWTH=1', '-sINVOKE_RUN=0', '-sEXPORTED_FUNCTIONS=_main,_malloc,_free,_Cbuf_AddText,_CSP_HostFrame',
++				'-sMODULARIZE=1', '-sEXPORT_NAME=XashServer', '-sEXIT_RUNTIME=0']
+ 		bld.program(
+ 			source = server_source,
+ 			target = 'xash',
+@@ -239,6 +249,7 @@ def build(bld):
+ 			defines = 'XASH_ENABLE_MAIN=1 XASH_DEDICATED=1',
+ 			rpath = bld.env.DEFAULT_RPATH,
+ 			install_path = bld.env.BINDIR,
++			linkflags = server_linkflags,
+ 		)
+ 
+ 		# the execution stucks on macOS, disable for now

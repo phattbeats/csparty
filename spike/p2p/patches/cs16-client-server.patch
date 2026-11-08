@@ -1,0 +1,39 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index c80b503..2867b25 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,7 +34,7 @@ if(VITA)
+ 	add_compile_options(-fno-use-cxa-atexit)
+ endif()
+ 
+-if(NOT WIN32 AND NOT APPLE)
++if(NOT WIN32 AND NOT APPLE AND NOT EMSCRIPTEN)
+ 	add_link_options(-Wl,--no-undefined)
+ endif()
+ 
+diff --git a/3rdparty/ReGameDLL_CS/regamedll/game_shared/counter.h b/3rdparty/ReGameDLL_CS/regamedll/game_shared/counter.h
+index 84f03ce..6073909 100644
+--- a/3rdparty/ReGameDLL_CS/regamedll/game_shared/counter.h
++++ b/3rdparty/ReGameDLL_CS/regamedll/game_shared/counter.h
+@@ -38,7 +38,7 @@
+ 	#include <sys/types.h>
+ 	#include <fcntl.h>
+ 	#include <unistd.h>
+-	#ifdef __APPLE__
++	#if defined(__APPLE__) || defined(__EMSCRIPTEN__)
+ 		#include <limits.h>
+ 	#else
+ 		#include <linux/limits.h>
+diff --git a/3rdparty/ReGameDLL_CS/regamedll/public/tier0/platform.h b/3rdparty/ReGameDLL_CS/regamedll/public/tier0/platform.h
+index eaf294f..1cf84ab 100644
+--- a/3rdparty/ReGameDLL_CS/regamedll/public/tier0/platform.h
++++ b/3rdparty/ReGameDLL_CS/regamedll/public/tier0/platform.h
+@@ -75,7 +75,7 @@
+ // Can't use extern "C" when DLL exporting a global
+ #define DLL_GLOBAL_EXPORT extern __declspec(dllexport)
+ #define DLL_GLOBAL_IMPORT extern __declspec(dllimport)
+-#elif defined __linux__ || defined __APPLE__
++#elif defined __linux__ || defined __APPLE__ || defined __EMSCRIPTEN__
+ 
+ // Used for dll exporting and importing
+ #define DLL_EXPORT extern "C"

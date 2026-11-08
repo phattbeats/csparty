@@ -1,0 +1,152 @@
+   0.7 [host] [host] lobby SPIKE open for players
+   5.5 [host] [worker] 103 MB of files in 4676 ms
+   5.5 [host] [21:58:59] /game is working directory now
+   5.5 [host] [21:58:59] Adding directory: ./
+   5.5 [host] [21:58:59] FS_AddGameHierarchy( valve )
+   5.5 [host] [21:58:59] Adding directory: valve/
+   5.5 [host] [21:58:59] FS_AddGameHierarchy( cstrike )
+   5.5 [host] [21:58:59] Adding directory: cstrike_downloads/
+   5.5 [host] [21:58:59] Adding directory: cstrike/
+   5.5 [host] [21:58:59] Adding directory: cstrike/custom/
+   5.8 [host] [21:58:59] EXT: MOVETYPE_STEP Position History Based Lerping is enabled
+   5.8 [host] [21:58:59] Dll loaded for game "Counter-Strike"
+   5.8 [host] [21:58:59] ReGameDLL version: 5.30.0.859-dev+m
+   5.8 [host] [21:58:59] execing game_init.cfg
+   5.8 [host] [21:58:59] Warning: TLS: CA bundle 'cacert.pem' not found; HTTPS verification will fail
+   5.8 [host] [21:58:59] execing server.cfg
+   5.8 [host] [21:58:59] Server logging data to file logs/L1107000.log
+   5.8 [host] [host] server ready
+   5.9 [host] [worker] engine listens on 27015
+   5.9 [host] [21:58:59] 11/07/2026 - 21:58:59: Log file closed
+   5.9 [host] [21:58:59] Server logging data to file logs/L1107001.log
+   5.9 [host] [21:58:59] 11/07/2026 - 21:58:59: Log file started (file "logs/L1107001.log") (game "") (version "49/0.21/4200")
+   5.9 [host] [21:58:59] 11/07/2026 - 21:58:59: Loading map "de_dust2"
+   6.1 [host] [21:58:59] Cvar_Set: variable 'room_type' not found
+   6.1 [host] [21:58:59] execing maps/de_dust2_load.cfg
+   6.1 [host] [21:58:59] execing game.cfg
+   6.1 [host] [21:58:59] WARNING: Cannot access bot phrase database 'BotChatter.db'
+   6.7 [host] [21:59:00] ERROR: Failed to load 'maps/de_dust2.nav' file navigation map!
+   6.7 [host] [21:59:00] 	Navigation file not found or access denied.
+   6.7 [host] [21:59:00] 11/07/2026 - 21:59:00: "Josh<1><0><>" connected, address "local"
+   6.7 [host] [21:59:00] 11/07/2026 - 21:59:00: "Josh<1><ID_BOT><>" joined team "TERRORIST"
+   6.8 [probe] host server ready
+   7.2 [player] [p2p] game traffic goes peer to peer to lobby SPIKE
+   7.3 [host] [21:59:00] 8 player server started
+   7.3 [host] [21:59:00] 11/07/2026 - 21:59:00: Started map "de_dust2" (CRC "1159425449")
+   7.8 [host] [21:59:01] 11/07/2026 - 21:59:01: "Josh<1><ID_BOT><>" entered the game
+   7.8 [host] [21:59:01] 11/07/2026 - 21:59:01: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+  11.4 [host] [21:59:04] 11/07/2026 - 21:59:04: World triggered "Round_Start"
+  11.9 [probe] player joining, waiting 360s
+  13.1 [host] [21:59:06]   Connecting navigation areas...
+  13.1 [host] [21:59:06]   Merging navigation areas...
+  16.4 [host] [host] frames 21 avg 498.310 ms worst 1468.9 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  26.1 [host] [host] frames 17 avg 563.312 ms worst 677.6 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  36.0 [host] [host] frames 16 avg 615.588 ms worst 917.0 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  46.0 [host] [host] frames 17 avg 576.118 ms worst 774.9 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  56.2 [host] [host] frames 18 avg 564.133 ms worst 657.6 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  66.3 [host] [host] frames 17 avg 586.406 ms worst 816.5 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  76.2 [host] [host] frames 17 avg 579.565 ms worst 842.1 ms rx 0 tx 0 (0 B) heap 128 MB peers 0
+  76.5 [player] [watch] state -1 -> 1
+  76.9 [host] [host] player 1 connecting
+  76.9 [host] [host] player 1 connected
+  76.9 [player] [p2p] connecting
+  76.9 [player] [p2p] connected
+  76.9 [host] [host] player 1 channel open
+  76.9 [player] [p2p] channel open to host (succeeded)
+  78.4 [host] [22:00:11] 11/07/2026 - 22:00:11: "Peer<2><1><>" connected, address "10.99.0.1:27005"
+  80.5 [player] [watch] state 1 -> 2
+  86.8 [host] [host] frames 15 avg 692.540 ms worst 4509.5 ms rx 362 tx 8 (0 B) heap 128 MB peers 1
+  96.3 [host] [host] frames 46 avg 201.463 ms worst 1105.0 ms rx 453 tx 17 (0 B) heap 128 MB peers 1
+ 106.0 [host] [host] frames 64 avg 145.405 ms worst 584.1 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 107.7 [host] [22:00:41] Size of bsp file 'maps\de_dust2.bsp' is 4294967295 bytes.
+ 108.0 [host] [22:00:41] Navigation file 'cstrike/maps/de_dust2.nav' saved.
+ 108.5 [host] [22:00:41] Total spawns points: 128
+ 108.5 [host] [22:00:41] 11/07/2026 - 22:00:41: "Will<3><2><>" connected, address "local"
+ 108.5 [host] [22:00:41] 11/07/2026 - 22:00:41: "Will<3><ID_BOT><>" joined team "CT"
+ 108.5 [host] [22:00:42] 11/07/2026 - 22:00:42: World triggered "Game_Commencing"
+ 108.5 [host] [22:00:42] 11/07/2026 - 22:00:42: World triggered "Game_Commencing" (CT "0") (T "0")
+ 108.5 [host] [22:00:42] 11/07/2026 - 22:00:42: World triggered "Round_End"
+ 108.5 [host] [22:00:42] 11/07/2026 - 22:00:42: "Will<3><ID_BOT><>" entered the game
+ 108.8 [host] [22:00:42] 11/07/2026 - 22:00:42: "Nick<4><3><>" connected, address "local"
+ 108.8 [host] [22:00:42] 11/07/2026 - 22:00:42: "Nick<4><ID_BOT><>" joined team "CT"
+ 108.8 [host] [22:00:42] 11/07/2026 - 22:00:42: "Nick<4><ID_BOT><>" entered the game
+ 108.9 [host] [22:00:42] 11/07/2026 - 22:00:42: World triggered "Restart_Round_(3_seconds)"
+ 108.9 [host] [22:00:42] 11/07/2026 - 22:00:42: Team "CT" scored "0" with "2" players
+ 108.9 [host] [22:00:42] 11/07/2026 - 22:00:42: Team "TERRORIST" scored "0" with "1" players
+ 111.9 [host] [22:00:45] 11/07/2026 - 22:00:45: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 111.9 [host] [22:00:45] 11/07/2026 - 22:00:45: World triggered "Round_Start"
+ 115.8 [host] [host] frames 1323 avg 1.955 ms worst 792.1 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 125.8 [host] [host] frames 1931 avg 0.212 ms worst 29.3 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 133.3 [host] [22:01:06] 11/07/2026 - 22:01:06: "Will<3><ID_BOT><CT>" killed "Josh<1><ID_BOT><TERRORIST>" with "usp"
+ 133.3 [host] [22:01:06] 11/07/2026 - 22:01:06: Team "CT" triggered "CTs_Win" (CT "1") (T "0")
+ 133.3 [host] [22:01:06] 11/07/2026 - 22:01:06: World triggered "Round_End"
+ 135.8 [host] [host] frames 1945 avg 0.177 ms worst 17.0 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 138.3 [host] [22:01:11] 11/07/2026 - 22:01:11: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 138.3 [host] [22:01:11] 11/07/2026 - 22:01:11: World triggered "Round_Start"
+ 145.8 [host] [host] frames 1917 avg 0.149 ms worst 8.5 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 155.8 [host] [host] frames 1924 avg 0.216 ms worst 23.3 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 165.8 [host] [host] frames 1932 avg 0.167 ms worst 15.9 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 175.9 [host] [host] frames 1877 avg 0.152 ms worst 5.2 ms rx 486 tx 20 (0 B) heap 128 MB peers 1
+ 177.6 [host] [22:01:51] 11/07/2026 - 22:01:51: "Josh<1><ID_BOT><TERRORIST>" triggered "Planted_The_Bomb"
+ 182.3 [player] [watch] state 2 -> 3
+ 182.7 [player] [22:01:56] VoiceCapture_Init: error creating capture device (Audio subsystem is not initialized)
+ 183.1 [player] [watch] state 3 -> 4
+ 183.1 [player] [watch] console: host_writeconfig
+ 183.2 [host] [22:01:56] 11/07/2026 - 22:01:56: "Peer<2><ID_LAN><>" entered the game
+ 185.8 [host] [host] frames 1914 avg 0.231 ms worst 24.5 ms rx 510 tx 147 (0 B) heap 128 MB peers 1
+ 195.8 [host] [host] frames 1904 avg 0.324 ms worst 20.5 ms rx 535 tx 424 (0 B) heap 128 MB peers 1
+ 201.4 [host] [22:02:14] 11/07/2026 - 22:02:14: "Nick<4><ID_BOT><CT>" triggered "Begin_Bomb_Defuse_Without_Kit"
+ 205.8 [host] [host] frames 1645 avg 0.317 ms worst 36.3 ms rx 556 tx 642 (0 B) heap 128 MB peers 1
+ 205.9 [host] [22:02:19] 11/07/2026 - 22:02:19: "Josh<1><ID_BOT><TERRORIST>" killed "Nick<4><ID_BOT><CT>" with "mac10"
+ 215.8 [host] [host] frames 1849 avg 0.365 ms worst 23.1 ms rx 594 tx 901 (0 B) heap 128 MB peers 1
+ 220.2 [host] [22:02:33] 11/07/2026 - 22:02:33: "Will<3><ID_BOT><CT>" killed "Josh<1><ID_BOT><TERRORIST>" with "m3"
+ 222.6 [host] [22:02:36] 11/07/2026 - 22:02:36: Team "TERRORIST" triggered "Target_Bombed" (CT "1") (T "1")
+ 222.6 [host] [22:02:36] 11/07/2026 - 22:02:36: World triggered "Round_End"
+ 225.8 [host] [host] frames 1776 avg 0.297 ms worst 111.3 ms rx 624 tx 1098 (0 B) heap 128 MB peers 1
+ 227.7 [host] [22:02:41] 11/07/2026 - 22:02:41: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 227.7 [host] [22:02:41] 11/07/2026 - 22:02:41: World triggered "Round_Start"
+ 235.8 [host] [host] frames 1782 avg 0.392 ms worst 75.5 ms rx 642 tx 1276 (0 B) heap 128 MB peers 1
+ 245.8 [host] [host] frames 1907 avg 0.285 ms worst 24.1 ms rx 674 tx 1512 (0 B) heap 128 MB peers 1
+ 255.8 [host] [host] frames 1858 avg 0.291 ms worst 10.8 ms rx 701 tx 1744 (0 B) heap 128 MB peers 1
+ 265.7 [host] [22:03:19] 11/07/2026 - 22:03:19: "Josh<1><ID_BOT><TERRORIST>" killed "Nick<4><ID_BOT><CT>" with "m3"
+ 265.8 [host] [host] frames 1758 avg 0.197 ms worst 7.2 ms rx 721 tx 1890 (0 B) heap 128 MB peers 1
+ 275.8 [host] [host] frames 1931 avg 0.219 ms worst 40.5 ms rx 744 tx 2053 (0 B) heap 128 MB peers 1
+ 278.4 [player] WebGL: too many errors, no more errors will be reported to the console for this context.
+ 282.5 [host] [22:03:35] 11/07/2026 - 22:03:35: "Josh<1><ID_BOT><TERRORIST>" killed "Will<3><ID_BOT><CT>" with "m3"
+ 282.5 [host] [22:03:36] 11/07/2026 - 22:03:36: Team "TERRORIST" triggered "Terrorists_Win" (CT "1") (T "2")
+ 282.5 [host] [22:03:36] 11/07/2026 - 22:03:36: World triggered "Round_End"
+ 285.8 [host] [host] frames 1793 avg 0.397 ms worst 48.1 ms rx 762 tx 2302 (0 B) heap 128 MB peers 1
+ 287.6 [host] [22:03:41] 11/07/2026 - 22:03:41: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 287.6 [host] [22:03:41] 11/07/2026 - 22:03:41: World triggered "Round_Start"
+ 295.8 [host] [host] frames 1672 avg 0.368 ms worst 72.5 ms rx 787 tx 2577 (0 B) heap 128 MB peers 1
+ 305.8 [host] [host] frames 1795 avg 0.384 ms worst 30.7 ms rx 817 tx 2862 (0 B) heap 128 MB peers 1
+ 309.3 [host] [22:04:02] 11/07/2026 - 22:04:02: "Nick<4><ID_BOT><CT>" killed "Josh<1><ID_BOT><TERRORIST>" with "mp5navy"
+ 309.3 [host] [22:04:02] 11/07/2026 - 22:04:02: Team "CT" triggered "CTs_Win" (CT "2") (T "2")
+ 309.3 [host] [22:04:02] 11/07/2026 - 22:04:02: World triggered "Round_End"
+ 314.4 [host] [22:04:07] 11/07/2026 - 22:04:07: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 314.4 [host] [22:04:07] 11/07/2026 - 22:04:07: World triggered "Round_Start"
+ 315.9 [host] [host] frames 1815 avg 0.550 ms worst 488.7 ms rx 853 tx 3087 (0 B) heap 128 MB peers 1
+ 325.9 [host] [host] frames 1988 avg 0.246 ms worst 19.2 ms rx 874 tx 3300 (0 B) heap 128 MB peers 1
+ 335.8 [host] [host] frames 1779 avg 0.292 ms worst 40.0 ms rx 889 tx 3445 (0 B) heap 128 MB peers 1
+ 345.8 [host] [host] frames 1693 avg 0.418 ms worst 65.6 ms rx 919 tx 3667 (0 B) heap 128 MB peers 1
+ 355.8 [host] [host] frames 1787 avg 0.279 ms worst 25.1 ms rx 947 tx 3859 (0 B) heap 128 MB peers 1
+ 357.4 [host] [22:04:50] 11/07/2026 - 22:04:50: "Josh<1><ID_BOT><TERRORIST>" triggered "Planted_The_Bomb"
+ 365.8 [host] [host] frames 1938 avg 0.221 ms worst 23.9 ms rx 960 tx 3981 (0 B) heap 128 MB peers 1
+ 372.1 [host] [22:05:05] map: de_dust2
+ 372.1 [host] [22:05:05] # score ping dev  lastmsg qport useragent		name		address
+ 372.1 [host] [22:05:05]  0     6 Bot       n/a 366.36340     0 n/a (n/a-n/a 0)	    Josh	 0.0.0.0
+ 372.1 [host] [22:05:05]  1     0        0   mj 0.17670 19274 0.21 (emscripten-wasm32 4200)	    Peer	10.99.0.1
+ 372.1 [host] [22:05:05]  2     2 Bot       n/a 366.36340     0 n/a (n/a-n/a 0)	    Will	 0.0.0.0
+ 372.1 [host] [22:05:05]  3     1 Bot       n/a 366.36340     0 n/a (n/a-n/a 0)	    Nick	 0.0.0.0
+ 372.1 [host] [22:05:05] 
+ 375.8 [host] [host] frames 1755 avg 0.274 ms worst 15.2 ms rx 983 tx 4201 (0 B) heap 128 MB peers 1
+ 379.9 [host] [22:05:13] 11/07/2026 - 22:05:13: "Nick<4><ID_BOT><CT>" triggered "Begin_Bomb_Defuse_With_Kit"
+ 382.6 [host] [22:05:16] 11/07/2026 - 22:05:16: "Will<3><ID_BOT><CT>" killed "Josh<1><ID_BOT><TERRORIST>" with "mp5navy"
+ 384.9 [host] [22:05:18] 11/07/2026 - 22:05:18: "Nick<4><ID_BOT><CT>" triggered "Defused_The_Bomb"
+ 384.9 [host] [22:05:18] 11/07/2026 - 22:05:18: Team "CT" triggered "Bomb_Defused" (CT "3") (T "2")
+ 384.9 [host] [22:05:18] 11/07/2026 - 22:05:18: World triggered "Round_End"
+ 385.8 [host] [host] frames 2004 avg 0.200 ms worst 21.3 ms rx 995 tx 4369 (0 B) heap 128 MB peers 1
+ 388.5 [probe] done
+ 388.6 [host] [host] player 1 channel closed
+ 390.0 [host] [22:05:23] 11/07/2026 - 22:05:23: "Josh<1><ID_BOT><TERRORIST>" triggered "Spawned_With_The_Bomb"
+ 390.0 [host] [22:05:23] 11/07/2026 - 22:05:23: World triggered "Round_Start"
