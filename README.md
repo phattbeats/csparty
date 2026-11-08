@@ -16,6 +16,7 @@ Status: v0.5, playable start to finish with bots and humans, from CS 1.6, a desk
 - **Boards:** de_dust2, de_inferno, de_aztec, de_cbble. The board is the map the server is on; between matches anyone can switch with `say /board`.
 - **Map-change minigames:** Surf Race (`csp_surf`), Bhop Course (`csp_bhop`), Climb (`csp_climb`: step jumps, a ladder wall, narrow beams, checkpoints over a pit) and Maze Run (`csp_maze` plus seven generated variants from 8x8 to 16x16, brick/hedge/metal/rust and two dark ones; walls too tall to jump). Two Towers (`csp_towers`, Murray's community sniper map) is a deathmatch minigame. The server changes map, everyone races start to finish, and the match resumes on the board where it left off (state in `data/cs_party_state.json`). Human seats are held 60 s across the change.
 - **Bonus stars** (`csp_awards 1`): two are drawn from six at match start and announced, with live leaders on the HUD: Top Fragger, Max Money, Eco Round, Big Spender, Rusher, Bomb Squad. Hidden end-of-game awards flipped about half of all winners in simulation; announcing two makes them goals to play for instead of a coin flip at the end.
+- **The ending:** at the winner banner the four pawns stand on a 1-2-3 podium (4th on the floor beside it) in an open spot of the board and dance to the theme. When the song sings "Fire in the hole!", 1st place quietly gets a Deagle with 3 rounds and their own view back. No prompt. Shooting is up to them, and a hit kills. A bot winner holds it and never fires. Native clients don't hear the theme; the dance and the Deagle run off the server clock.
 - CS money HUD shows board money; TAB score shows stars.
 
 ## Controls
@@ -83,6 +84,7 @@ Optional: comment out `imessage.amxx`, `scrollmsg.amxx` and `multilingual.amxx` 
 | `csp_probe`, `csp_nocam` | server | dev: movement state of the active player / drop the director camera |
 | `csp_force_mg <i>` / `csp_test_remote <i>` | server | dev: force the next minigame / jump straight into a map-change minigame (8 surf, 9 bhop, 10 climb, 11 maze) |
 | `csp_botname <name>`, `csp_stuff <player> <cmd>` | server | dev: rename a bot (name-collision tests) / run a command on a client |
+| `csp_finish [seat]`, `csp_podium_aim <place>` | server | dev: end the match now (the podium), that seat winning / point the armed winner at the pawn in place 2-4 |
 
 Remote: `RCON_PASSWORD=... tools/rcon.py csp_start` (set `rcon_password` on the server; the Docker image takes `RCON_PASSWORD`).
 
@@ -103,7 +105,9 @@ Remote: `RCON_PASSWORD=... tools/rcon.py csp_start` (set `rcon_password` on the 
 | `csp_rings` | 1 | draw the board's space markers |
 | `csp_turn_timeout` | 45 | seconds a human can sit on a board decision before the bot logic makes that one (8 s if they disconnected; 0 = wait forever) |
 | `csp_buy_anywhere` | 0 | 1 = Black Market in the turn menu too |
-| `csp_speed` | 1.0 | delay multiplier (0.25 for fast bot tests) |
+| `csp_speed` | 1.0 | delay multiplier (0.25 for fast bot tests); the podium runs in real time, with the song |
+| `csp_podium` | 1 | 0 = the old results shot instead of the podium ending |
+| `csp_podium_laststand` | 0 | 1 = when the Deagle shows up, 2nd-4th get knives and their own view for 2 s |
 | `csp_debug` | 1 | 2 = crate and jump tracing |
 
 ## Play in a browser
