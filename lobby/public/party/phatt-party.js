@@ -1,6 +1,7 @@
 /* PHATT ARCADE DOCK: the one cross-game layer on every arcade page (docs/STANDARD.md, wire in docs/CROSSOVER.md §1, §4).
  * Chat (old Battle.net style: general channels, the party, your table, whispers, slash commands), Games (everything
- * open across the arcade + every game to play) and Party (the group that moves together). One vanilla-JS file in a
+ * open across the arcade + every game to play), Party (the group that moves together) and Friends (PHATT ID friends: who is
+ * on, where, and Join / Invite / Whisper; PHA-4954). One vanilla-JS file in a
  * shadow root, copied byte-identically into every game repo. Canonical copy: phattbeats/clubhouse-games
  * client/party/phatt-party.js (served at <hub>/party/phatt-party.js).
  *
@@ -21,6 +22,7 @@
  *   PhattParty.code / member / me {id, name, avatar, level, title} / members / venue / host / isHost / inventory / catalog
  *   PhattParty.create({name, avatar}) -> Promise<code>   join(code) -> Promise<code>   leave()
  *   PhattParty.goto(gameId, {room})        host only: move the venue; the url comes from the catalog
+ *   PhattParty.mode / setMode(on)          party mode (host only to set): each Clubhouse game ends in a vote on the next
  *   PhattParty.setWhere({room, status, game})   where I am (status 'lobby'|'playing'|'done'; game: hub surfaces only).
  *                                          Also puts me in that room's Table chat, party or not.
  *   PhattParty.setProfile({name, avatar, level, title})   setInventory([ids])   setGuard(() => 'You are mid-hand.' | '')
@@ -31,7 +33,7 @@
  *       'me' (me) my name changed from the dock (/name or the rename box): the page should adopt it
  *   PhattParty.dockInto(el)   put the launcher in a page's own top bar (see above)
  *   PhattParty.ready   Promise, settles after the first party snapshot (or at once with no party)
- *   PhattParty.urlFor(gameId, {room}) / isHere(venue) / open(tab?: 'chat'|'games'|'party') / close() / toast(msg)
+ *   PhattParty.urlFor(gameId, {room}) / isHere(venue) / open(tab?: 'chat'|'games'|'party'|'friends') / close() / toast(msg)
  *   PhattParty.track(e, fields) / pageview(path?) / dnt   analytics beacons (docs/ANALYTICS.md; nothing is sent under DNT / GPC)
  */
 (function () {
@@ -168,9 +170,11 @@
   let profile = (() => { try { return JSON.parse(ls.get(LS_PROFILE) || 'null') || {}; } catch { return {}; } })();
   if (!profile.name && GAME === 'pokernight') { try { const p = JSON.parse(localStorage.getItem('pn_mp_profile') || 'null'); if (p && p.name) profile = { name: p.name, avatar: p.avatar || null }; } catch { /* no PN profile */ } }
 
-  const state = { code: null, host: null, members: [], venue: null, chat: [], inventory: [], connected: false, where: {}, public: false };
+  const state = { code: null, host: null, members: [], venue: null, chat: [], inventory: [], connected: false, where: {}, public: false, mode: false };
   // the arcade chat: one store per channel + personal lines (whispers, command replies) that show in every view
   const chat = { you: null, online: 0, squelch: new Set(), general: { name: 'Arcade', users: [], lines: [] }, table: { name: null, title: null, users: [], lines: [] }, personal: [], filter: true, unread: { general: 0, party: 0, table: 0 }, view: ls.get(LS_VIEW) || 'general', sent: [], sentAt: -1, lastWhisper: null };
+  // Friends (PHA-4954): the hub pushes {t:'friends', op:'list'|'presence'|'request'|'online'|'accepted'} on the party socket
+  const fr = { signedIn: null, friends: [], incoming: [], outgoing: [], blocked: [], appearOffline: false, unread: 0, msg: '', draft: '', busy: false, awaitInfo: 0 };
   const listeners = {};
   const emit = (ev, data) => { (listeners[ev] || []).slice().forEach((fn) => { try { fn(data); } catch (e) { console.error('PhattParty listener', e); } }); };
   let guard = () => '';
@@ -208,8 +212,8 @@
   function onMessage(m) {
     if (m.t === 'pong') return;
     if (m.t === 'party') {
-      const wasCode = state.code;
-      state.code = m.code || null; state.host = m.host || null; state.public = !!m.public; state.members = m.members || []; state.venue = m.venue || null; state.rules = m.rules || {}; state.chat = (m.chat || []).map(partyLine);
+      const wasCode = state.code, wasMode = state.mode;
+      state.code = m.code || null; state.host = m.host || null; state.public = !!m.public; state.mode = !!m.mode; state.members = m.members || []; state.venue = m.venue || null; state.rules = m.rules || {}; state.chat = (m.chat || []).map(partyLine);
       if (m.you && hex32(m.you) && m.you !== member) { member = m.you; ls.set(LS_MEMBER, member); }
       ls.set(LS_CODE, state.code);
       const mine = state.members.find((x) => x.id === member);
@@ -219,7 +223,7 @@
       if (!state.code && chat.view === 'party') chat.view = 'general';
       if (pendingJoin) { pendingJoin.resolve(state.code); pendingJoin = null; }
       if (!hadSnapshot) { hadSnapshot = true; resolveReady(api); }
-      if (!wasCode && state.code && open && tab === 'party') renderTab();
+      if (((!wasCode && state.code) || wasMode !== state.mode) && open && tab === 'party') renderTab();
       render();
       emit('party', snapshot());
       return;
@@ -250,6 +254,7 @@
       return;
     }
     if (m.t === 'line') { onLine(m.line); return; }
+    if (m.t === 'friends') { onFriends(m); return; }
     if (m.t === 'you') {
       if (chat.you) { chat.you.name = m.name; chat.you.away = m.away; }
       if (m.filter !== undefined) setFilterView(m.filter !== false);
@@ -272,13 +277,15 @@
   function setFilterView(on) { if (chat.filter === on) return; chat.filter = on; if (open && tab === 'chat') { renderChips(); renderLog(); } }
   function onLine(l) {
     if (l.squelch) chat.squelch = new Set(l.squelch);
+    if (l.ch === 'info' && fr.awaitInfo && Date.now() - fr.awaitInfo < 4000) { fr.awaitInfo = 0; toast(l.text); } // the answer to Invite to party on the Friends tab
     if (l.ch === 'general') addLine('general', l);
     else if (l.ch === 'table') addLine('table', l);
     else { // whispers, invites and command replies: personal, shown in every view
       chat.personal.push(l); if (chat.personal.length > 100) chat.personal.shift();
       if (l.kind === 'wfrom' || l.kind === 'invite') {
         chat.lastWhisper = l.from;
-        if (!open || tab !== 'chat') { unreadW++; renderLauncher(); pulse(); toast(l.kind === 'invite' ? shown(l) : '<From: ' + l.from.name + '> ' + shown(l), () => openDrawer('chat')); }
+        if ((!open || tab !== 'chat') && cardWanted(l)) { unreadW++; renderLauncher(); pulse(); } // bots and squelched people: no badge either
+        whisperCard(l);
       }
       if (open && tab === 'chat') appendLine(l);
     }
@@ -289,7 +296,7 @@
     if (l.from && chat.squelch.has(l.from.id)) return;
     const mine = l.from && l.from.id === member;
     if (open && tab === 'chat' && chat.view === view) { appendLine(l); return; }
-    if (!mine && l.kind !== 'sys') { chat.unread[view]++; if (view !== 'general') pulse(); }
+    if (!mine && l.kind !== 'sys' && !(l.from && l.from.bot)) { chat.unread[view]++; if (view !== 'general') pulse(); }
     renderLauncher(); if (open && tab === 'chat') renderChips();
   }
   let unreadW = 0;
@@ -329,7 +336,7 @@
     emit('goto', venue);
     const byMe = venue.by === member;
     if (isHere(venue)) {
-      const g = byMe ? '' : guard();
+      const g = byMe ? '' : guard(venue); // (the hub's guard knows when I am at that table already: PHA-4976 moved me with it)
       if (g) showBanner(venue, { guardText: g, onGo: () => emit('follow', fresh(venue)) });
       else emit('follow', venue);
       return;
@@ -474,18 +481,32 @@
     '.tile.here{border-color:var(--t)}.tile .herel{font:bold 10px/1 "Courier New",monospace;color:var(--t);letter-spacing:.1em;margin-top:2px}.tile .ta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.tile.dis{opacity:.5}',
     // party
     '.hero h3{margin:2px 0 4px;font-size:18px}.hero p{margin:0;color:var(--m)}',
-    '.codebox{display:flex;align-items:center;gap:8px}.code{font:bold 20px/1 "Courier New",monospace;letter-spacing:.24em;color:var(--o);background:#0e0b09;border:2px solid var(--line);border-radius:8px;padding:6px 8px 6px 12px}',
+    '.pmode{display:inline-flex;align-items:center;min-height:26px;padding:2px 10px;border-radius:99px;background:var(--o);color:#1a0f06;font-size:12px;font-weight:800;white-space:nowrap}',
+    '.codebox{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.code{font:bold 20px/1 "Courier New",monospace;letter-spacing:.24em;color:var(--o);background:#0e0b09;border:2px solid var(--line);border-radius:8px;padding:6px 8px 6px 12px}',
     '.mem{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.mem.off{opacity:.55}.mem .info{flex:1;min-width:0}.mem .nm{display:flex;align-items:center;gap:6px;font-weight:700}.mem .wh{font-size:12px;color:var(--m)}.mem .ttl{font-size:11px;color:var(--d);font-style:italic}',
     '.crown{color:#ffd479}.dot{width:9px;height:9px;border-radius:50%;background:#8fd694;box-shadow:0 0 6px #8fd694aa;flex:none}.off .dot{background:#5d5245;box-shadow:none}',
     '.toggle{display:flex;align-items:center;gap:8px;color:var(--m);font-size:12px;cursor:pointer}.toggle input{width:18px;height:18px;accent-color:var(--o)}',
+    // friends
+    '.fl{display:grid;gap:6px}.mem .facts{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}.mem.req{border-color:var(--o)}.mem .wh.pl{color:var(--o)}.mem .wh.tb{color:#f0a050}',
     // banner + toast
     '.banner{pointer-events:auto;position:fixed;left:50%;top:12px;transform:translateX(-50%);width:min(520px,calc(100vw - 20px));display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:linear-gradient(var(--bg2),var(--bg));border:2px solid var(--c);box-shadow:0 0 0 2px #000,0 0 0 4px var(--o),0 18px 40px #000c;animation:drop .2s ease-out}',
     '@keyframes drop{from{transform:translate(-50%,-10px);opacity:0}}.bico{font-size:26px;line-height:1;color:var(--o)}.bbody{flex:1}.banner p{margin:0 0 8px;font-size:14px}.banner .warn{color:#ffc9a0;font-size:12px}',
-    '.toast{pointer-events:auto;position:fixed;left:12px;bottom:76px;max-width:min(380px,calc(100vw - 24px));background:#0e0b09;color:var(--c);border:2px solid var(--t);padding:8px 12px;border-radius:10px;box-shadow:0 8px 20px #000a;font-size:13px;animation:toast 4s forwards;cursor:default}.toast.click{cursor:pointer}',
+    '.notes{position:fixed;left:12px;bottom:76px;width:min(380px,calc(100vw - 24px));display:flex;flex-direction:column;align-items:flex-start;gap:8px;pointer-events:none}',
+    '.toast{pointer-events:auto;max-width:100%;background:#0e0b09;color:var(--c);border:2px solid var(--t);padding:8px 12px;border-radius:10px;box-shadow:0 8px 20px #000a;font-size:13px;animation:toast 4s forwards;cursor:default}.toast.click{cursor:pointer}',
     '@keyframes toast{0%{opacity:0;transform:translateY(8px)}6%,85%{opacity:1;transform:none}100%{opacity:0}}',
-    '.withpanel .toast{left:448px;bottom:24px}.withpanel .banner{left:calc(50% + 218px);width:min(520px,calc(100vw - 470px))}',
+    '.withpanel .notes{left:448px;bottom:24px}.withpanel .banner{left:calc(50% + 218px);width:min(520px,calc(100vw - 470px))}',
     '@media (max-width:900px){.withpanel .banner{left:50%;width:min(520px,calc(100vw - 20px))}}',
-    '@media (max-width:560px){.withpanel .toast{left:8px;right:8px;top:8px;bottom:auto}.panel{left:0;top:0;bottom:0;width:100vw;border-radius:0;box-shadow:none;border:0;padding-bottom:env(safe-area-inset-bottom)}.launch{left:8px;bottom:8px;min-height:44px;padding:4px 8px 4px 5px}.launch .lbl,.launch .stack{display:none}.launch.open{display:none}.toast{left:8px;bottom:62px}}',
+    '@media (max-width:560px){.notes,.withpanel .notes{left:8px;right:8px;top:8px;bottom:auto;width:auto}.panel{left:0;top:0;bottom:0;width:100vw;border-radius:0;box-shadow:none;border:0;padding-bottom:env(safe-area-inset-bottom)}.launch{left:8px;bottom:8px;min-height:44px;padding:4px 8px 4px 5px}.launch .lbl,.launch .stack{display:none}.launch.open{display:none}}',
+    // whisper cards (PHA-5004): Battle.net/Steam-style, in the toast's corner, newest on top, at most 3 + one "+N more"
+    '.card{pointer-events:auto;position:relative;width:100%;display:flex;gap:10px;align-items:flex-start;padding:10px 30px 10px 10px;border-radius:10px;background:linear-gradient(var(--bg2),var(--bg));border:2px solid var(--t);box-shadow:0 0 0 2px #000,0 10px 24px #000c;cursor:pointer;animation:cin .22s ease-out;text-align:left}',
+    '.card.inv{border-color:var(--o)}.card:hover{border-color:var(--c)}@keyframes cin{from{opacity:0;transform:translateX(-24px)}}.top .card{animation-name:cinr}@keyframes cinr{from{opacity:0;transform:translateX(24px)}}',
+    '.card .av{width:40px;height:40px;font-size:16px;box-shadow:0 0 0 2px #000}.card .cb{flex:1;min-width:0}.card .ch{display:flex;gap:6px;align-items:baseline;min-width:0}',
+    '.card .ch b{color:var(--c);font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.card.inv .ch b{color:#ffd479}.card .cn{flex:none;font-size:11px;font-weight:700;color:var(--o)}',
+    '.card .cw{font-size:11px;color:var(--t);font-family:"Courier New",monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.card .cm{margin:3px 0 7px;color:var(--m);font-size:13px;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}',
+    '.card .ca{display:flex;gap:6px}.card .cx{position:absolute;top:4px;right:4px;width:24px;height:24px;border:0;border-radius:6px;background:none;color:var(--d);font-size:13px}.card .cx:hover{color:var(--c);background:#ffffff14}',
+    '.cards{display:flex;flex-direction:column;gap:8px;width:100%}.cards:empty{display:none}.chip.sw[aria-checked=false]{color:var(--d);text-decoration:line-through}.chip.sw:disabled{opacity:.5;cursor:default}',
+    '.card.more{align-items:center;padding:7px 12px;font-size:12.5px;color:var(--m);border-style:dashed}',
     '@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}',
   ].join('\n');
   // the launcher in a page's top bar (dockInto): its own shadow root in the bar, the cabinet look at bar height
@@ -500,9 +521,9 @@
   ].join('\n');
   const TOP_CSS = [ // the floating layer when the launcher is in a top bar: panel and toasts hang from the bar, on the right
     '.top .panel{left:auto;right:12px;top:var(--top,64px);bottom:12px;animation:drop .16s ease-out}@keyframes drop{from{transform:translateY(-10px);opacity:0}}',
-    '.top .toast{left:auto;right:12px;top:var(--top,64px);bottom:auto}.top.withpanel .toast{left:auto;right:448px;top:var(--top,64px);bottom:auto}',
+    '.top .notes{left:auto;right:12px;top:var(--top,64px);bottom:auto;align-items:flex-end}.top.withpanel .notes{left:auto;right:448px;top:var(--top,64px);bottom:auto}',
     '.top.withpanel .banner{left:calc(50% - 218px)}@media (max-width:900px){.top.withpanel .banner{left:50%}}',
-    '@media (max-width:560px){.top .panel{left:0;right:0;top:0;bottom:0;animation:rise .16s ease-out}.top.withpanel .toast,.top .toast{left:8px;right:8px;top:8px}}',
+    '@media (max-width:560px){.top .panel{left:0;right:0;top:0;bottom:0;animation:rise .16s ease-out}.top.withpanel .notes,.top .notes{left:8px;right:8px;top:8px;width:auto}}',
   ].join('\n');
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -569,6 +590,9 @@
     launch = button('', 'launch'); launch.setAttribute('aria-haspopup', 'dialog'); launch.setAttribute('aria-expanded', 'false');
     launch.onclick = () => (open ? closeDrawer() : openDrawer());
     root.appendChild(launch);
+    notesEl = el('div', 'notes'); cardsEl = el('div', 'cards');
+    cardsEl.setAttribute('aria-live', 'polite'); cardsEl.setAttribute('aria-label', 'Whispers'); notesEl.appendChild(cardsEl); root.appendChild(notesEl);
+    cardsEl.addEventListener('keydown', (e) => { if (e.key === 'Escape' && cards.length) { e.stopPropagation(); dropCard(cards[0]); } });
     const sel = script && script.dataset.mount; mountEl = (sel && document.querySelector(sel)) || document.body;
     mountEl.appendChild(hostEl);
     if (barEl) placeInBar(); else document.documentElement.setAttribute('data-phatt-dock', '');
@@ -590,9 +614,97 @@
     if (toastEl) toastEl.remove(); clearTimeout(toastTimer);
     toastEl = el('div', 'toast' + (onClick ? ' click' : ''), msg); toastEl.setAttribute('role', 'status');
     if (onClick) toastEl.onclick = () => { if (toastEl) toastEl.remove(); toastEl = null; onClick(); };
-    root.appendChild(toastEl); toastTimer = setTimeout(() => { if (toastEl) { toastEl.remove(); toastEl = null; } }, 4100);
+    notesEl.appendChild(toastEl); toastTimer = setTimeout(() => { if (toastEl) { toastEl.remove(); toastEl = null; } }, 4100);
   }
-  const launcherUnread = () => chat.unread.party + chat.unread.table + unreadW;
+
+  // ---- whisper cards (PHA-5004) ---- a whisper or party invite while the Chat tab is not on screen: a small card in the
+  // toast's corner (avatar, name, where they are, the line, Reply/Join), like Battle.net or Steam. Never for bots, squelched
+  // people, my own lines or command replies. 'Whisper pop-ups' and 'Whisper sound' are per device (localStorage).
+  const LS_POP = 'phatt.dock.popups', LS_WSND = 'phatt.dock.wsound', CARD_MS = 6000, MAX_CARDS = 3;
+  const pref = { popups: ls.get(LS_POP) !== '0', sound: ls.get(LS_WSND) !== '0' };
+  let notesEl = null, cardsEl = null, moreEl = null, moreN = 0;
+  const cards = []; // newest first: {key, node, timer, held, count}
+  const cardWanted = (l) => (l.kind === 'wfrom' || l.kind === 'invite') && !!l.from && !l.from.bot && l.from.id !== member && !chat.squelch.has(l.from.id);
+  function whisperCard(l) {
+    if (!cardWanted(l) || !pref.popups) return;
+    titleBump(l.from.name);
+    if (open && tab === 'chat') return; // the line shows inline
+    chime();
+    const inv = l.kind === 'invite', key = (inv ? 'i:' : 'w:') + l.from.id;
+    let c = cards.find((x) => x.key === key);
+    if (!c) {
+      if (cards.length >= MAX_CARDS) { moreN++; renderMore(); return; }
+      c = { key, node: el('div', 'card' + (inv ? ' inv' : '')), timer: 0, held: false, count: 0 };
+      c.node.setAttribute('role', 'group'); c.node.tabIndex = -1;
+      c.node.addEventListener('mouseenter', () => holdCard(c, true)); c.node.addEventListener('mouseleave', () => holdCard(c, c.node.contains(c.node.getRootNode().activeElement)));
+      c.node.addEventListener('focusin', () => holdCard(c, true)); c.node.addEventListener('focusout', (e) => holdCard(c, c.node.contains(e.relatedTarget) || c.node.matches(':hover')));
+      cards.unshift(c); cardsEl.insertBefore(c.node, cardsEl.firstChild);
+    }
+    c.count++; fillCard(c, l); armCard(c);
+  }
+  function fillCard(c, l) {
+    const f = l.from, inv = l.kind === 'invite', n = c.node;
+    n.textContent = ''; n.setAttribute('aria-label', (inv ? 'Party invite from ' : 'Whisper from ') + displayName(f));
+    n.appendChild(avatarNode(f));
+    const b = el('div', 'cb'), h = el('div', 'ch');
+    h.appendChild(el('b', '', inv ? 'Party invite' : displayName(f)));
+    if (c.count > 1) h.appendChild(el('span', 'cn', c.count + ' new'));
+    b.appendChild(h);
+    b.appendChild(el('div', 'cw', (inv ? displayName(f) + ' · ' : '') + 'in ' + gameName(f.game)));
+    b.appendChild(el('div', 'cm', shown(l)));
+    const acts = el('div', 'ca');
+    const reply = () => { dropCard(c); openDrawer('chat'); prefill('/w ' + whisperName(f) + ' '); };
+    if (inv) {
+      if (l.party && l.party !== state.code) { const j = button('Join', 'btn small act'); j.onclick = (e) => { e.stopPropagation(); dropCard(c); api.join(l.party).then(() => toast('You joined ' + f.name + "'s party.")).catch(() => {}); }; acts.appendChild(j); }
+      const d = button('Dismiss', 'btn small ghost'); d.onclick = (e) => { e.stopPropagation(); dropCard(c); }; acts.appendChild(d);
+      n.onclick = () => { dropCard(c); openDrawer('chat'); };
+    } else {
+      const r = button('Reply', 'btn small act'); r.onclick = (e) => { e.stopPropagation(); reply(); }; acts.appendChild(r);
+      n.onclick = reply;
+    }
+    b.appendChild(acts); n.appendChild(b);
+    const x = button('✕', 'cx'); x.setAttribute('aria-label', 'Dismiss'); x.onclick = (e) => { e.stopPropagation(); dropCard(c); }; n.appendChild(x);
+  }
+  function armCard(c) { clearTimeout(c.timer); if (!c.held) c.timer = setTimeout(() => dropCard(c), CARD_MS); }
+  function holdCard(c, held) { c.held = held; if (held) clearTimeout(c.timer); else armCard(c); }
+  function dropCard(c) {
+    clearTimeout(c.timer); const i = cards.indexOf(c); if (i < 0) return;
+    cards.splice(i, 1); c.node.remove();
+    if (!cards.length && moreEl) { moreN = 0; moreEl.remove(); moreEl = null; }
+  }
+  function renderMore() {
+    if (!moreEl) { moreEl = button('', 'card more'); moreEl.onclick = () => { clearCards(); openDrawer('chat'); }; }
+    moreEl.textContent = '+' + moreN + ' more whisper' + (moreN === 1 ? '' : 's');
+    cardsEl.appendChild(moreEl);
+  }
+  function clearCards() { cards.slice().forEach(dropCard); if (moreEl) { moreEl.remove(); moreEl = null; } moreN = 0; }
+  // a background tab: "(N) Whisper from Name – title", back to the page's own title when it is looked at again
+  let titleN = 0, titleWas = null, titleMine = '';
+  function titleBump(name) {
+    if (!document.hidden) return;
+    if (titleWas == null || document.title !== titleMine) { titleWas = document.title; titleN = 0; }
+    titleN++; titleMine = document.title = '(' + titleN + ') Whisper from ' + name + ' – ' + titleWas;
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && titleWas != null) { if (document.title === titleMine) document.title = titleWas; titleWas = null; titleN = 0; } });
+  // a short soft chime, WebAudio (no file to ship): only after the page has had a gesture, at most every 2 s
+  let actx = null, gestured = false, chimeAt = 0;
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) => window.addEventListener(ev, () => { gestured = true; }, { capture: true, passive: true }));
+  function chime() {
+    if (!pref.sound || !gestured || Date.now() - chimeAt < 2000) return;
+    chimeAt = Date.now();
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      const t = actx.currentTime;
+      [[880, 0], [1318.5, 0.09]].forEach(([hz, d]) => {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'sine'; o.frequency.value = hz;
+        g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.07, t + d + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.4);
+        o.connect(g); g.connect(actx.destination); o.start(t + d); o.stop(t + d + 0.45);
+      });
+    } catch { /* no audio */ }
+  }
+  function setPref(k, on) { pref[k] = on; ls.set(k === 'popups' ? LS_POP : LS_WSND, on ? null : '0'); if (k === 'popups' && !on) clearCards(); if (open && tab === 'chat') renderChips(); }
+  const launcherUnread = () => chat.unread.party + chat.unread.table + unreadW + fr.unread;
 
   function renderLauncher() {
     if (!launch) return;
@@ -645,10 +757,11 @@
     if (!tabsEl) return;
     tabsEl.textContent = '';
     const chatN = chat.unread.party + chat.unread.table + unreadW;
-    [['chat', 'Chat', chatN], ['games', 'Games', 0], ['party', 'Party', 0]].forEach(([id, label, n]) => {
+    [['chat', 'Chat', chatN], ['games', 'Games', 0], ['party', 'Party', 0], ['friends', 'Friends', fr.unread]].forEach(([id, label, n]) => {
       const t = button(label, 'tab'); t.setAttribute('role', 'tab'); t.setAttribute('aria-selected', String(tab === id));
       if (n) t.appendChild(el('span', 'n', String(n)));
       if (id === 'party' && state.code) { const c = el('span', 'n cnt', String(state.members.filter((m) => m.online).length)); c.title = 'in the party, online'; t.appendChild(c); }
+      if (id === 'friends' && !n && frOnline()) { const c = el('span', 'n cnt', String(frOnline())); c.title = 'friends online'; t.appendChild(c); }
       t.onclick = () => { tab = id; ls.set(LS_TAB, tab); renderTabs(); renderTab(); };
       tabsEl.appendChild(t);
     });
@@ -657,12 +770,12 @@
     if (!bodyEl) return;
     clearInterval(browseTimer);
     bodyEl.textContent = ''; chipsEl = logEl = usersEl = inputEl = nameBarEl = null;
-    if (tab === 'games') renderGames(); else if (tab === 'party') renderParty(); else renderChat();
+    if (tab === 'games') renderGames(); else if (tab === 'party') renderParty(); else if (tab === 'friends') renderFriends(); else renderChat();
   }
 
   // ---- Chat tab ----
   let chipsEl, logEl, usersEl, inputEl, nameBarEl, hintsEl, showUsers = false;
-  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/filter', '[on | off]', 'mask banned words, or show them'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
+  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/filter', '[on | off]', 'mask banned words, or show them'], ['/popups', '[on | off]', 'whisper pop-ups on this device'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
   function views() {
     const v = [{ id: 'general', cls: 'g', label: '#' + (chat.general.name || 'Arcade') }];
     if (state.code) v.push({ id: 'party', cls: 'p', label: 'Party' });
@@ -713,6 +826,7 @@
       const row = el('div', 'pidrow');
       if (pid) {
         row.appendChild(el('span', 'pidb', 'ID')); row.appendChild(el('span', 'note', 'Logged on with PHATT ID as ' + pid.username));
+        const prof = el('a', 'btn quiet small', 'My profile'); prof.href = HUB + '/me'; row.appendChild(prof); // (PHA-4945)
         const off = button('Log off', 'btn quiet small'); off.onclick = () => { off.disabled = true; logOff(); }; row.appendChild(off);
       } else {
         const on = button('', 'btn small pidon', 'Log on with your PHATT ID: your name, level and trophies follow you to every game');
@@ -781,6 +895,11 @@
     const fb = button(chat.filter ? '✱ Filter on' : '✱ Filter off', 'chip who', chat.filter ? 'Banned words show masked. Click to see them (/filter off)' : 'You see banned words. Click to mask them (/filter on)'); fb.setAttribute('aria-pressed', String(chat.filter));
     fb.onclick = () => { setFilterView(!chat.filter); send({ t: 'pref', filter: chat.filter }); };
     chipsEl.appendChild(fb);
+    [['popups', '🔔 Pop-ups', 'Whisper pop-ups: a small card when someone whispers you (/popups on|off)'], ['sound', '♪ Sound', 'Whisper sound: a soft chime with the whisper card']].forEach(([k, label, title]) => {
+      const sw = button(label, 'chip sw', title + ' · on this device'); sw.setAttribute('role', 'switch'); sw.setAttribute('aria-checked', String(pref[k])); sw.setAttribute('aria-label', k === 'popups' ? 'Whisper pop-ups' : 'Whisper sound');
+      if (k === 'sound' && !pref.popups) sw.disabled = true;
+      sw.onclick = () => setPref(k, !pref[k]); chipsEl.appendChild(sw);
+    });
     chat.unread[chat.view] = 0; unreadW = 0;
   }
   function usersFor(view) {
@@ -857,6 +976,12 @@
     if (cmd === '/clear' || cmd === '/cls') {
       if (chat.view === 'party') state.chat = []; else chat[chat.view].lines = [];
       chat.personal = []; inputEl.value = ''; renderHints(); renderLog(); return;
+    }
+    if (cmd === '/popups') {
+      const a = (text.split(' ')[1] || '').toLowerCase(), on = a === 'on' ? true : a === 'off' ? false : !pref.popups;
+      setPref('popups', on); inputEl.value = ''; renderHints();
+      onLine({ id: 'l' + Date.now(), ch: 'info', kind: 'info', text: on ? 'Whisper pop-ups on: a small card shows when someone whispers you.' : 'Whisper pop-ups off. Whispers still show here and on the launcher badge. /popups on to turn them back on.', ts: Date.now() });
+      return;
     }
     if (!state.connected) { toast('Still connecting to the arcade.'); return; }
     if ((cmd === '/name' || cmd === '/nick') && text.split(' ').slice(1).join(' ').trim()) { profile.name = text.split(' ').slice(1).join(' ').trim().slice(0, 20); ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar })); }
@@ -958,6 +1083,110 @@
     if (down.length) openNowEl.appendChild(el('div', 'muted', (down.length === 1 ? down[0] + " isn't" : down.slice(0, -1).join(', ') + ' and ' + down[down.length - 1] + " aren't") + ' answering.'));
   }
 
+  // ---- Friends tab (PHA-4954): PHATT ID friends, where they are, Join / Invite to party / Whisper / Profile ----
+  // The list comes from the hub over this socket; changes go to <hub>/api/friends/* with the PHATT ID cookie (same-site on *.phatt.vip).
+  const FR_RANK = { playing: 0, table: 1, online: 2, idle: 3, offline: 4 };
+  const frOn = (f) => !!f.presence && f.presence.state !== 'offline';
+  const frOnline = () => fr.friends.filter(frOn).length;
+  const frSort = () => fr.friends.sort((a, b) => (FR_RANK[a.presence && a.presence.state] ?? 5) - (FR_RANK[b.presence && b.presence.state] ?? 5) || String(a.display).localeCompare(String(b.display)));
+  function frApply(d) {
+    fr.signedIn = d.signedIn !== false;
+    fr.friends = fr.signedIn ? d.friends || [] : []; fr.incoming = fr.signedIn ? d.incoming || [] : []; fr.outgoing = fr.signedIn ? d.outgoing || [] : []; fr.blocked = fr.signedIn ? d.blocked || [] : [];
+    fr.appearOffline = !!d.appearOffline; frSort();
+  }
+  function frRender() {
+    renderLauncher(); if (!open) return;
+    renderTabs();
+    if (tab !== 'friends') return;
+    const ae = hostEl.shadowRoot && hostEl.shadowRoot.activeElement; // typing a name: redraw after, not under the cursor
+    if (ae && ae.classList.contains('fradd')) { fr.stale = true; return; }
+    renderTab();
+  }
+  function onFriends(m) {
+    const here = open && tab === 'friends';
+    if (m.op === 'list') frApply(m);
+    else if (m.op === 'presence') { const f = fr.friends.find((x) => x.username === m.username); if (!f) return; f.presence = m.presence; frSort(); }
+    else if (m.op === 'request' && m.from) { if (!here) { fr.unread++; pulse(); } toast(m.from.display + ' wants to be your friend.', () => openDrawer('friends')); }
+    else if (m.op === 'online' && m.friend) { if (state.where.status !== 'playing') toast(m.friend.display + ' is online.', () => openDrawer('friends')); return frRender(); } // quiet: never mid-game
+    else if (m.op === 'accepted' && m.by) toast(m.by.display + ' accepted your friend request.', () => openDrawer('friends'));
+    frRender();
+  }
+  const frAgo = (t) => { if (!t) return ''; const s = (Date.now() - new Date(t)) / 1000; return s < 90 ? 'just now' : s < 3600 ? Math.round(s / 60) + ' min ago' : s < 86400 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' d ago'; };
+  // where Join takes me: their table / room / camp through the game's own url, so the game's own rules (full, private) apply
+  function friendUrl(p) {
+    if (!p || p.state === 'offline') return null;
+    const g = entry(p.game); if (!g) return null;
+    if (g.hub) return p.room ? withParty(HUB + '/?table=' + encodeURIComponent(p.room)) : null;
+    return urlFor(p.game, { room: p.room || undefined });
+  }
+  const frHere = (p) => !!p && !!p.room && p.room === state.where.room && (p.game === GAME || (GAME === 'clubhouse' && !!(entry(p.game) || {}).hub));
+  function frPost(op, body) {
+    if (fr.busy) return Promise.resolve(); fr.busy = true;
+    return fetch(HUB + '/api/friends/' + op, { method: 'POST', mode: 'cors', credentials: 'include', cache: 'no-store', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body || {}) })
+      .then((r) => r.json().catch(() => ({})).then((j) => { if (!r.ok) throw new Error(j.error || 'Something went wrong. Try again.'); return j; }))
+      .then((j) => { frApply(j); fr.msg = j.message || ''; }, (e) => { fr.msg = e.message === 'Failed to fetch' ? 'Could not reach the arcade. Try again.' : e.message; })
+      .then(() => { fr.busy = false; frRender(); });
+  }
+  function frInvite(f) {
+    const go2 = () => { fr.awaitInfo = Date.now(); send({ t: 'friends', op: 'invite', username: f.username }); };
+    if (state.code) return go2();
+    api.create({ name: profile.name || 'Guest', avatar: profile.avatar || null }).then(go2).catch(() => {});
+  }
+  function friendRow(f, kind) {
+    const on = frOn(f), p = f.presence || {};
+    const r = el('div', 'mem' + (kind === 'friend' && !on ? ' off' : '') + (kind === 'in' ? ' req' : '')); r.setAttribute('role', 'listitem');
+    r.appendChild(avatarNode({ name: f.display, avatar: f.photo }));
+    const info = el('div', 'info'); const nm = el('div', 'nm'); nm.appendChild(el('span', '', f.display)); info.appendChild(nm);
+    const acts = el('div', 'facts');
+    if (kind === 'friend') {
+      info.appendChild(el('div', 'wh' + (p.state === 'playing' ? ' pl' : p.state === 'table' ? ' tb' : ''), on ? p.text : 'Offline' + (p.lastSeen ? ' · ' + frAgo(p.lastSeen) : '')));
+      const url = friendUrl(p);
+      if (frHere(p)) { const h = button('Here', 'btn small dis'); acts.appendChild(h); }
+      else if (url) { const j = button('Join', 'btn small'); j.title = 'Go to ' + gameName(p.game) + (p.room ? ': their table' : ''); j.onclick = () => { anaTrack('game_open', { game: p.game, props: { friend: 1 } }); go(url); }; acts.appendChild(j); }
+      if (on) {
+        const inv = button('Invite to party', 'btn ghost small'); inv.title = state.code ? 'Same as /invite' : 'Starts a party, then invites them'; inv.onclick = () => frInvite(f); acts.appendChild(inv);
+        const w = button('Whisper', 'btn ghost small'); w.onclick = () => { openDrawer('chat'); prefill('/w ' + (p.handle || f.display) + ' '); }; acts.appendChild(w);
+      }
+      const pr = button('Profile', 'btn quiet small'); pr.onclick = () => go(HUB + '/u/' + encodeURIComponent(f.username)); acts.appendChild(pr);
+    } else if (kind === 'in') {
+      info.appendChild(el('div', 'wh', 'wants to be your friend'));
+      const a = button('Accept', 'btn small'); a.onclick = () => frPost('accept', { username: f.username }); acts.appendChild(a);
+      const d = button('Decline', 'btn ghost small'); d.onclick = () => frPost('decline', { username: f.username }); acts.appendChild(d);
+    } else {
+      info.appendChild(el('div', 'wh', 'asked ' + frAgo(f.at)));
+      const c = button('Cancel', 'btn ghost small'); c.onclick = () => frPost('cancel', { username: f.username }); acts.appendChild(c);
+    }
+    info.appendChild(acts); r.appendChild(info);
+    if (kind === 'friend') r.appendChild(el('span', 'dot'));
+    return r;
+  }
+  function renderFriends() {
+    fr.unread = 0; renderLauncher();
+    const sc = el('div', 'scroll'); bodyEl.appendChild(sc);
+    if (!pid || fr.signedIn === false) {
+      const h = el('div', 'hero'); h.appendChild(el('h3', '', 'Friends')); h.appendChild(el('p', '', 'Sign in with PHATT ID to add friends, see who is on and where, and join them in one click.'));
+      sc.appendChild(h);
+      if (pidEnabled) { const b = button('Log on with PHATT ID', 'btn pidon'); b.style.alignSelf = 'flex-start'; b.onclick = () => api.logOn(); sc.appendChild(b); }
+      return;
+    }
+    if (fr.signedIn === null) { send({ t: 'friends', op: 'list' }); sc.appendChild(el('div', 'muted', state.connected ? 'Loading your friends…' : 'Connecting to the arcade…')); return; }
+    const add = el('div', 'row'); const inp = el('input', 'input grow fradd'); inp.placeholder = 'Add a friend by username'; inp.maxLength = 40; inp.value = fr.draft; inp.setAttribute('aria-label', 'Username to add');
+    const ab = button('Add', 'btn'); const doAdd = () => { const u = inp.value.trim(); if (!u) return; inp.blur(); fr.draft = ''; frPost('request', { username: u }); };
+    inp.oninput = () => { fr.draft = inp.value; }; inp.onblur = () => { if (fr.stale) { fr.stale = false; setTimeout(frRender, 200); } }; inp.onkeydown = (e) => { if (e.key === 'Enter') doAdd(); }; ab.onclick = doAdd;
+    add.appendChild(inp); add.appendChild(ab); sc.appendChild(add);
+    if (fr.msg) sc.appendChild(el('div', 'note', fr.msg));
+    const list = (items, kind) => { const l = el('div', 'fl'); l.setAttribute('role', 'list'); items.forEach((f) => l.appendChild(friendRow(f, kind))); return l; };
+    if (fr.incoming.length) { sc.appendChild(el('div', 'sec', 'Friend requests · ' + fr.incoming.length)); sc.appendChild(list(fr.incoming, 'in')); }
+    const on = fr.friends.filter(frOn), off = fr.friends.filter((f) => !frOn(f));
+    if (!fr.friends.length) sc.appendChild(el('div', 'muted', 'No friends yet. Add someone by username, type /friend Name in chat, or press Add friend on their profile.'));
+    if (on.length) { sc.appendChild(el('div', 'sec', 'Online · ' + on.length)); sc.appendChild(list(on, 'friend')); }
+    if (off.length) { sc.appendChild(el('div', 'sec', 'Offline · ' + off.length)); sc.appendChild(list(off, 'friend')); }
+    if (fr.outgoing.length) { sc.appendChild(el('div', 'sec', 'Waiting for an answer · ' + fr.outgoing.length)); sc.appendChild(list(fr.outgoing, 'out')); }
+    const t = el('label', 'toggle'); const cb = el('input'); cb.type = 'checkbox'; cb.checked = fr.appearOffline; cb.onchange = () => frPost('appear-offline', { on: cb.checked });
+    t.appendChild(cb); t.appendChild(document.createTextNode('Appear offline to friends')); sc.appendChild(t);
+    const mg = el('a', 'btn quiet small', 'Manage friends and blocks on your profile'); mg.href = HUB + '/me#friends'; mg.style.alignSelf = 'flex-start'; sc.appendChild(mg);
+  }
+
   // ---- Party tab ----
   function renderParty() {
     const sc = el('div', 'scroll'); bodyEl.appendChild(sc);
@@ -980,6 +1209,7 @@
     const me = state.members.find((m) => m.id === member) || {};
     const hostM = state.members.find((m) => m.id === state.host) || {};
     const cb = el('div', 'codebox'); const c = el('span', 'code', state.code); c.title = 'Party code'; cb.appendChild(c);
+    if (state.mode) { const pmc = el('span', 'pmode', '🎲 Party mode'); pmc.title = 'After each Clubhouse game, everyone at the table votes between 3 random games'; cb.appendChild(pmc); }
     const copy = button('Copy invite link', 'btn ghost small');
     copy.onclick = () => { const link = inviteUrl(); const done = () => { copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy invite link'; }, 1600); }; if (navigator.clipboard) navigator.clipboard.writeText(link).then(done, () => prompt('Copy this link:', link)); else prompt('Copy this link:', link); };
     cb.appendChild(copy); sc.appendChild(cb);
@@ -1006,6 +1236,10 @@
       const t = el('label', 'toggle'); const cbx = el('input'); cbx.type = 'checkbox'; cbx.checked = !!state.public; cbx.onchange = () => send({ t: 'public', on: cbx.checked });
       t.appendChild(cbx); t.appendChild(document.createTextNode('List publicly: anyone can find and join this party in Games'));
       sc.appendChild(t);
+      // party mode (PHA-4977): after each Clubhouse game the table votes between 3 random games, then everyone moves on together
+      const pt = el('label', 'toggle'); const pcb = el('input'); pcb.type = 'checkbox'; pcb.checked = !!state.mode; pcb.onchange = () => api.setMode(pcb.checked);
+      pt.appendChild(pcb); pt.appendChild(document.createTextNode('Party mode: after each game, vote between 3 random games'));
+      sc.appendChild(pt);
     } else if (state.public) sc.appendChild(el('div', 'muted', 'This party is listed publicly.'));
     sc.appendChild(el('div', 'muted', 'Invite anyone online from chat: /invite Name. Or send the link.'));
     const lv = button('Leave party', 'btn quiet'); lv.style.alignSelf = 'flex-start'; lv.onclick = () => { if (confirm('Leave the party?')) api.leave(); };
@@ -1038,6 +1272,7 @@
     get me() { const m = state.members.find((x) => x.id === member); return { id: member, name: (m && m.name) || profile.name || (chat.you && chat.you.name) || null, avatar: m ? m.avatar : profile.avatar || null, level: m ? m.level : profile.level || null, title: m ? m.title : null }; },
     get members() { return state.members.slice(); },
     get venue() { return state.venue; },
+    get mode() { return !!state.mode; }, // party mode (PHA-4977): the end of each Clubhouse game is a vote on the next one
     get rules() { return state.rules || {}; }, // game id -> the host's last table rules there (Clubhouse validates them)
     get host() { return state.host; },
     get isHost() { return !!state.code && state.host === member; },
@@ -1057,6 +1292,7 @@
     join(code) { code = cleanCode(code); if (code.length !== 6) return Promise.reject(new Error('bad code')); return startJoin(code, false); },
     leave() { if (!state.code) return; send({ t: 'leave' }); ls.set(LS_CODE, null); wantCode = null; state.code = null; state.members = []; state.venue = null; state.rules = {}; state.chat = []; state.host = null; if (chat.view === 'party') chat.view = 'general'; hideBanner(); render(); if (open) renderTab(); emit('party', snapshot()); },
     goto(gameId, opts) { opts = opts || {}; const g = entry(gameId); if (!g) { toast('Unknown game'); return false; } if (!api.isHost) { toast('Only the host can bring the party'); return false; } return send({ t: 'goto', game: gameId, url: urlFor(gameId, { bare: true }), room: opts.room || undefined }); },
+    setMode(on) { if (state.code && api.isHost) { state.mode = !!on; send({ t: 'mode', on: !!on }); render(); if (open && tab === 'party') renderTab(); } },
     setRules(game, values) { if (state.code && api.isHost) { (state.rules = state.rules || {})[game] = values; send({ t: 'rules', game, values }); } },
     setWhere(w) { w = w || {}; const msg = {}; ['room', 'status', 'game'].forEach((k) => { if (k in w) { msg[k] = w[k] == null ? null : String(w[k]); state.where[k] = msg[k]; } }); send({ t: 'where', ...msg }); },
     setProfile(p) { p = p || {}; profile = { ...profile, ...p }; ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar })); if (!send({ t: 'profile', name: profile.name, avatar: profile.avatar || null, level: profile.level, title: profile.title })) profileDirty = true; else if (!state.code) profileDirty = true; render(); },
