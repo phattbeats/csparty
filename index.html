@@ -468,7 +468,7 @@ class Game {
   }
   async playAll(agent){
     for(this.turn=1;this.turn<=this.P.turns;this.turn++){
-      if(this.P.overtimeTurns>0&&this.turn===this.P.turns-this.P.overtimeTurns+1) this.log(`Overtime. Spaces pay and cost double for the last ${this.P.overtimeTurns} turns.`,'t');
+      if(this.P.overtimeTurns>0&&this.turn===this.P.turns-this.P.overtimeTurns+1) this.log(`Overtime. Blue and red spaces pay and cost double for the last ${this.P.overtimeTurns} turns.`,'t');
       for(const p of this.players) await this.takeTurn(p,agent);
       await this.minigameRound(agent);
       agent.endTurn&&await agent.endTurn(this);
@@ -778,7 +778,7 @@ $('#rules').innerHTML=`
 <li>Start ${fmt$(DEFAULT_PARAMS.startMoney)}. CT space +${fmt$(DEFAULT_PARAMS.blue)}, T space −${fmt$(DEFAULT_PARAMS.red)}.</li>
 <li>Minigame winners +${fmt$(DEFAULT_PARAMS.mgWin)} each. Losers get a CS loss bonus that grows each consecutive loss: ${fmt$(DEFAULT_PARAMS.lossBase)}, then +${fmt$(DEFAULT_PARAMS.lossStep)} per streak, capped at ${fmt$(DEFAULT_PARAMS.lossCap)}.</li>
 <li>Nobody holds more than ${fmt$(DEFAULT_PARAMS.moneyCap)}. Anything above it is lost, so spend.</li>
-<li>Last ${DEFAULT_PARAMS.overtimeTurns} turns are overtime: spaces pay and cost double.</li>
+<li>Last ${DEFAULT_PARAMS.overtimeTurns} turns are overtime: blue and red spaces pay and cost double.</li>
 <li>Bombsite: +$300 plant bonus and C4 is set a few spaces ahead, for whoever's behind you.</li>
 <li>End of match: Top Fragger, Max Money and Eco Round each award a bonus star.</li></ul></section>
 <section><h2>Buy menu</h2><div class="tablewrap"><table><thead><tr><th>Key</th><th>Item</th><th>Price</th><th>Effect</th></tr></thead><tbody>
