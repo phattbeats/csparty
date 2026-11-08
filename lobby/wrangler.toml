@@ -2,7 +2,7 @@
 # Local:  npm run dev   (wrangler dev; secrets from .dev.vars)
 # Live:   npx wrangler secret put LOBBY_SECRET   then   npm run deploy   (needs a Workers/DO-scoped API token)
 # Admin dashboard (/admin, #3991): npx wrangler secret put ADMIN_TOKEN   (24+ random characters; unset = admin off)
-# Optional, for the dashboard's Analytics Engine SQL panel: secrets AE_ACCOUNT_ID and AE_READ_TOKEN (an API token
+# Only with the Analytics Engine binding (paid, off by default): secrets AE_ACCOUNT_ID and AE_READ_TOKEN (an API token
 # with Account Analytics: Read). Everything else on the dashboard works without them.
 name = "csparty-lobby"
 main = "src/index.js"
@@ -27,10 +27,13 @@ class_name = "Lobby"
 name = "DIRECTORY"
 class_name = "Directory"
 
-# Analytics events (src/analytics.js): one datapoint per event, read with the Analytics Engine SQL API
-[[analytics_engine_datasets]]
-binding = "EVENTS"
-dataset = "csparty_events"
+# Analytics events (src/analytics.js) are stored in the Directory's SQLite (free plan). Analytics Engine needs
+# Workers Paid, so its binding is off: wrangler deploy fails with code 10089 on a free account. To turn it on
+# later, add back:
+#   [[analytics_engine_datasets]]
+#   binding = "EVENTS"
+#   dataset = "csparty_events"
+# src/index.js writes datapoints only when env.EVENTS exists.
 
 # SQLite-backed Durable Objects: the only kind on the free plan
 [[migrations]]
