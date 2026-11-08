@@ -606,3 +606,20 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   `npx wrangler secret put TURNSTILE_SECRET`, deploy through the same gate.
 - Browser pass on the RAID (playwright image, `appdata/cs-party/test3992/`): `lobby/test/harden_shots.cjs` against `wrangler dev`
   with the Turnstile test keys.
+
+## Podium ending (server 0.5.39-vq, 2026-11-08 ~15:46 UTC)
+- main 01b3534 (#5). The winner banner now cuts to a 1-2-3 podium on the board map with the pawns dancing to the theme;
+  on "...in the hole!" (70.09 s into `cs-party-theme.mp3`) 1st place gets a Deagle with 3 rounds. Plugin only: no client
+  files, gamedata.zip and the relay unchanged. Cvars `csp_podium 1` (0 = the old results shot), `csp_podium_laststand 0`.
+- Theme measured with librosa / demucs / faster-whisper: 177.75 BPM, first beat 0.218 s, bars from 0.893 s, drops 36.0 s
+  and 80.55 s, "Fire" 67.9-69.0 s, "hole!" 69.98-70.5 s, outro vocal 99.7-102.5 s, song 109.2 s. The podium scene runs
+  POD_SONG + 2 s = ~111 s of real time, whatever `csp_speed` says.
+- `patch0539-pha5011/` (FROM 0.5.38-vq + cs_party.amxx, md5 d54b275f, source md5 0601f544 = main) -> `cs-party-server:0.5.39-vq`.
+  `deploy0539-pha5011.sh` gated in the same run on relay peers 0, 0 humans in rcon status, 0 running lobbies, live 0.5.38-vq;
+  swapped server + agent (new lobby servers start from 0.5.39-vq), relay untouched.
+- Verified on an isolated stack (server 27051, relay 8151, GPU browser player): a real 1-turn match reached the podium (bot
+  winner held the Deagle, 0 shots); human winner 3 shots / 3 kills from the client; last stand; all four boards place a
+  podium; a lobby-spec container (read-only root, tmpfs, caps dropped, `csp_one_match 1`) ran it too. Not run: a native
+  Steam client. Test files: `appdata/cs-party/test5011/`.
+- Rollback: `docker rm -f cs-party-server cs-party-agent; for c in server agent; do docker rename cs-party-$c-pha5011old cs-party-$c; docker start cs-party-$c; done`,
+  then `cp csparty-up.sh.pre-pha5011 csparty-up.sh`. Without a redeploy: `rc.sh "csp_podium 0"` (until the next restart).
