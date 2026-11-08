@@ -245,7 +245,9 @@
     const add = (what, e, names = {}) => { for (const [k, v] of rows(e)) err.push(el("tr", {}, td(what), td(names[k] || k || "-"), td(v.n, "num"))); };
     add("queued: no free server", "start_queued");
     for (const k of ["max_time", "slot_removed", "admin_kill"]) if (n("match_closed", k)) err.push(el("tr", {}, td("match cut off"), td(k), td(n("match_closed", k), "num")));
-    add("rate limited", "rate_limited"); add("refused", "rejected"); add("wrong admin token", "auth_failed", { "": "-" });
+    add("rate limited", "rate_limited", { create: "making parties", lookup: "code lookups", join: "lobby joins", admin_auth: "admin logins" });
+    add("refused", "rejected", { turnstile: "failed Turnstile", name: "name filtered", title: "party name filtered", banned_create: "banned, making",
+      banned_join: "banned, joining", paused: "paused", max_lobbies: "lobby cap" }); add("wrong admin token", "auth_failed", { "": "-" });
     fill($("errors").tBodies[0], err, "Nothing went wrong.", 3);
   }
 

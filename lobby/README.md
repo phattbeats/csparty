@@ -85,6 +85,14 @@ sharing the static `POOL`:
 - Closing a lobby frees its server and sends members home. On a static `POOL` server, players already in the
   game stay until they leave; a pool-agent's lobby server is stopped.
 
+## Public hardening (Phase 4, #3992)
+
+- Turnstile on making a party: `npx wrangler secret put TURNSTILE_SECRET` and `TURNSTILE_SITEKEY` in `wrangler.toml` `[vars]`
+  (both, or Turnstile is off). The page asks `/api/status` for the site key.
+- Per-IP limits a minute: 30 code lookups, 20 lobby joins (`[[ratelimits]]` in `wrangler.toml`; per-isolate counters without them).
+- Names and party names go through a slur/obscenity filter (`util.js` `rude`); a refused name becomes "Player".
+- All of it shows in the dashboard's "Errors and abuse" panel. Design section 10 has the details.
+
 ## Develop and test
 
 ```
@@ -95,6 +103,14 @@ npx wrangler dev --port 8787 --var 'POOL:[{"id":"raid1","url":"http://127.0.0.1:
 node test/lobby_test.mjs           # 40 checks; SLOW=1 adds the server-release path (about 4 minutes)
 # restart wrangler dev with a fresh .wrangler, then (the last check locks the admin API for 15 minutes):
 node test/admin_test.mjs           # 60 checks: events, funnel, game event ingest, every admin action, lockout
+```
+
+Hardening (#3992), on its own (it uses up this IP's limits for a minute); the header of `test/harden_test.mjs` has the Turnstile
+test-key variants. `test/harden_shots.cjs` is the browser pass (playwright): refused name, queue, lookup limit, screenshots.
+
+```
+npx wrangler dev --port 8787 --var 'POOL:[]'
+node test/harden_test.mjs          # 19 checks with TURNSTILE=pass (test keys), 6 with TURNSTILE=fail
 ```
 
 Pool-agent protocol against `wrangler dev` and a real relay (the script plays the agent):

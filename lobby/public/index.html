@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#121411">
 <link rel="icon" href="art/favicon.svg" type="image/svg+xml">
 <title>CS Party: lobby</title>
-<link rel="stylesheet" href="lobby.css?v=2">
+<link rel="stylesheet" href="lobby.css?v=3">
 </head>
 <body>
 <script src="arcade/phatt-arcade.js" data-game="csparty" defer></script>
@@ -39,6 +39,8 @@
         <input type="text" id="code" maxlength="5" placeholder="ABCDE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Party code">
         <button type="submit">Join</button>
       </form>
+      <p id="busy" class="status" role="status" aria-live="polite" hidden></p>
+      <div id="turnstile"></div>
       <p id="home-status" class="status" role="status" aria-live="polite"></p>
     </div>
     <div class="panel" id="public-panel" hidden>
@@ -72,8 +74,10 @@
   <footer class="muted small">No accounts. Your name, character and a random id live in this browser only.
     To see how parties go, we count lobby and match events with your country and that id, hashed with a salt that
     changes every day so you can't be followed from one day to the next. IP addresses are kept only as a one-way hash,
-    for 24 hours to limit spam (longer only while banned for abuse). No chat is stored.</footer>
+    for 24 hours to limit spam (longer only while banned for abuse). No chat is stored. Making a party runs
+    <a href="https://www.cloudflare.com/turnstile-privacy-policy/" target="_blank" rel="noopener">Cloudflare Turnstile</a>,
+    a check that you're a person, with no cookies. Names and party names that are slurs or obscene become "Player".</footer>
 </main>
-<script src="lobby.js?v=6"></script>
+<script src="lobby.js?v=7"></script>
 </body>
 </html>
