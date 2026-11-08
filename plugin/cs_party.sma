@@ -304,6 +304,29 @@ new g_msgScoreInfo;
 new g_diceEnt[3 * REEL_SLOTS + 12], g_diceN, g_diceVal[3], g_reelR[3][REEL_LEN], g_reelV[3][REEL_LEN], g_reelIdx[3], bool:g_reelDone[3], bool:g_diceOpen, bool:g_reelAnchor, Float:g_reelStart, Float:g_reelC[3][3], Float:g_reelS[2], Float:g_reelT[3];
 
 
+// podium (the ending, see pod_start)
+// The theme (web/public/audio/cs-party-theme.mp3, 109.2 s) measured with librosa: one beat grid fits the whole
+// song within 40 ms, 177.75 BPM, first beat at 0.218 s. The drops land on beats 106 and 238 (36.0 s, 80.55 s),
+// both on the bar's first beat, so bars start at 0.893 s. "Fire in the hole!" is sung before the second drop, not
+// on it (demucs vocal stem + whisper): "Fire" at 68.77 s, "hole!" at 70.09 s on beat 207, with the song's biggest
+// bass hit before that drop. The Deagle shows up on "hole!".
+#define POD_BEAT   0.33755   // s per beat (177.75 BPM)
+#define POD_ONE    0.893     // s into the song: the first bar's downbeat
+#define POD_FITH   70.09     // s into the song: "...in the hole!"
+#define POD_SONG   109.2     // s: the outro ("C-S-Party!") ends
+#define POD_STAND  2.0       // s of knife last stand (csp_podium_laststand)
+#define TASK_POD   56000
+#define POD_W      76.0      // block width across the frame (a board tile's flat-to-flat width), also the spacing
+#define POD_DUCK   18.0      // a crouched model's origin sits this much lower than a standing one
+new const Float:POD_H[SEATS] = { 48.0, 32.0, 16.0, 0.0 };   // block height by place (4th stands on the floor)
+new const Float:POD_LAT[SEATS] = { 0.0, -1.0, 1.0, 2.0 };    // across the frame as the camera sees it, in blocks: 2nd 1st 3rd 4th
+new const POD_COL[3][3] = { {255, 190, 30}, {190, 200, 215}, {150, 70, 25} };
+new c_podium, c_laststand;
+new bool:g_pod, bool:g_podArmed, bool:g_podStand, Float:g_podT0, g_podSeat[SEATS], g_podPlaceOf[SEATS], g_podEnt[32], g_podEntN;
+new Float:g_podSpot[SEATS][3], Float:g_podYaw, Float:g_podCam[3], Float:g_podLook[3], g_podDeagle, g_podKills, g_podFwd, g_podSndFwd;
+new bool:g_ownView[33];
+new g_podSeqUp[2], g_podSeqDown, g_podGaitIdle, g_podGaitDuck, g_podGaitJump;
+
 // cvars
 new c_grace, c_onematch, bool:g_matchOver, g_matchBegan, g_mgBegan;
 new c_camlog, c_autojoin, c_turns, c_start, c_hostage, c_blue, c_red, c_mgwin, c_lbase, c_lstep, c_lcap, c_trap, c_ot, c_awards, c_speed, c_debug, c_buyany, c_voice, c_sfx;
@@ -369,6 +392,8 @@ public plugin_init()
 	c_autostart = register_cvar("csp_autostart", "20");   // s of frozen lobby after the first human joins, then the match starts by itself (0 = wait for /party)
 	c_grace = register_cvar("csp_seat_grace", "90");   // s a dropped human's seat waits for them (same _csp_pid, or same name) before a bot takes it over
 	c_onematch = register_cvar("csp_one_match", "0");   // 1 on lobby servers (pool-agent): one match, then everyone goes back to the lobby page
+	c_podium = register_cvar("csp_podium", "1");   // the ending: podium, dance, the winner's Deagle (0 = plain results)
+	c_laststand = register_cvar("csp_podium_laststand", "0");   // 1: when the Deagle shows up, 2nd-4th get knives and a 2 s last stand
 	c_autojoin = register_cvar("csp_autojoin", "1");   // put new humans on a team without the team/class menus   // 1 = old every-turn buy menu as well as the buy zones
 
 	register_srvcmd("csp_start", "cmd_start");
@@ -388,6 +413,8 @@ public plugin_init()
 	register_srvcmd("csp_stuff", "cmd_stuff");       // dev: csp_stuff <player> <command...> runs a command on that client   // dev: csp_botname <name> renames a bot (name-collision tests)
 	register_srvcmd("csp_test_remote", "cmd_test_remote");
 	register_srvcmd("csp_give", "cmd_give");   // dev: csp_give <seat> <item index> puts an item in that seat's inventory (0 Knife Out, 1 Bhop Script)
+	register_srvcmd("csp_finish", "cmd_finish");   // dev: csp_finish [seat] ends the match now (the podium); with a seat, that seat wins
+	register_srvcmd("csp_podium_aim", "cmd_pod_aim");   // dev: csp_podium_aim <place 2-4> points the armed winner's view at that pawn (scripted shooting tests)
 	register_srvcmd("csp_board", "cmd_board_srv");          // csp_board <map>: switch to another board (between matches)   // dev: csp_force_mg <minigame index> for the next pick (-1 clears)   // dev: drop the director camera to compare   // dev: movement state of the active player     // dev: move every human to spectator (camera client, streams)
 	register_clcmd("csp_nav", "cmd_nav");   // phones: the page's menu buttons (pick <seq> <item>, up, down, ok, back <seq>)
 	register_clcmd("say /party", "cmd_start_client");
@@ -400,6 +427,7 @@ public plugin_init()
 	RegisterHookChain(RG_CBasePlayer_Spawn, "hc_spawn_post", true);
 	RegisterHookChain(RG_CBasePlayer_Killed, "hc_killed_post", true);
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "hc_takedmg_post", true);
+	RegisterHookChain(RG_CBasePlayer_TakeDamage, "hc_takedmg_pre", false);   // podium: the winner's Deagle kills in one
 	RegisterHookChain(RG_CSGameRules_FPlayerCanTakeDamage, "hc_can_take_damage", false);
 	RegisterHookChain(RG_ThrowHeGrenade, "hc_throw_he_post", true);
 	RegisterHookChain(RG_CBasePlayer_ResetMaxSpeed, "hc_reset_maxspeed_post", true);
@@ -692,6 +720,7 @@ public task_ring_one(taskid)
 Float:ring_every() { new Float:t = float(floatround(0.1 * float(g_nodeCount) + 0.5, floatround_ceil)); return t < 3.0 ? 3.0 : t; }
 
 xs_vec_sub_simple(const Float:a[3], const Float:b[3], Float:out[3]) { out[0] = a[0] - b[0]; out[1] = a[1] - b[1]; out[2] = a[2] - b[2]; }
+xs_vec_add_simple(const Float:a[3], const Float:b[3], Float:out[3]) { out[0] = a[0] + b[0]; out[1] = a[1] + b[1]; out[2] = a[2] + b[2]; }
 
 beam(const Float:a[3], const Float:b[3], r, g, bl, width, Float:life)
 {
@@ -823,6 +852,38 @@ public cmd_force_mg() { new a[8]; read_argv(1, a, charsmax(a)); g_forceMg = str_
 
 public cmd_give() { new a[8], s, it; read_argv(1, a, charsmax(a)); s = str_to_num(a); read_argv(2, a, charsmax(a)); it = str_to_num(a); if (s < 0 || s >= SEATS || it < 0 || it >= IT_COUNT) return PLUGIN_HANDLED; server_print("[CSP] seat %d gets %s: %s", s, ITEM_NAME[it], give_item(s, it) ? "ok" : "inventory full"); return PLUGIN_HANDLED; }
 
+public cmd_finish()
+{
+	if (g_state != ST_BOARD || g_diceOpen) { server_print("[CSP] csp_finish: only on the board between rolls"); return PLUGIN_HANDLED; }
+	if (read_argc() > 1) { new a[8]; read_argv(1, a, charsmax(a)); new s = str_to_num(a); if (s >= 0 && s < SEATS) g_stars[s] += 100; }
+	remove_task(TASK_FLOW); g_hopActive = false;
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		if (!is_user_connected(id) || is_user_bot(id)) continue;
+		if (g_navMenu[id]) { g_wdCancel = true; menu_cancel(id); g_wdCancel = false; }
+		nav_end(id); show_menu(id, 0, " ", 0);
+	}
+	flow_finish();
+	return PLUGIN_HANDLED;
+}
+public cmd_pod_aim()
+{
+	new a[8]; read_argv(1, a, charsmax(a));
+	new k = str_to_num(a) - 1, w = g_seatPlayer[g_podSeat[0]];
+	if (!g_podArmed || k < 1 || k >= SEATS || !is_user_alive(w)) { server_print("[CSP] csp_podium_aim: no armed winner, or no such place"); return PLUGIN_HANDLED; }
+	new t = g_seatPlayer[g_podSeat[k]];
+	if (!is_user_alive(t)) { server_print("[CSP] csp_podium_aim: place %d is down", k + 1); return PLUGIN_HANDLED; }
+	new Float:eye[3], Float:ofs[3], Float:to[3], Float:d[3], Float:ang[3];
+	entity_get_vector(w, EV_VEC_origin, eye); entity_get_vector(w, EV_VEC_view_ofs, ofs); xs_vec_add_simple(eye, ofs, eye);
+	entity_get_vector(t, EV_VEC_origin, to); to[2] += 8.0;   // chest
+	xs_vec_sub_simple(to, eye, d); vector_to_angle(d, ang);
+	if (ang[0] > 180.0) ang[0] -= 360.0;
+	ang[0] = -ang[0];   // view pitch: down is positive
+	entity_set_vector(w, EV_VEC_v_angle, ang); entity_set_vector(w, EV_VEC_angles, ang);   // svc_setangle sends pev->angles
+	entity_set_int(w, EV_INT_fixangle, 1);
+	server_print("[CSP] winner aims at place %d (pitch %.1f yaw %.1f)", k + 1, ang[0], ang[1]);
+	return PLUGIN_HANDLED;
+}
 public cmd_nocam() { remove_task(TASK_CAM); release_cameras(); server_print("[CSP] camera released"); return PLUGIN_HANDLED; }
 
 // dev: skip the board and go straight to a minigame map. csp_test_remote <mg index> [1v3|ffa] [map]
@@ -998,6 +1059,7 @@ match_abort()
 	for (new k = 0; k < sizeof g_diceEnt; k++) if (is_valid_ent(g_diceEnt[k])) entity_set_int(g_diceEnt[k], EV_INT_effects, EF_NODRAW);
 	g_diceOpen = false;
 	g_state = ST_IDLE;
+	pod_clear();
 	board_music(false);
 	restore_cvars();
 	clear_traps();
@@ -1615,7 +1677,13 @@ public hc_spawn_post(id)
 {
 	if (!is_user_alive(id)) return;
 	new s = seat_of(id);
-	if (g_state == ST_BOARD || g_state == ST_END)
+	if (g_state == ST_END && g_pod)
+	{
+		if (s < 0) { user_silentkill(id); return; }
+		pod_place(g_podPlaceOf[s]);
+		sync_money(s); sync_score(s);
+	}
+	else if (g_state == ST_BOARD || g_state == ST_END)
 	{
 		if (s < 0) { user_silentkill(id); return; }
 		rg_remove_all_items(id);
@@ -1678,6 +1746,12 @@ place_pawn(s)
 
 public hc_can_take_damage(const victim, const attacker)
 {
+	// podium: only the winner's Deagle, and in the last stand the knives coming for the winner
+	if (g_state == ST_END && g_pod && g_podArmed && victim != attacker && is_user_connected(attacker) && seat_of(victim) >= 0 && seat_of(attacker) >= 0)
+	{
+		new w = g_seatPlayer[g_podSeat[0]];
+		if (attacker == w || (g_podStand && victim == w)) { SetHookChainReturn(ATYPE_INTEGER, true); return HC_SUPERCEDE; }
+	}
 	if (g_lobby || g_state == ST_BOARD || g_state == ST_MG_INTRO || g_state == ST_MG_RESULT || g_state == ST_END || g_state == ST_REMOTE_WAIT || g_state == ST_REMOTE_RACE || g_state == ST_RESUME)
 		{ SetHookChainReturn(ATYPE_INTEGER, false); return HC_SUPERCEDE; }
 	if (g_state == ST_MINIGAME && g_mg == MG_HNS && is_user_connected(attacker))
@@ -1693,7 +1767,7 @@ public hc_can_take_damage(const victim, const attacker)
 // One broadcast camera everybody watches during the board phase, like a TV director
 // following whoever's turn it is. Shots: intro (front-on at the character), follow (behind,
 // looking down the path), dice (low angle up at the crate), land, hostage cutaway, wide.
-enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE, CAM_MAP };
+enum { CAM_FOLLOW = 0, CAM_INTRO, CAM_DICE, CAM_LAND, CAM_HOSTAGE, CAM_WIDE, CAM_MAP, CAM_PODIUM };
 // cam_log (dev): this frame was a cut (left out), how far the wall clamp moved the camera, how far its trace origin moved
 new bool:g_camCut, Float:g_camClampD, Float:g_camFromD, Float:g_camFrom[3];
 new g_camMode, Float:g_camUntil, bool:g_camSnap, Float:g_camLook[3], Float:g_camFwd[3];
@@ -1727,6 +1801,7 @@ public fw_startframe()
 	if (dt < 0.016) return FMRES_IGNORED;
 	last = now;
 	if (g_hopActive) hop_step();
+	if (g_pod) pod_step();
 	if (task_exists(TASK_CAM)) cam_step(dt);
 	static Float:lightAt;
 	if (now - lightAt > 0.25 || now < lightAt) { lightAt = now; pawn_lights(); }
@@ -1812,9 +1887,10 @@ cam_step(Float:dt)
 	if (onPawn) base[2] = g_camBaseZ;
 	if (g_camMode == CAM_HOSTAGE) { base = g_nodePos[g_hostage]; base[2] += 40.0; }
 	else if (g_camMode == CAM_WIDE) cam_group_base(s, P, base);
-	new bool:mapView = (g_camMode == CAM_MAP);
+	new bool:mapView = (g_camMode == CAM_MAP || g_camMode == CAM_PODIUM);   // fixed shots: no placements, no wall clamp
 	new Float:from[3];
-	if (mapView) { want = g_mapCam; look = g_mapLook; map_marks_step(); }
+	if (g_camMode == CAM_PODIUM) { want = g_podCam; look = g_podLook; }
+	else if (mapView) { want = g_mapCam; look = g_mapLook; map_marks_step(); }
 	else
 	{
 	offset(base, F, R, LOOK[g_camMode][0], LOOK[g_camMode][1], LOOK[g_camMode][2], look);
@@ -1890,8 +1966,8 @@ cam_step(Float:dt)
 		new target = g_seatPlayer[g_cur];
 		for (new id = 1; id <= MaxClients; id++)
 		{
-			if (!is_user_connected(id) || is_user_bot(id)) continue;
-			if (is_user_alive(id)) attach_view(id, g_cam);
+			if (!is_user_connected(id) || is_user_bot(id) || g_ownView[id]) continue;
+			if (is_user_alive(id) || g_pod) attach_view(id, g_cam);   // shot on the podium: still watching it
 			else if (target && is_user_alive(target))
 			{
 				set_member(id, m_hObserverTarget, target);
@@ -2310,7 +2386,7 @@ crosshair_sync()
 	for (new id = 1; id <= MaxClients; id++)
 	{
 		if (!is_user_connected(id) || is_user_bot(id)) continue;
-		new f = get_member(id, m_iHideHUD), want = hide ? (f | HIDEHUD_CROSSHAIR) : (f & ~HIDEHUD_CROSSHAIR);
+		new f = get_member(id, m_iHideHUD), want = (hide && !g_ownView[id]) ? (f | HIDEHUD_CROSSHAIR) : (f & ~HIDEHUD_CROSSHAIR);
 		if (want != f) set_member(id, m_iHideHUD, want);
 	}
 }
@@ -3255,8 +3331,9 @@ public flow_dice_done()
 
 public hc_reset_maxspeed_post(const id)
 {
-	// a maxspeed of 1 also kills jumping (found the hard way), so the crate phase pins position instead
-	#pragma unused id
+	// a maxspeed of 1 also kills jumping (found the hard way), so the crate phase pins position instead.
+	// The winner holding the Deagle on the podium is meant to stay put.
+	if (g_podArmed && id == g_seatPlayer[g_podSeat[0]]) set_entvar(id, var_maxspeed, 1.0);
 }
 
 public flow_step()
@@ -3861,6 +3938,7 @@ public cmd_nav(id)
 public fw_nav_cmdstart(id, uc)
 {
 	if (id >= 1 && id <= 32) get_uc(uc, UC_ForwardMove, g_navMove[id]);
+	if (g_pod) pod_cmd(id, uc);
 	return FMRES_IGNORED;
 }
 
@@ -5054,6 +5132,12 @@ public hc_throw_he_post(const index)
 public task_regive_he(taskid) { new id = taskid - TASK_NADE; if (is_user_alive(id) && g_state == ST_MINIGAME) rg_give_item(id, "weapon_hegrenade"); }
 
 // damage dealt to opponents this fight: the tiebreak when time runs out with equal survivors and health
+public hc_takedmg_pre(const victim, const inflictor, const attacker, Float:damage, bitsDamageType)
+{
+	if (g_pod && g_podArmed && victim != attacker && attacker == g_seatPlayer[g_podSeat[0]] && is_user_connected(attacker)) SetHookChainArg(4, ATYPE_FLOAT, 1000.0);
+	return HC_CONTINUE;
+}
+
 public hc_takedmg_post(const victim, const inflictor, const attacker, Float:damage, bitsDamageType)
 {
 	if (g_state != ST_MINIGAME || g_mgDone || victim == attacker || !(1 <= attacker <= MaxClients)) return HC_CONTINUE;
@@ -5066,6 +5150,7 @@ public hc_takedmg_post(const victim, const inflictor, const attacker, Float:dama
 
 public hc_killed_post(const victim, const killer)
 {
+	if (g_pod) { if (killer != victim && seat_of(victim) >= 0) g_podKills++; return; }
 	if (g_state != ST_MINIGAME || g_mgDone) return;
 	if (mg_respawns(g_mg)) { dm_killed(victim, killer); return; }
 	if (g_mgFmt != FMT_FFA && g_mgFmt != FMT_DUEL) return;
@@ -5384,7 +5469,8 @@ public flow_finish()
 		if (g_stars[b] > g_stars[a] || (g_stars[b] == g_stars[a] && g_money[b] > g_money[a])) { order[i] = b; order[j] = a; }
 	}
 	g_cur = order[0];
-	g_camSnap = true; cam_shot(CAM_INTRO);   // the winner, front-on (it was left on the last minigame's wide shot)
+	new bool:pod = pod_start(order);   // the podium shot, or else the winner front-on (it was left on the last minigame's wide shot)
+	if (!pod) { g_camSnap = true; cam_shot(CAM_INTRO); }
 	banner("%s wins CS Party!", g_seatName[order[0]]);
 	{
 		new JSON:o = json_init_object(), humans = 0; for (new s = 0; s < SEATS; s++) if (!g_seatBot[s]) humans++;
@@ -5395,7 +5481,8 @@ public flow_finish()
 	}
 	client_cmd(0, "echo CSP_THEME_PLAY");   // the browser page plays the theme over the results
 	for (new i = 0; i < SEATS; i++) { new s = order[i]; announce("%d. %s  %d stars  $%d  (%d minigame wins)", i + 1, g_seatName[s], g_stars[s], g_money[s], g_mgWins[s]); sync_score(s); }
-	set_task(spd(15.0), "flow_reset", TASK_FLOW);
+	if (pod) set_task(POD_SONG + 2.0, "task_pod_done", TASK_FLOW);   // real seconds: the song doesn't speed up with csp_speed
+	else set_task(spd(15.0), "flow_reset", TASK_FLOW);
 }
 
 draw_awards()
@@ -5450,6 +5537,346 @@ award(cat, bool:cash)
 	new l = strlen(g_awardLines);
 	formatex(g_awardLines[l], charsmax(g_awardLines) - l, "%s%s: %s", l ? "^n" : "", AW_NAME[cat], names);
 	announce("Bonus %s - %s (%s): %s", cash ? "$3000" : "star", AW_NAME[cat], AW_WHY[cat], names);
+}
+
+// ================================================================ podium ==
+// The ending. At the winner banner the four pawns stand on a 1-2-3 podium (4th on the floor beside it) in an open
+// spot of the board map (no map change: a reload would kill the punchline) and dance to the theme, which the
+// browser page starts from the top on the same CSP_THEME_PLAY. On "Fire in the hole!" 1st place quietly gets a
+// Deagle with 3 rounds: no prompt, no callout, their own view back. Whether they shoot is up to them. A bot winner
+// holds it and never fires (bot_stop is on at the end). Native clients don't hear the theme: the steps and the
+// Deagle run off the server clock from the same moment.
+// Is there room for the podium at floor point C, the camera out along F? Fills spots, camera and look point.
+bool:pod_fit(const Float:C[3], const Float:F[3], Float:spots[SEATS][3], Float:cam[3], Float:look[3])
+{
+	new Float:L[3]; L[0] = -F[1]; L[1] = F[0]; L[2] = 0.0;   // the camera's right, looking back along -F
+	new tr = create_tr2(), bool:ok = true;
+	for (new k = 0; k < SEATS && ok; k++)
+	{
+		new Float:x[3], Float:dn[3], Float:fr;
+		for (new i = 0; i < 2; i++) x[i] = C[i] + L[i] * POD_LAT[k] * POD_W;
+		x[2] = C[2] + 40.0; dn = x; dn[2] = C[2] - 40.0;
+		engfunc(EngFunc_TraceLine, x, dn, IGNORE_MONSTERS, 0, tr);
+		get_tr2(tr, TR_flFraction, fr);
+		if (get_tr2(tr, TR_StartSolid) || fr >= 1.0) { ok = false; break; }
+		new Float:floorZ = x[2] + (dn[2] - x[2]) * fr;
+		if (floatabs(floorZ - C[2]) > 10.0) { ok = false; break; }
+		// room for the block (a pawn standing on the floor there) and for the pawn on top, with head room to hop
+		x[2] = floorZ + 37.0; if (!spot_clear(x)) { ok = false; break; }
+		x[2] = floorZ + POD_H[k] + 37.0; if (!spot_clear(x)) { ok = false; break; }
+		new Float:up[3]; up = x; up[2] += 110.0;
+		engfunc(EngFunc_TraceHull, x, up, IGNORE_MONSTERS, HULL_HUMAN, 0, tr);
+		get_tr2(tr, TR_flFraction, fr); if (fr < 1.0) { ok = false; break; }
+		spots[k] = x;
+	}
+	free_tr2(tr);
+	if (!ok) return false;
+	for (new i = 0; i < 2; i++) look[i] = C[i] + L[i] * 0.9 * POD_W;   // a little right of the middle: the group sits left of the score table
+	look[2] = C[2] + 62.0;
+	for (new i = 0; i < 2; i++) cam[i] = look[i] + F[i] * 250.0;
+	cam[2] = look[2] + 34.0;
+	new Float:got[3];
+	if (!cam_open(cam) || cam_reach(look, cam, got) < 0.99) return false;
+	for (new k = 0; k < SEATS; k++) { new Float:h[3]; h = spots[k]; h[2] += 20.0; if (cam_reach(cam, h, got) < 0.99) return false; }   // everyone in plain view
+	return true;
+}
+
+// The podium goes on the first board space (from the start space on, which is a spawn and usually open) with room
+// for it, facing whichever way leaves room for the camera.
+bool:pod_find()
+{
+	for (new i = 0; i < g_nodeCount; i++)
+	{
+		new n = (g_startNode + i) % g_nodeCount, Float:C[3], Float:dn[3], Float:fr, tr = create_tr2();
+		C = g_nodePos[n]; C[2] += 36.0; dn = C; dn[2] -= 140.0;
+		engfunc(EngFunc_TraceLine, C, dn, IGNORE_MONSTERS, 0, tr);
+		get_tr2(tr, TR_flFraction, fr); free_tr2(tr);
+		if (fr >= 1.0) continue;
+		C[2] += (dn[2] - C[2]) * fr;
+		for (new a = 0; a < 16; a++)
+		{
+			new Float:yaw = float(a) * 22.5, Float:F[3];
+			F[0] = floatcos(yaw, degrees); F[1] = floatsin(yaw, degrees); F[2] = 0.0;
+			if (!pod_fit(C, F, g_podSpot, g_podCam, g_podLook)) continue;
+			g_podYaw = yaw;
+			dbg("Podium at space %d (%s), facing %.0f: floor %.0f %.0f %.0f, camera %.0f %.0f %.0f.", n, g_nodeArea[n], yaw, C[0], C[1], C[2], g_podCam[0], g_podCam[1], g_podCam[2]);
+			return true;
+		}
+	}
+	dbg("No room for a podium on this board: plain results.");
+	return false;
+}
+
+pod_ent(const model[], const Float:o[3], Float:yaw)
+{
+	new e = create_entity("info_target");
+	if (!is_valid_ent(e)) return 0;
+	entity_set_string(e, EV_SZ_classname, "csp_podium");
+	entity_set_model(e, model);
+	entity_set_origin(e, o);
+	new Float:ang[3]; ang[1] = yaw; entity_set_vector(e, EV_VEC_angles, ang);
+	entity_set_int(e, EV_INT_movetype, MOVETYPE_NONE);
+	entity_set_int(e, EV_INT_solid, SOLID_NOT);
+	if (g_podEntN < sizeof g_podEnt) g_podEnt[g_podEntN++] = e;
+	return e;
+}
+
+// Blocks: board tiles stacked every 4 units, tinted gold, silver and bronze, the place number on a coin out front
+// (csp_case.mdl's number bodies). The top tile carries the block's solid box, so the client predicts standing on it.
+pod_build()
+{
+	new Float:F[3]; F[0] = floatcos(g_podYaw, degrees); F[1] = floatsin(g_podYaw, degrees);
+	new Float:L[3]; L[0] = -F[1]; L[1] = F[0];
+	for (new k = 0; k < 3; k++)
+	{
+		new Float:base[3]; base = g_podSpot[k]; base[2] -= POD_H[k] + 37.0;
+		for (new Float:z = POD_H[k] - 2.0; z > 0.0; z -= 4.0)
+		{
+			new Float:o[3]; o = base; o[2] += z;
+			new e = pod_ent("models/csp_tile.mdl", o, g_podYaw);
+			if (!e) continue;
+			entity_set_int(e, EV_INT_skin, NT_START);
+			entity_set_int(e, EV_INT_renderfx, kRenderFxGlowShell);
+			new Float:col[3]; for (new i = 0; i < 3; i++) col[i] = float(POD_COL[k][i]);
+			entity_set_vector(e, EV_VEC_rendercolor, col);
+			entity_set_float(e, EV_FL_renderamt, 6.0);
+			if (z == POD_H[k] - 2.0)
+			{
+				entity_set_int(e, EV_INT_solid, SOLID_BBOX);
+				new Float:mn[3], Float:mx[3]; mn[0] = -30.0; mn[1] = -30.0; mn[2] = -z; mx[0] = 30.0; mx[1] = 30.0; mx[2] = 2.0;
+				entity_set_size(e, mn, mx);
+			}
+		}
+		new Float:p[3];
+		for (new i = 0; i < 2; i++) p[i] = base[i] + F[i] * 47.0 - L[i] * 16.5;   // the coin sits 16.5 off the model's origin (build_case.py)
+		p[2] = base[2] + POD_H[k] * 0.5 - 12.5;
+		new c = pod_ent("models/csp_case.mdl", p, g_podYaw);
+		if (!c) continue;
+		entity_set_int(c, EV_INT_body, 8 + k + 1);
+		// the model's origin is under the coin, and on the 3rd block under the floor: with no size the entity sits in a
+		// solid leaf and is never sent. A box around the coin links it where it can be seen.
+		entity_set_size(c, Float:{-20.0, -20.0, 0.0}, Float:{20.0, 20.0, 26.0});   // world axes, any yaw
+	}
+}
+
+// A pawn on its spot: facing the camera, frozen, solid (it has to be hittable once the Deagle shows up).
+pod_place(k)
+{
+	new s = g_podSeat[k], id = g_seatPlayer[s];
+	if (!is_user_alive(id)) return;
+	rg_remove_all_items(id);
+	rg_set_user_model(id, SKIN_MODEL[g_seatSkin[s]]);
+	entity_set_int(id, EV_INT_solid, SOLID_SLIDEBOX);
+	entity_set_origin(id, g_podSpot[k]);
+	entity_set_vector(id, EV_VEC_velocity, Float:{0.0, 0.0, 0.0});
+	new Float:ang[3]; ang[1] = g_podYaw;
+	entity_set_vector(id, EV_VEC_angles, ang); entity_set_vector(id, EV_VEC_v_angle, ang);
+	entity_set_int(id, EV_INT_fixangle, 1);
+	freeze(id);
+}
+
+bool:pod_start(const order[SEATS])
+{
+	if (!get_pcvar_num(c_podium) || !pod_find()) return false;
+	for (new k = 0; k < SEATS; k++) { g_podSeat[k] = order[k]; g_podPlaceOf[order[k]] = k; }
+	g_pod = true; g_podArmed = false; g_podStand = false; g_podKills = 0; g_podDeagle = 0;
+	g_podEntN = 0;
+	pod_build();
+	set_cvar_string("mp_freeforall", "1");   // whatever teams the pawns are on, the winner's shots count (restored by match_abort)
+	for (new k = 0; k < SEATS; k++)
+	{
+		new id = g_seatPlayer[g_podSeat[k]];
+		if (!is_user_connected(id)) continue;
+		if (!is_user_alive(id)) rg_round_respawn(id);   // hc_spawn_post puts them on the podium
+		else pod_place(k);
+	}
+	// the dance's sequences, looked up on any pawn: the CS player models share one sequence table
+	g_podSeqUp[0] = g_podSeqUp[1] = g_podSeqDown = g_podGaitIdle = g_podGaitDuck = g_podGaitJump = -1;
+	for (new k = 0; k < SEATS; k++)
+	{
+		new p = g_seatPlayer[g_podSeat[k]];
+		if (!is_user_alive(p)) continue;
+		g_podSeqUp[0] = lookup_sequence(p, "ref_aim_dualpistols"); g_podSeqUp[1] = lookup_sequence(p, "ref_aim_c4");
+		g_podSeqDown = lookup_sequence(p, "crouch_aim_dualpistols");
+		g_podGaitIdle = lookup_sequence(p, "idle1"); g_podGaitDuck = lookup_sequence(p, "crouch_idle"); g_podGaitJump = lookup_sequence(p, "jump");
+		break;
+	}
+	if (!g_podFwd) g_podFwd = register_forward(FM_AddToFullPack, "fw_pod_pack", 1);
+	g_camSnap = true; cam_shot(CAM_PODIUM);
+	fade(0, 0.4);   // cut in from black like a turn does (and clears a fade a cut-short turn left on the screen)
+	g_podT0 = get_gametime();
+	set_task(POD_FITH, "task_pod_arm", TASK_POD);
+	return true;
+}
+
+// Where the song is, in beats from the first downbeat (negative before it)
+Float:pod_beat() { return (get_gametime() - g_podT0 - POD_ONE) / POD_BEAT; }
+
+bool:pod_dancing(id)
+{
+	if (!g_pod || !is_user_alive(id)) return false;
+	new s = seat_of(id);
+	if (s < 0) return false;
+	if (g_ownView[id]) return false;   // the winner holding the Deagle, a knife in the last stand
+	return true;
+}
+
+// Half-time bounce: one crouch every other beat, 1st and 3rd on the even beats, 2nd and 4th on the odd ones, so the
+// line ripples instead of moving in lockstep. Each pawn sways a little, and in every 8-beat phrase one of them
+// (in turn) spins all the way round; every 16 beats each one hops once, on its own beat.
+#define POD_HOP_BEATS 1.5
+Float:pod_hop(k, Float:b)
+{
+	if (b < 0.0) return -1.0;
+	new Float:start = float(floatround(b / 16.0, floatround_floor)) * 16.0 + 2.0 + 4.0 * float(k);
+	new Float:h = (b - start) / POD_HOP_BEATS;
+	return (h >= 0.0 && h < 1.0) ? h : -1.0;
+}
+
+public fw_pod_pack(es, e, ent, host, hostflags, player, pSet)
+{
+	if (!player || !g_pod || !pod_dancing(ent)) return FMRES_IGNORED;
+	new s = seat_of(ent), k = g_podPlaceOf[s];
+	new Float:b = pod_beat();
+	if (b < 0.0) return FMRES_IGNORED;
+	new Float:ang[3]; get_es(es, ES_Angles, ang);
+	new Float:sway = 18.0 * floatsin((b + float(k) * 1.5) * 3.14159 / 4.0);   // 8-beat sway, out of phase per pawn
+	new phrase = floatround(b / 8.0, floatround_floor), Float:inPhrase = b - float(phrase) * 8.0;
+	if (phrase % 4 == k && inPhrase >= 4.0 && inPhrase < 6.0) sway += 360.0 * (inPhrase - 4.0) / 2.0;
+	ang[0] = 0.0; ang[1] = g_podYaw + sway;
+	set_es(es, ES_Angles, ang);
+	if (pod_hop(k, b) >= 0.0) { if (g_podGaitJump >= 0) set_es(es, ES_GaitSequence, g_podGaitJump); return FMRES_IGNORED; }
+	new Float:cyc = b + float(k % 2);                       // 2nd and 4th a beat behind
+	new Float:ph = cyc - float(floatround(cyc / 2.0, floatround_floor)) * 2.0;   // 0..2 through this pawn's 2-beat cycle
+	new bounce = floatround(cyc / 2.0, floatround_floor);
+	if (ph < 0.9 && g_podSeqDown >= 0 && g_podGaitDuck >= 0)
+	{
+		set_es(es, ES_Sequence, g_podSeqDown); set_es(es, ES_GaitSequence, g_podGaitDuck);
+		new Float:o[3]; get_es(es, ES_Origin, o); o[2] -= POD_DUCK; set_es(es, ES_Origin, o);
+	}
+	else
+	{
+		new up = g_podSeqUp[(bounce + k) % 2];
+		if (up >= 0) set_es(es, ES_Sequence, up);
+		if (g_podGaitIdle >= 0) set_es(es, ES_GaitSequence, g_podGaitIdle);
+	}
+	return FMRES_IGNORED;
+}
+
+// every server frame while the podium is up: the hops (the pawns are frozen, so they're moved like the board's hops)
+pod_step()
+{
+	new Float:b = pod_beat();
+	for (new k = 0; k < SEATS; k++)
+	{
+		new id = g_seatPlayer[g_podSeat[k]];
+		if (!pod_dancing(id)) continue;
+		new Float:h = pod_hop(k, b), Float:o[3];
+		o = g_podSpot[k];
+		if (h >= 0.0) o[2] += 4.0 * 30.0 * h * (1.0 - h);
+		entity_set_origin(id, o);
+		entity_set_vector(id, EV_VEC_velocity, Float:{0.0, 0.0, 0.0});
+	}
+}
+
+// The winner's own view back, everyone else still on the camera
+pod_own_view(id, bool:on)
+{
+	g_ownView[id] = on;
+	if (is_user_bot(id)) return;
+	attach_view(id, on ? id : g_cam);
+}
+
+public fw_pod_sound(ent, chan, const sample[]) { return equal(sample, "items/", 6) ? FMRES_SUPERCEDE : FMRES_IGNORED; }
+
+public task_pod_arm()
+{
+	if (!g_pod || g_state != ST_END) return;
+	new w = g_seatPlayer[g_podSeat[0]];
+	if (!is_user_alive(w)) { dbg("Podium: the winner isn't there, no Deagle."); return; }
+	g_podArmed = true;
+	pod_own_view(w, true);
+	unfreeze(w);
+	entity_set_origin(w, g_podSpot[0]);
+	new Float:ang[3]; ang[1] = g_podYaw;
+	entity_set_vector(w, EV_VEC_angles, ang); entity_set_vector(w, EV_VEC_v_angle, ang); entity_set_int(w, EV_INT_fixangle, 1);
+	// no pickup icon, no pickup sound: they find it in their hand
+	set_msg_block(get_user_msgid("WeapPickup"), BLOCK_ONCE); set_msg_block(get_user_msgid("AmmoPickup"), BLOCK_ONCE);
+	g_podSndFwd = register_forward(FM_EmitSound, "fw_pod_sound");
+	g_podDeagle = rg_give_item(w, "weapon_deagle");
+	unregister_forward(FM_EmitSound, g_podSndFwd); g_podSndFwd = 0;
+	if (is_valid_ent(g_podDeagle)) set_member(g_podDeagle, m_Weapon_iClip, 3);
+	rg_set_user_bpammo(w, WEAPON_DEAGLE, 0);
+	set_entvar(w, var_maxspeed, 1.0);
+	dbg("Podium: %s has the Deagle.", g_seatName[g_podSeat[0]]);
+	if (get_pcvar_num(c_laststand))
+	{
+		g_podStand = true;
+		for (new k = 1; k < SEATS; k++)
+		{
+			new id = g_seatPlayer[g_podSeat[k]];
+			if (!is_user_alive(id)) continue;
+			pod_own_view(id, true);
+			unfreeze(id);
+			entity_set_origin(id, g_podSpot[k]);
+			rg_give_item(id, "weapon_knife");
+		}
+		set_task(POD_STAND, "task_pod_stand_over", TASK_POD + 1);
+	}
+}
+
+public task_pod_stand_over()
+{
+	g_podStand = false;
+	if (!g_pod) return;
+	for (new k = 1; k < SEATS; k++)
+	{
+		new id = g_seatPlayer[g_podSeat[k]];
+		if (!is_user_connected(id) || !g_ownView[id]) continue;
+		pod_own_view(id, false);
+		if (is_user_alive(id)) pod_place(k);
+	}
+}
+
+// the winner stays put while holding the Deagle: they can turn and shoot, not walk or jump off
+pod_cmd(id, uc)
+{
+	if (!g_podArmed || id != g_seatPlayer[g_podSeat[0]] || !is_user_alive(id)) return;
+	set_uc(uc, UC_ForwardMove, 0.0); set_uc(uc, UC_SideMove, 0.0); set_uc(uc, UC_UpMove, 0.0);
+	set_uc(uc, UC_Buttons, get_uc(uc, UC_Buttons) & ~(IN_JUMP | IN_DUCK | IN_FORWARD | IN_BACK | IN_MOVELEFT | IN_MOVERIGHT));
+}
+
+public task_pod_done()
+{
+	new JSON:o = json_init_object();
+	new clip = is_valid_ent(g_podDeagle) ? get_member(g_podDeagle, m_Weapon_iClip) : 3;
+	json_object_set_bool(o, "armed", g_podArmed); jnum(o, "shots", g_podArmed ? 3 - clip : 0); jnum(o, "kills", g_podKills);
+	json_object_set_bool(o, "winner_bot", g_seatBot[g_podSeat[0]]);
+	csp_event("podium", o);
+	dbg("Podium over: %d shots, %d kills.", g_podArmed ? 3 - clip : 0, g_podKills);
+	flow_reset();
+}
+
+// Gone with the match (match_abort, after the state is idle so the respawns below are plain spawns)
+pod_clear()
+{
+	if (!g_pod) return;
+	g_pod = false; g_podArmed = false; g_podStand = false;
+	remove_task(TASK_POD); remove_task(TASK_POD + 1);
+	if (g_podFwd) { unregister_forward(FM_AddToFullPack, g_podFwd, 1); g_podFwd = 0; }
+	for (new i = 0; i < g_podEntN; i++) if (is_valid_ent(g_podEnt[i])) remove_entity(g_podEnt[i]);
+	g_podEntN = 0;
+	for (new id = 1; id <= MaxClients; id++)
+	{
+		g_ownView[id] = false;
+		if (!is_user_connected(id) || seat_of(id) < 0) continue;
+		if (is_user_alive(id)) rg_remove_all_items(id);
+		else
+		{
+			new TeamName:tm = get_member(id, m_iTeam);
+			if (tm == TEAM_TERRORIST || tm == TEAM_CT) rg_round_respawn(id);
+		}
+	}
 }
 
 public flow_reset()
