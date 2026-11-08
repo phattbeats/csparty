@@ -582,3 +582,12 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - **Alert gap:** nothing fires when `/api/capacity` shows `hosts: []`; add a check.
 - **pool_live.js on the RAID:** the playwright image was pruned (re-pulled `mcr.microsoft.com/playwright:v1.55.0-noble`); `--device /dev/dri`
   + `--use-angle=gl-egl` crashes the browser at newPage, so use SwiftShader (`--use-angle=swiftshader --enable-unsafe-swiftshader`).
+
+## PHA-3991: lobby Worker on the free plan, Analytics Engine dropped (2026-11-08 ~05:05 UTC)
+- main 7d4816f: no `EVENTS` binding in `lobby/wrangler.toml`, so a plain `npm run deploy` works on the free account; the `-c` copy
+  from #4367/#4335 is no longer needed. Events live in the Directory DO's SQLite rollups; the AE SQL panel on `/admin` stays hidden.
+- Deployed with `CLOUDFLARE_API_TOKEN=$CLOUDFLARE_PHATT_TECH CLOUDFLARE_ACCOUNT_ID=d444596cbb456a629e7d40071e47eb23 npm run deploy`,
+  gate checked in the same command: peers 0, 0 running lobbies, 0 humans (rcon), `/api/public` empty. Only `/admin/index.html` and
+  `/admin/admin.js` changed. Version `ccc8d4a3-ee3d-4baf-8c15-bd370f79c09e`; rollback `npx wrangler rollback bdd72d88-94ac-4575-8fc3-b106b702bcef`.
+- Admin screenshots: `appdata/cs-party/shots-3991/shot.js` in the RAID playwright image (SwiftShader), node_modules from
+  `test4367/work`, token read from the mounted `.env`; `/api/admin/action` is blocked in the script so it never changes anything.
