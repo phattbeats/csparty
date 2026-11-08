@@ -255,7 +255,8 @@
     try {
       const r = await api(`ae?preset=${encodeURIComponent($("ae-preset").value || "events")}&range=${$("range").value}`);
       if (!$("ae-preset").options.length) $("ae-preset").replaceChildren(...(r.presets || []).map((p) => el("option", { value: p }, p.replace(/_/g, " "))));
-      if (!r.configured) { $("ae-state").textContent = "Not set up: the Worker needs the AE_ACCOUNT_ID and AE_READ_TOKEN secrets (an API token with Account Analytics: Read). Events are still being written."; return; }
+      if (!r.configured) { $("ae-panel").hidden = true; return; }
+      $("ae-panel").hidden = false;
       if (r.error) { $("ae-state").textContent = `Query failed: ${r.error}`; return; }
       const cols = (r.meta || []).map((m) => m.name);
       $("ae").tHead.replaceChildren(el("tr", {}, cols.map((c) => el("th", {}, c))));

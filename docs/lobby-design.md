@@ -91,7 +91,7 @@ Assumed usage for a viral day: 2,000 lobbies created, 4 players each, average lo
 | TURN (only if we ever do A/WebRTC) | Cloudflare Realtime TURN ~1 TB/mo free then ~$0.05/GB (verify) | not used in B/C (game goes via WSS relay) | n/a until A |
 | **Game hosting (B)** | RAID power + upload | the real cost; ~10 to 30 lobbies concurrent | set `MAX_LOBBIES`, queue the rest |
 
-Cloudflare cost for phases 1 to 3 is **$0, or $5/mo if Analytics Engine needs Paid**. The cost that actually scales is game capacity, not the control plane. Cap concurrency in the agent so a spike queues instead of melting the host.
+Cloudflare cost for phases 1 to 3 is **$0**: Brandon chose (2026-11-07, PHA-3991) to skip Analytics Engine and keep events in the Directory SQLite rollups.
 
 ## 8. Analytics plan (privacy-light)
 

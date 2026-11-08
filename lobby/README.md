@@ -69,19 +69,19 @@ sharing the static `POOL`:
   minigame picks and results and match winners (`POST /api/events`, signed with `LOBBY_SECRET`; the P2
   pool-agent sends the plugin's `[CSPEV]` lines over its socket into the same path). Every event goes through the directory, which hashes
   the player id with a random salt it keeps for one UTC day only (`sha256(id + salt)`), then writes it to
-  **Workers Analytics Engine** (dataset `csparty_events`) and to hourly counters in its own SQLite
-  (`rollup`). No IPs, no chat, no cross-day ids. IPs exist only as keyed hashes in the 24 h create log and
+  hourly counters in its own SQLite (`rollup`; free plan). Workers Analytics Engine (dataset `csparty_events`)
+  is optional and off, because it needs Workers Paid: re-add the binding shown in `wrangler.toml` to turn it on. No IPs, no chat, no cross-day ids. IPs exist only as keyed hashes in the 24 h create log and
   the ban list.
 - **Dashboard** at `/admin` (design section 9): live lobbies and servers (polled every 3 s while the tab is
   visible), lobby detail with roster and timeline, funnel, time to start, where people leave, minigames,
-  winners, unique players per day, countries, errors and abuse, audit log, Analytics Engine SQL presets.
+  winners, unique players per day, countries, errors and abuse, audit log (and Analytics Engine SQL presets when that binding is on).
 - **Actions**, all audited: close a lobby, kick (optionally ban the browser and IP hash for N hours), ban /
   unban a hash, pause new parties (maintenance banner), max lobbies, creates per IP, public listings off,
   drain a server (deploy gate: drain, wait for "safe to deploy", deploy), broadcast a line to every lobby,
   CSV of the hourly counters.
 - **Auth**: `Authorization: Bearer <ADMIN_TOKEN>` (Worker secret, 24+ characters; unset = admin off). 10
-  wrong tokens in 15 minutes lock that IP hash out for 15 minutes. Optional secrets `AE_ACCOUNT_ID` and
-  `AE_READ_TOKEN` (Account Analytics: Read) turn on the Analytics Engine panel; everything else works without.
+  wrong tokens in 15 minutes lock that IP hash out for 15 minutes. With the optional AE binding, secrets `AE_ACCOUNT_ID` and
+  `AE_READ_TOKEN` (Account Analytics: Read) show an extra SQL panel; the panel stays hidden otherwise.
 - Closing a lobby frees its server and sends members home. On a static `POOL` server, players already in the
   game stay until they leave; a pool-agent's lobby server is stopped.
 
