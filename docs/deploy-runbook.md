@@ -1,4 +1,47 @@
-# CS Party deploy runbook (game-host, SWAG, Cloudflare)
+# CS Party deploy runbook
+
+## Where it runs now: vps1 (moved back from the RAID 2026-11-09, PHA-4090)
+
+Everything below this section is the history of the RAID deploy. **The live copy is on vps1**
+(`ssh -i /paperclip/.ssh/offbox_vps root@100.96.151.36`). Do not `docker run` or rebuild on the RAID: the RAID containers are
+stopped (kept, out of Unraid autostart) and are **rollback only**. Overview, CPU budget and rollback: `/srv/games/README.md` on vps1.
+
+| | |
+|---|---|
+| Compose | project `phatt`, `/srv/compose.yml`, section "CS Party": `cs-party-server`, `cs-party-relay`, `csparty-docker-proxy`, `cs-party-agent`. Images are pinned by tag (server `cs-party-server:0.5.39-vq`, relay and agent `cs-party-relay:0.4.40` at the move) |
+| Public | `https://csparty.phatt.vip/?key=<PARTY_KEY>`: Cloudflare (proxied A `199.246.88.221`) → Caddy → relay `172.30.0.1:8095` (host network). nftables allows 8095 only from `172.16.0.0/12` (Caddy) |
+| Secrets | `/srv/games/env/cs-party.env` (0600, `env_file`): `PARTY_KEY`, `RCON_PASSWORD`, `LOBBY_SECRET`. The "appdata `.env`" below means this file |
+| Assets | `/srv/cs-party/gamedata.zip`, `/srv/cs-party/mappacks` (mounted read-only into the relay) |
+| Lobby Worker | unchanged (Cloudflare Worker `csparty-lobby`); the agent on vps1 reports to it as relay `raid1` |
+
+**`RELAY_ID` is still `raid1`.** The lobby Worker signs lobby keys for `raid1.pool`; renaming it would invalidate them. The
+name is historical and does not mean the RAID.
+
+**CPU budget (Linveo AUP: vps1 is suspended above 1.5 cores averaged over an hour).** The RAID ran 12 lobbies x 1.5 CPUs. On vps1 the agent runs
+`MAX_LOBBIES=3` x `CPUS=0.35` per lobby, the server is capped at 0.50, the relay at 0.30, the agent at 0.10. Measured busiest hour on the RAID:
+server 0.13 cores, one lobby 0.07. Do not raise `MAX_LOBBIES` or `CPUS` without re-doing the sum in `/srv/games/README.md`. If the
+Grafana alert `vps1-cpu-1h-aup` fires (mail to Brandon above 1.1 cores), drain CS Party first.
+
+**Drain, then deploy.** Never swap the server, relay or agent while a match is live:
+1. Set `DRAIN=1` on `cs-party-agent` (compose `environment`, `docker compose up -d cs-party-agent`) or drain `raid1` in the Worker `/admin`.
+2. Wait for "safe to deploy": relay peers 0, 0 running lobby containers, `/api/admin/live` 0 lobbies, 0 humans in `rcon status`.
+3. Load the image (`docker save` on the build host | `docker load` on vps1), pin the new tag in `compose.yml` (server `image:` and the agent's `IMAGE:`
+   so new lobby servers start from it; relay and agent share one image), back up `compose.yml` first, then
+   `cd /srv && docker compose up -d cs-party-server cs-party-relay cs-party-agent`.
+4. Remove `DRAIN=1`, recreate the agent, check `https://csparty.phatt.vip/healthz` and that `/api/capacity` lists `raid1` online with max 3.
+Rollback is the previous tag in `compose.yml` and the same `up -d`. Log each deploy in `/root/vps1-changelog-pending.md`.
+
+Caddy changes go through `/root/pha4090/caddy-apply.sh <Caddyfile> <tag>`; firewall changes through `systemctl reload nftables`, never raw `nft -f`.
+
+### RAID copy: rollback only
+
+To go back: drain, stop the vps1 CS Party services, start the stopped RAID containers (`cs-party-server`, `cs-party-relay`, plus
+the agent), and point the Cloudflare `csparty` record back to `CNAME phatt.vip`. The RAID data in `appdata/cs-party` is frozen at the cutover
+(`gamedata.zip` md5 identical to vps1's). Nothing below describes a deploy to run now; paths such as `appdata/cs-party` and `/mnt/user/appdata` are on the RAID.
+
+---
+
+# History: the RAID deploy (game-host, SWAG, Cloudflare)
 
 Live at **https://csparty.example.com/?key=<PARTY_KEY>**. The key is in `/srv/cs-party/.env` on game-host (mode 600).
 
