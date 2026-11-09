@@ -133,7 +133,11 @@ browser tab ──https──> relay (static files + /relay WebSocket) ──udp
 
 **The page looks after the connection.** It shows a joining overlay with stages, reasons when you get disconnected or kicked (with a Rejoin button), and keeps the game data in the browser's Cache Storage, checked by ETag, so a second visit skips the 44 MB download. A watchdog notices when server traffic stops in the middle of a map change (a client that missed the change) and sends `retry`; the server holds the seat 90 s and gives it back by name.
 
-## Deploy (Docker, e.g. Unraid)
+## Deploy (Docker)
+
+**Live: vps1** (`csparty.phatt.vip`, compose services `cs-party-server`, `cs-party-relay`, `cs-party-agent`, `csparty-docker-proxy` in `/srv/compose.yml`;
+`MAX_LOBBIES` 3 x `CPUS` 0.35 to stay under the host's CPU cap; `RELAY_ID` stays `raid1`). The runbook is `docs/deploy-runbook.md`
+(drain, pin the image tag, `docker compose up -d`). The RAID containers are stopped and **rollback only**. The compose file below is the generic recipe for any other host.
 
 ```
 tools/package_server.sh <your working server dir>     # -> deploy/cs-party-server-overlay.tar.gz
