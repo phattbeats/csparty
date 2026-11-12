@@ -21,6 +21,7 @@
 // per lobby. A lobby goes to a pool-agent first, then to a free static POOL server, else it queues (first come,
 // first served, with its place in line shown).
 import { DurableObject } from "cloudflare:workers";
+import { assertedMember } from "./phattid.js";
 import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, title, rude, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree, allow, turnstileOk } from "./util.js";
 import { EVENTS, datapoint, blob, num, secs, hourOf, dayOf, ttsBucket } from "./analytics.js";
 import { adminFetch, ingestFetch, adminOp } from "./admin.js";
@@ -256,9 +257,19 @@ export class Lobby extends DurableObject {
     const cc = req.headers.get("X-CSP-CC") || "";
     server.serializeAttachment({ pid, ip: req.headers.get("X-CSP-IpKey") || "" });
     const s = this.s, old = s.members[pid], gone = old?.gone || 0;
-    const m = this.addMember(pid, nick(url.searchParams.get("name")), charOf(url.searchParams.get("char")));
+    // PHATT ID (PHA-4091): a valid hub assertion makes this seat a member's; the name is the hub's display.
+    const who = await assertedMember(url.searchParams.get("pa"), this.env, url.hostname);
+    const m = this.addMember(pid, who ? nick(who.display) : nick(url.searchParams.get("name")), charOf(url.searchParams.get("char")));
     m.cc = cc;
-    if (rude(url.searchParams.get("name"))) this.nameRefused(server, pid, m);
+    if (who) {
+      // one seat per PHATT ID: signing in from another device takes the seat over
+      for (const [p, o] of Object.entries(s.members)) if (p !== pid && o.aid === who.arcadeId) { m.gpid = o.gpid || m.gpid; if (m.char < 0) m.char = o.char; this.removeMember(p, "taken_over"); }
+      for (const ws of this.ctx.getWebSockets()) if (ws !== server && !s.members[ws.deserializeAttachment()?.pid]) try { ws.close(4000, "signed in elsewhere"); } catch {}
+      m.aid = who.arcadeId;
+    } else {
+      delete m.aid;
+      if (rude(url.searchParams.get("name"))) this.nameRefused(server, pid, m);
+    }
     if (!old) {
       const via = VIA.has(url.searchParams.get("via")) ? url.searchParams.get("via") : "code";
       const seat = s.order.indexOf(pid), second = s.order.length >= 2 && !s.f.second;
@@ -281,7 +292,7 @@ export class Lobby extends DurableObject {
     const s = this.s, isHost = s.host === pid, open = s.state === "open";
     s.error = "";
     switch (msg.t) {
-      case "name": m.name = nick(msg.name); if (rude(msg.name)) this.nameRefused(ws, pid, m); break;
+      case "name": if (m.aid) break; m.name = nick(msg.name); if (rude(msg.name)) this.nameRefused(ws, pid, m); break;
       case "char": {
         const c = charOf(msg.char);
         if (c >= 0 && this.charTaken(c, pid)) { this.send(ws, { t: "error", msg: "Someone already picked that character." }); return; }
@@ -432,6 +443,13 @@ export class Lobby extends DurableObject {
     return this.flush();
   }
   // match news from the plugin ([CSPEV] lines via the pool-agent), for the "match in progress" view
+  // seat_result lines name the game pid (_csp_pid); only PHATT ID members come back, with their arcade_id.
+  // Guests are dropped here: nothing about them leaves the lobby.
+  arcadeSeats(results) {
+    const by = new Map(Object.values(this.s?.members || {}).filter((m) => m.aid && m.gpid).map((m) => [m.gpid, m.aid]));
+    return (Array.isArray(results) ? results : []).flatMap((r) => (by.has(String(r?.pid)) ? [{ ...r, pid: undefined, arcade_id: by.get(String(r.pid)) }] : []));
+  }
+
   async progress(name, data) {
     const s = this.s;
     if (!s?.match) return;
@@ -827,6 +845,13 @@ export class Directory extends DurableObject {
         else if (row.state === "running") await this.record(code, await this.lobby(code).matchEnded(true, m.reason === "crashed" ? "server_crashed" : "server_empty",
           m.reason === "crashed" ? "The game server stopped unexpectedly." : ""));
         break;   // finished: the lobby reopened when the match did
+      case "seat_result": {
+        // per-seat match results (plugin, PHA-4091) -> members only; forwarded to the arcade in slice 3
+        if (!row) break;
+        const seats = await this.lobby(code).arcadeSeats([m.data]);
+        if (seats.length) this.arcadeQueue(code, seats);
+        break;
+      }
       case "ev": {
         if (!row) break;
         const name = String(m.name || ""), data = m.data && typeof m.data === "object" ? m.data : {};
@@ -922,6 +947,12 @@ export class Directory extends DurableObject {
 
   // ---- admin dashboard (src/admin.js); auth is checked by the Worker, failures counted here
   admin(ip, tokenState, op, args) { return adminOp(this, ip, tokenState, op, args); }
+  // members' seat results waiting for the arcade sender (slice 3 drains this); capped, newest kept
+  async arcadeQueue(code, seats) {
+    const q = (await this.ctx.storage.get("arcade_q")) || [];
+    q.push(...seats.map((x) => ({ code, at: Date.now(), ...x })));
+    await this.ctx.storage.put("arcade_q", q.slice(-500));
+  }
   ingest(slot, events, code = "") { return adminOp(this, "", "ingest", "ingest", { slot, events, code }); }
   async wake(ms) {
     const at = await this.ctx.storage.getAlarm(), want = Date.now() + ms;
