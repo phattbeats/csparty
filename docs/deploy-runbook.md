@@ -8,7 +8,7 @@ stopped (kept, out of Unraid autostart) and are **rollback only**. Overview, CPU
 
 | | |
 |---|---|
-| Compose | project `phatt`, `/srv/compose.yml`, section "CS Party": `cs-party-server`, `cs-party-relay`, `csparty-docker-proxy`, `cs-party-agent`. Images are pinned by tag (server `cs-party-server:0.5.39-vq`, relay and agent `cs-party-relay:0.4.40` at the move) |
+| Compose | project `phatt`, `/srv/compose.yml`, section "CS Party": `cs-party-server`, `cs-party-relay`, `csparty-docker-proxy`, `cs-party-agent`. Images are pinned by tag (server `cs-party-server:0.5.40-vq`, relay and agent `cs-party-relay:0.4.41` since PHA-4091, 2026-11-13) |
 | Public | `https://csparty.phatt.vip/?key=<PARTY_KEY>`: Cloudflare (proxied A `199.246.88.221`) → Caddy → relay `172.30.0.1:8095` (host network). nftables allows 8095 only from `172.16.0.0/12` (Caddy) |
 | Secrets | `/srv/games/env/cs-party.env` (0600, `env_file`): `PARTY_KEY`, `RCON_PASSWORD`, `LOBBY_SECRET`. The "appdata `.env`" below means this file |
 | Assets | `/srv/cs-party/gamedata.zip`, `/srv/cs-party/mappacks` (mounted read-only into the relay) |
@@ -666,3 +666,13 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
   Steam client. Test files: `appdata/cs-party/test5011/`.
 - Rollback: `docker rm -f cs-party-server cs-party-agent; for c in server agent; do docker rename cs-party-$c-pha5011old cs-party-$c; docker start cs-party-$c; done`,
   then `cp csparty-up.sh.pre-pha5011 csparty-up.sh`. Without a redeploy: `rc.sh "csp_podium 0"` (until the next restart).
+
+## PHA-4091: PHATT ID results (server 0.5.40-vq, relay/agent 0.4.41, 2026-11-13)
+
+- `cs-party-server:0.5.40-vq` = 0.5.39-vq + `cs_party.amxx` from main (per-seat `seat_result` CSPEV lines). `cs-party-relay:0.4.41` = 0.4.40 + main
+  `web/pool-agent.js` (forwards `seat_result` to the lobby; never into analytics). `relay.js` unchanged. Build context `/srv/cs-party/build/pha4091/`.
+- Lobby is the `csparty-lobby` Worker at `https://party.phatt.vip/` (same-site with the hub). Members' results go signed (`CSPARTY_RESULT_KEY`) to
+  `POST https://clubhouse.phatt.vip/api/results/csparty`; guests' results are dropped in the lobby.
+- Rollback: `/srv/compose.yml.bak-pha4091-0540` + `docker compose up -d`.
+- Live check 2026-11-13: member + guest in one match (lobby VZFDH), `csp_finish 0`; lobby `/healthz` `sent:1 dropped:0`; the member's `/u/<name>`
+  showed 1 played, 1 win; the guest produced nothing.
