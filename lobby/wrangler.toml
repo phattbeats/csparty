@@ -57,6 +57,8 @@ simple = { limit = 20, period = 60 }
 # 1x0000000000000000000000000000000AA (always passes) or 2x0000000000000000000000000000000AA (always fails).
 
 [vars]
+# PHATT ID hub (PHA-4091): lobby checks ?pa= assertions against <hub>/auth/phatt-id/key. Empty = everyone is a guest.
+PHATT_HUB = "https://clubhouse.phatt.vip"
 # Capacity: game servers that are already running, each behind its own relay (web/relay.js). The relay with
 # RELAY_ID=<id> and the same LOBBY_SECRET accepts this Worker's per-lobby tokens as its party key.
 # A slot is handed to a lobby only while its relay reports 0 peers, so friends already playing there are safe.

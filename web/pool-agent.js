@@ -164,6 +164,8 @@ const onLine = (l, line) => {
   if (m[1] === "server_ready") l.onReady?.();
   if (m[1] === "humans") l.humans = data.n;
   if (m[1] === "match_finished") l.finishedAt = Date.now();
+  // per-seat results carry the lobby pid: a separate message the Worker maps to PHATT ID; never stored as an analytics event
+  if (m[1] === "seat_result") return send({ t: "seat_result", code: l.code, data, at: Date.now() });
   (l.events ||= []).push({ at: Date.now(), name: m[1], data }); if (l.events.length > 40) l.events.shift();
   send({ t: "ev", code: l.code, name: m[1], data, at: Date.now() });
 };

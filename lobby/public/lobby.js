@@ -2,6 +2,9 @@
 // starts the lobby hands every member a link to the game server with the party's own key, and this page
 // takes them there.
 (() => {
+  // PHA-4091: the lobby lives at party.phatt.vip, same-site with the PHATT ID hub so members are recognised.
+  // The old workers.dev address (links, the dock catalog) lands there with the same code.
+  if (/\.workers\.dev$/.test(location.hostname)) { location.replace("https://party.phatt.vip" + location.pathname + location.search + location.hash); return; }
   const $ = (id) => document.getElementById(id);
   // same order and names as the plugin's SKIN_* tables and the game page (web/public/boot.js)
   const CHARS = [
@@ -115,9 +118,22 @@
     connect();
   }
 
-  function connect() {
+  // PHATT ID (PHA-4091): on a *.phatt.vip host, ask the hub for a 5-minute assertion for this host and hand it to the
+  // lobby as ?pa=; the lobby checks it and seats us as the member. Anywhere else, or signed out: a guest, as before.
+  const HUB = "https://clubhouse.phatt.vip";
+  async function hubAssertion() {
+    if (!/\.phatt\.vip$/.test(location.hostname)) return "";
+    try {
+      const r = await fetch(`${HUB}/auth/phatt-id/assert?aud=${encodeURIComponent(location.hostname)}`, { credentials: "include" });
+      return r.ok ? String((await r.json()).assertion || "") : "";
+    } catch { return ""; }
+  }
+
+  async function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const q = new URLSearchParams({ pid, name: myName(), char: String(myChar), via });
+    const pa = await hubAssertion();
+    if (pa) q.set("pa", pa);
     ws = new WebSocket(`${proto}://${location.host}/api/lobbies/${code}/ws?${q}`);
     const sock = ws;
     sock.onopen = () => { retry = 0; $("conn").textContent = "CONNECTED"; $("conn").className = ""; };

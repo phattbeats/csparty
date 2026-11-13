@@ -258,6 +258,7 @@ enum { AW_FRAGGER = 0, AW_MAXMONEY, AW_ECO, AW_SPENDER, AW_RUSHER, AW_BOMBSQUAD,
 new const AW_NAME[AW_COUNT][] = { "Top Fragger", "Max Money", "Eco Round", "Big Spender", "Rusher", "Bomb Squad" };
 new const AW_WHY[AW_COUNT][]  = { "most minigame wins", "highest balance held", "most red spaces", "most money spent", "most spaces moved", "most C4 payouts collected" };
 new g_awardCat[3], g_awardN;
+new g_seatAwards[SEATS], g_seatTmo[SEATS];   // per seat this match: bonus awards won, turn timeouts (seat_result)
 new g_pos[SEATS], g_lastColor[SEATS], g_flashed[SEATS], bool:g_smoke[SEATS], g_extraCrates[SEATS], g_rigged[SEATS];
 new g_gPrim[SEATS], g_gSec[SEATS], g_gArmor[SEATS], g_gFlash[SEATS], g_gHE[SEATS], g_gSmoke[SEATS], bool:g_gKit[SEATS];
 new g_mgSide[SEATS], bool:g_mgIn[SEATS];
@@ -946,7 +947,8 @@ public cmd_state()
 }
 
 // [CSPEV] <name> <json>: match events for the pool-agent (web/pool-agent.js), which tails this server's console
-// (docker logs) and ships them to the lobby Worker. No names or ids in them, characters only. Frees o.
+// (docker logs) and ships them to the lobby Worker. No names or ids in them, characters only, except seat_result
+// (lobby pid, for PHATT ID results; the agent keeps it out of analytics). Frees o.
 csp_event(const name[], JSON:o)
 {
 	new buf[400]; json_serial_to_string(o, buf, charsmax(buf)); json_free(o);
@@ -1004,7 +1006,7 @@ match_start()
 	{
 		g_seatSkin[s] = want[s];
 		g_money[s] = get_pcvar_num(c_start); g_maxMoney[s] = g_money[s]; g_spent[s] = 0; g_moved[s] = 0; g_c4Take[s] = 0;
-		g_stars[s] = 0; g_itemN[s] = 0; g_streak[s] = 0; g_mgWins[s] = 0; g_reds[s] = 0;
+		g_stars[s] = 0; g_itemN[s] = 0; g_streak[s] = 0; g_mgWins[s] = 0; g_reds[s] = 0; g_seatAwards[s] = 0; g_seatTmo[s] = 0;
 		g_pos[s] = g_startNode; g_lastColor[s] = SIDE_NONE; g_flashed[s] = 0; g_smoke[s] = false; g_extraCrates[s] = 0; g_rigged[s] = 0;
 		g_gPrim[s] = -1; g_gSec[s] = -1; g_gArmor[s] = 0; g_gFlash[s] = 0; g_gHE[s] = 0; g_gSmoke[s] = 0; g_gKit[s] = false;
 	}
@@ -2641,6 +2643,7 @@ turn_watchdog()
 	remove_task(TASK_FLOW);
 	if (!gone)
 	{
+		g_seatTmo[s]++;
 		g_wdCancel = true; menu_cancel(id); g_wdCancel = false;
 		nav_end(id); show_menu(id, 0, " ", 0);
 		center_print(id,"Too slow! The bot decided for you this time.");
@@ -5478,6 +5481,20 @@ public flow_finish()
 		jnum(o, "stars", g_stars[order[0]]); jnum(o, "turns", g_turn); jnum(o, "humans", humans); jnum(o, "awards", g_awardN);
 		jnum(o, "secs", g_matchBegan ? get_systime() - g_matchBegan : -1);
 		csp_event("match_finished", o);
+		// one seat_result per human seat that has a lobby player id: the only events that carry an id. The pool-agent
+		// maps pid -> PHATT ID (lobby Worker) and forwards members' results to the arcade service; it never ships these
+		// to analytics. Guests' pids map to nothing and are dropped there.
+		for (new k = 0; k < SEATS; k++)
+		{
+			new s = order[k];
+			if (g_seatBot[s] || !g_seatPid[s][0]) continue;
+			new JSON:r = json_init_object();
+			json_object_set_string(r, "pid", g_seatPid[s]); jnum(r, "seat", s); jnum(r, "place", k + 1);
+			jnum(r, "stars", g_stars[s]); jnum(r, "money", g_money[s]); jnum(r, "mg_wins", g_mgWins[s]);
+			jnum(r, "awards", g_seatAwards[s]); jnum(r, "timeouts", g_seatTmo[s]); jnum(r, "turns", g_turn);
+			jnum(r, "secs", g_matchBegan ? get_systime() - g_matchBegan : -1);
+			csp_event("seat_result", r);
+		}
 	}
 	client_cmd(0, "echo CSP_THEME_PLAY");   // the browser page plays the theme over the results
 	for (new i = 0; i < SEATS; i++) { new s = order[i]; announce("%d. %s  %d stars  $%d  (%d minigame wins)", i + 1, g_seatName[s], g_stars[s], g_money[s], g_mgWins[s]); sync_score(s); }
@@ -5532,6 +5549,7 @@ award(cat, bool:cash)
 	for (new s = 0; s < SEATS; s++) if (award_value(cat, s) == best)
 	{
 		if (cash) gain(s, 3000); else g_stars[s]++;
+		g_seatAwards[s]++;
 		len += formatex(names[len], charsmax(names) - len, "%s%s", len ? ", " : "", g_seatName[s]);
 	}
 	new l = strlen(g_awardLines);
