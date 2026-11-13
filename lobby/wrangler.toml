@@ -7,6 +7,8 @@
 name = "csparty-lobby"
 main = "src/index.js"
 compatibility_date = "2025-09-01"
+routes = [{ pattern = "party.phatt.vip", custom_domain = true }]
+workers_dev = true
 
 # public/art/ is gitignored (copied from web/public/art). A bare `wrangler deploy` skipped the copy and shipped
 # the page with no logo, portraits or favicon (PHA-4367); the build step runs it for every deploy and dev session.
