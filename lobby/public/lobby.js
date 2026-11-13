@@ -2,6 +2,9 @@
 // starts the lobby hands every member a link to the game server with the party's own key, and this page
 // takes them there.
 (() => {
+  // PHA-4091: the lobby lives at party.phatt.vip, same-site with the PHATT ID hub so members are recognised.
+  // The old workers.dev address (links, the dock catalog) lands there with the same code.
+  if (/\.workers\.dev$/.test(location.hostname)) { location.replace("https://party.phatt.vip" + location.pathname + location.search + location.hash); return; }
   const $ = (id) => document.getElementById(id);
   // same order and names as the plugin's SKIN_* tables and the game page (web/public/boot.js)
   const CHARS = [
