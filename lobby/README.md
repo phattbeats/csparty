@@ -156,3 +156,9 @@ The arcade's universal lobby browser lists this Worker's `GET /api/public` lobbi
 
 ## PHATT ID results (PHA-4091)
 The lobby page is served at `party.phatt.vip` (Worker custom domain in `wrangler.toml`, on the hub's assertion allow-list); on workers.dev members stay guests (cross-site). Members' match results go to the PHATT ID hub (`POST $PHATT_HUB/api/results/csparty`, HMAC `x-csp-ts`/`x-csp-sig`) and show on their profile card. Set the secret with `wrangler secret put CSPARTY_RESULT_KEY` (same value as the hub's `hub.env`). Without it the queue holds (up to 500). The arcade service (`ARCADE_URL` + `ARCADE_KID`/`ARCADE_SECRET`) is optional and gets a seat only after the hub has it. Guests are never sent. `/healthz` → `arcade` shows queued / sent / dropped / last error.
+
+
+The lobby checks the hub's pass (`?pa=` on the WebSocket, audience = the host the page is on) with `src/phatt-id-verify/`
+(PHA-5152), the one module every PHATT ID server vendors unchanged from github.com/phattbeats/phatt-id-verify; never edit it
+here. `src/phattid.js` is the lobby's use of it. `npm test` runs its self-test and shared vector first; `test/lobby_test.mjs`
+still needs `wrangler dev` and the relay (see its header).

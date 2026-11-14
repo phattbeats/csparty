@@ -1,48 +1,19 @@
 // PHATT ID in the lobby (PHA-4091). The lobby page asks the hub for a short-lived signed assertion bound to this
 // host (GET <hub>/auth/phatt-id/assert?aud=<host>, with the hub cookie) and passes it on the lobby WebSocket as
-// ?pa=<assertion>. This checks the Ed25519 signature against the hub's public key (GET <hub>/auth/phatt-id/key).
-// Same check as 7daystozelda web/cloudsave.js and clubhouse-games server/phattid.js verifyAssertion; keep in step.
+// ?pa=<assertion>. The check is phatt-id-verify (PHA-5152), the one module every PHATT ID server vendors unchanged:
+// Ed25519 against the hub's key (GET <hub>/auth/phatt-id/key), audience, expiry. Never edit src/phatt-id-verify/ here.
 // No assertion, or a bad one: the player is a guest, exactly as before.
-export const ASSERT_PREFIX = "pa1";
+import { hubKey, checkPass } from "./phatt-id-verify/phatt-id-verify.mjs";
 
-const unb64 = (s) => Uint8Array.from(atob(String(s).replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-
-export async function verifyAssertion(token, publicKey, { aud, now = Date.now() } = {}) {
-  const [pre, body, sig] = String(token || "").split(".");
-  if (pre !== ASSERT_PREFIX || !body || !sig || !publicKey?.x) return null;
-  let ok = false;
-  try {
-    const key = await crypto.subtle.importKey("jwk", { kty: "OKP", crv: "Ed25519", x: publicKey.x }, { name: "Ed25519" }, false, ["verify"]);
-    ok = await crypto.subtle.verify({ name: "Ed25519" }, key, unb64(sig), new TextEncoder().encode(pre + "." + body));
-  } catch { return null; }
-  if (!ok) return null;
-  let c; try { c = JSON.parse(new TextDecoder().decode(unb64(body))); } catch { return null; }
-  const t = Math.floor(now / 1000);
-  if (!c || typeof c.sub !== "string" || !c.sub || c.aud !== aud || !(c.exp > t) || c.iat > t + 60) return null;
-  return c;
-}
-
-// Hub key, cached per isolate for 10 minutes; refetched at once (at most every 30 s) when a signature fails.
-let cached = null, at = 0;
-async function hubKey(hub, force, fetchImpl) {
-  if (cached && Date.now() - at < (force ? 30_000 : 600_000)) return cached;
-  const r = await fetchImpl(`${hub}/auth/phatt-id/key`, { headers: { accept: "application/json" } });
-  if (!r.ok) throw new Error(`hub key ${r.status}`);
-  const k = await r.json();
-  if (!k?.x) throw new Error("hub key empty");
-  cached = k; at = Date.now();
-  return k;
-}
+// Hub key, cached per isolate for 10 minutes; refetched (at most once a minute) when a signature fails (a rotated key).
+let keys = null, keysFor = "";
 
 // -> { arcadeId, display } or null. env.PHATT_HUB unset = PHATT ID off (everyone is a guest).
 export async function assertedMember(token, env, aud, fetchImpl = globalThis.fetch) {
   const hub = String(env.PHATT_HUB || "").replace(/\/+$/, "");
   if (!hub || !token) return null;
-  let c = null;
-  for (const force of [false, true]) {
-    let k; try { k = await hubKey(hub, force, fetchImpl); } catch { return null; }
-    if ((c = await verifyAssertion(token, k, { aud }))) break;
-  }
-  return c ? { arcadeId: c.sub, display: String(c.display || c.name || c.username || "") } : null;
+  if (!keys || keysFor !== hub) { keys = hubKey({ hub, fetch: fetchImpl }); keysFor = hub; }
+  const c = await checkPass(token, keys, { aud });
+  return c ? { arcadeId: c.sub, display: c.name } : null;
 }
-export const _resetKeyCache = () => { cached = null; at = 0; };
+export const _resetKeyCache = () => { keys = null; keysFor = ""; };
