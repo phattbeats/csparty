@@ -1,0 +1,128 @@
+{
+ "comment": "phatt-id-verify shared test vector (PHA-5152). The key is a test fixture, not the hub key.",
+ "key": {
+  "alg": "Ed25519",
+  "x": "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
+ },
+ "seed": "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc",
+ "aud": "vector.phatt.vip",
+ "now": 1800000000000,
+ "cases": [
+  {
+   "name": "good",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.X_bbAcpILtxCG0YiSzD0es6uTUzbMHekVyBZbZKH17WT818w4Lzb2vCa7Ydr06Fdv8FYn9CimlvT0nbyiAn3Bw",
+   "expect": {
+    "sub": "3f6c1a52-8d0e-4b7a-9c21-5e4d2b1a0f99",
+    "member": "0123456789abcdef0123456789abcdef",
+    "username": "brandon",
+    "name": "Brandon",
+    "groups": [
+     "household",
+     "club"
+    ],
+    "aud": "vector.phatt.vip",
+    "iat": 1799999990,
+    "exp": 1800000290
+   }
+  },
+  {
+   "name": "forged: claims changed under the hub signature",
+   "token": "pa1.eyJzdWIiOiJzb21lb25lLWVsc2UiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.X_bbAcpILtxCG0YiSzD0es6uTUzbMHekVyBZbZKH17WT818w4Lzb2vCa7Ydr06Fdv8FYn9CimlvT0nbyiAn3Bw",
+   "expect": null
+  },
+  {
+   "name": "forged: signed by another key",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.xzoUMHOTHosSBz67zuwpz94FySwra2scjyLNZkktUyV9Bw2-7JHPb3jx34SRPW1Uh4hdrfC2c7vF-rcHmm1lBQ",
+   "expect": null
+  },
+  {
+   "name": "forged: signature bytes flipped",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.X_bbAcpILtxCG0YiSzD0es6uTUzbMHekVyBZbZKH17WT818w4Lzb2vCa7Ydr06Fdv8FYn9CimlvT0nbyiAAAAA",
+   "expect": null
+  },
+  {
+   "name": "wrong aud",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoib3RoZXIucGhhdHQudmlwIiwiaWF0IjoxNzk5OTk5OTkwLCJleHAiOjE4MDAwMDAyOTB9.BwFYN1qcBT1xj03oGZsNCWqB150rEhYjJ6N9iNBzzLnyaOwrs4SkgYPYMpnvU_ikxZCq-VBoCJomPby9ELIaCA",
+   "expect": null
+  },
+  {
+   "name": "expired",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTM5MCwiZXhwIjoxNzk5OTk5NjkwfQ.6fGLNhFdyZ3hpso4D-o6eKbKOVCbwLZAOu3qWAddl9xit6YtMQh_GUcV_FW2vxX4Qn7C2RZIgVRxeWLMYTP9BA",
+   "expect": null
+  },
+  {
+   "name": "exp is now",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMDAwfQ.dC4WoHu1vvOtaE-lM9XQar2KpGUD119rOuQiRhlej8xhD6n9Di_zN0fDJGJtMPzTGLnxNajy5LeQN9765neyDA",
+   "expect": null
+  },
+  {
+   "name": "iat too far ahead",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTgwMDAwMDA2MSwiZXhwIjoxODAwMDAwMzYxfQ.gQLmCM7nbk6_JM0TblwhZteF3Z55zuPeKdxeGgYX8OfNF8a6MElkpzy4oppZ_8PbGrOuAQbIBRHw3Ar7iML2Aw",
+   "expect": null
+  },
+  {
+   "name": "iat ahead within skew",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTgwMDAwMDA1OSwiZXhwIjoxODAwMDAwMzU5fQ.4gEAsvhAhVG4d0OCkXEeMZv-ZpYikOoWYNFaxhblU2tHBK0a7W-pACydUGjvrwjvHxbNuBTGtt2V3XlNL1OhBA",
+   "expect": {
+    "sub": "3f6c1a52-8d0e-4b7a-9c21-5e4d2b1a0f99",
+    "member": "0123456789abcdef0123456789abcdef",
+    "username": "brandon",
+    "name": "Brandon",
+    "groups": [
+     "household",
+     "club"
+    ],
+    "aud": "vector.phatt.vip",
+    "iat": 1800000059,
+    "exp": 1800000359
+   }
+  },
+  {
+   "name": "no sub",
+   "token": "pa1.eyJzdWIiOiIiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.KchaFCGW89iJmVk4uPNy0u2ecFeI-R4Uru7elb2KvAeCPOSeXRwfG34JLBfSU6ZyO0ncmC_P-2oY2T852l35Dw",
+   "expect": null
+  },
+  {
+   "name": "no iat",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImV4cCI6MTgwMDAwMDI5MH0.L4IfFvvYeCoGlEeovCq-OMuV59CbpQNRWGQ7OLzQOVpnSmAX2Tgc32N7rpKnMHALSOq8p4wjK8Lg8C-wiFKeBg",
+   "expect": null
+  },
+  {
+   "name": "bad member is dropped, missing name falls back to username",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiJub3QtYS10b2tlbiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsImdyb3VwcyI6WyJob3VzZWhvbGQiLCJjbHViIl0sImF1ZCI6InZlY3Rvci5waGF0dC52aXAiLCJpYXQiOjE3OTk5OTk5OTAsImV4cCI6MTgwMDAwMDI5MH0.Vy4EV8LyPQcb7aEyy_lQ38PrPbLrCVVr8oepqgtEwQdgw-Nr_PrksNifKSN9ZEFm6l-KRSYwcCX9ardJVNA4CA",
+   "expect": {
+    "sub": "3f6c1a52-8d0e-4b7a-9c21-5e4d2b1a0f99",
+    "member": null,
+    "username": "brandon",
+    "name": "brandon",
+    "groups": [
+     "household",
+     "club"
+    ],
+    "aud": "vector.phatt.vip",
+    "iat": 1799999990,
+    "exp": 1800000290
+   }
+  },
+  {
+   "name": "wrong prefix",
+   "token": "pa2.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.X_bbAcpILtxCG0YiSzD0es6uTUzbMHekVyBZbZKH17WT818w4Lzb2vCa7Ydr06Fdv8FYn9CimlvT0nbyiAn3Bw",
+   "expect": null
+  },
+  {
+   "name": "extra segment",
+   "token": "pa1.eyJzdWIiOiIzZjZjMWE1Mi04ZDBlLTRiN2EtOWMyMS01ZTRkMmIxYTBmOTkiLCJtZW1iZXIiOiIwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZiIsInVzZXJuYW1lIjoiYnJhbmRvbiIsIm5hbWUiOiJCcmFuZG9uIiwiZ3JvdXBzIjpbImhvdXNlaG9sZCIsImNsdWIiXSwiYXVkIjoidmVjdG9yLnBoYXR0LnZpcCIsImlhdCI6MTc5OTk5OTk5MCwiZXhwIjoxODAwMDAwMjkwfQ.X_bbAcpILtxCG0YiSzD0es6uTUzbMHekVyBZbZKH17WT818w4Lzb2vCa7Ydr06Fdv8FYn9CimlvT0nbyiAn3Bw.x",
+   "expect": null
+  },
+  {
+   "name": "garbage",
+   "token": "garbage",
+   "expect": null
+  },
+  {
+   "name": "empty",
+   "token": "",
+   "expect": null
+  }
+ ]
+}

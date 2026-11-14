@@ -5,7 +5,7 @@
   "scripts": {
     "art": "mkdir -p public/art && cp ../web/public/art/character-atlas.webp ../web/public/art/logo.webp ../web/public/art/favicon.svg public/art/",
     "dev": "npm run art && wrangler dev",
-    "test": "node test/lobby_test.mjs",
+    "test": "node src/phatt-id-verify/selftest.mjs && node test/phattid_test.mjs && node test/lobby_test.mjs",
     "deploy": "npm run art && wrangler deploy"
   },
   "devDependencies": {
