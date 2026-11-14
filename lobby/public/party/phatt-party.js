@@ -104,7 +104,7 @@
   // so it is the same in every game. The name box offers the three instead of a free-text name.
   function usePid(me) {
     const was = ls.get(LS_PID_NAME);
-    pid = { username: me.username || '', name: me.name || '', display: me.display || me.username || 'Member', nameStyle: me.nameStyle || 'username', names: me.names || null, canEditUsername: !!me.canEditUsername };
+    pid = { username: me.username || '', name: me.name || '', display: me.display || me.username || 'Member', nameStyle: me.nameStyle || 'username', names: me.names || null, canEditUsername: !!me.canEditUsername, vip: me.vip === true };
     if (profile.name !== pid.display) { profile = { ...profile, name: pid.display }; ls.set(LS_PROFILE, JSON.stringify({ name: profile.name, avatar: profile.avatar || null })); }
     ls.set(LS_PID, pid.username); ls.set(LS_PID_NAME, pid.display);
     // Poker Night keeps its own name (pn_mp_profile, 16 chars) and its built page runs before this script, so it never
@@ -464,6 +464,7 @@
     '.namebar{display:flex;gap:6px;padding:8px 10px;background:#2b1a0e;border-bottom:1px solid #000;align-items:center;flex-wrap:wrap}',
     '.pidrow{flex:1 0 100%;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.pidrow .note{flex:1;min-width:0}',
     '.pidb{display:inline-grid;place-items:center;min-width:22px;height:16px;padding:0 4px;border-radius:4px;background:#5b2fa6;color:#fff;font:700 10px/1 Tahoma,Verdana,sans-serif;letter-spacing:.04em;flex:none}',
+    '.vipb{display:inline-grid;place-items:center;height:16px;padding:0 5px;border-radius:4px;background:linear-gradient(#ffe27a,#d9a200);color:#2a1a00;font:800 10px/1 Tahoma,Verdana,sans-serif;letter-spacing:.06em;flex:none;box-shadow:0 0 6px #ffd04a88}.vipn{color:#ffd04a}.ln.vipl{border-left:2px solid #ffd04a;padding-left:6px;background:linear-gradient(90deg,#ffd04a14,transparent)}',
     '.btn.pidon{display:inline-flex;align-items:center;gap:6px;background:#3a2266;border-color:#7b52c7;color:#fff}',
     '.btn.pidon:hover{background:#4b2d82}',
     '.nstyles{flex:1 0 100%;display:flex;gap:6px;flex-wrap:wrap}',
@@ -749,7 +750,8 @@
     const me = api.me;
     const chip = button('', 'mechip', 'Change your name'); chip.appendChild(avatarNode(me));
     if (me.level) chip.appendChild(el('span', 'lvl', String(me.level)));
-    chip.appendChild(el('span', 'nm', me.name || 'Guest'));
+    chip.appendChild(el('span', pid && pid.vip ? 'nm vipn' : 'nm', me.name || 'Guest'));
+    if (pid && pid.vip) { const v = el('span', 'vipb', 'VIP'); v.title = 'phattmedia.club member: thank you'; chip.appendChild(v); }
     if (pid) { const b = el('span', 'pidb', 'ID'); b.title = 'Logged on with PHATT ID as ' + pid.username; chip.appendChild(b); }
     if (chat.you && chat.you.away != null) chip.appendChild(el('span', 'away', 'away'));
     chip.onclick = () => { openDrawer('chat'); showNameBar(true); };
@@ -779,7 +781,7 @@
 
   // ---- Chat tab ----
   let chipsEl, logEl, usersEl, inputEl, nameBarEl, hintsEl, showUsers = false;
-  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/filter', '[on | off]', 'mask banned words, or show them'], ['/popups', '[on | off]', 'whisper pop-ups on this device'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
+  const COMMANDS = [['/join', '<channel>', 'move to a channel'], ['/channels', '', 'list channels'], ['/who', '[channel]', 'who is here'], ['/whois', '<name>', 'where someone is'], ['/w', '<name> <msg>', 'whisper'], ['/r', '<msg>', 'reply to a whisper'], ['/me', '<action>', 'emote'], ['/vip', '', 'VIP emotes (club members)'], ['/p', '<msg>', 'say it to your party'], ['/t', '<msg>', 'say it to your table'], ['/invite', '<name>', 'invite to your party'], ['/away', '[msg]', 'toggle away'], ['/squelch', '<name>', 'stop seeing someone'], ['/unsquelch', '<name>', 'undo squelch'], ['/roll', '[max | min-max]', 'roll the dice'], ['/name', '<new name>', 'change your name'], ['/filter', '[on | off]', 'mask banned words, or show them'], ['/popups', '[on | off]', 'whisper pop-ups on this device'], ['/clear', '', 'clear this view'], ['/help', '', 'all commands']];
   function views() {
     const v = [{ id: 'general', cls: 'g', label: '#' + (chat.general.name || 'Arcade') }];
     if (state.code) v.push({ id: 'party', cls: 'p', label: 'Party' });
@@ -922,7 +924,8 @@
       const b = button('', 'u' + (u.online === false ? ' off' : '')); b.title = gameName(u.game) + (u.away ? ' · away' : '') + ' · click to whisper';
       b.appendChild(el('span', 'gi', gameIcon(u.game)));
       if (u.level) b.appendChild(el('span', 'lvl', String(u.level)));
-      b.appendChild(el('span', 'nm', displayName(u) + (u.id === member ? ' (you)' : '') + (u.host ? ' ♛' : '')));
+      b.appendChild(el('span', u.vip ? 'nm vipn' : 'nm', displayName(u) + (u.id === member ? ' (you)' : '') + (u.host ? ' ♛' : '')));
+      if (u.vip) b.appendChild(el('span', 'vipb', 'VIP'));
       if (u.away) b.appendChild(el('span', 'aw', 'away'));
       b.onclick = () => { if (u.id !== member) prefill('/w ' + whisperName(u) + ' '); };
       usersEl.appendChild(b);
@@ -946,9 +949,9 @@
     while (logEl.childNodes.length > 200) logEl.removeChild(logEl.firstChild);
     if (atBottom || (l.from && l.from.id === member) || l.kind === 'wto' || l.ch === 'info') logEl.scrollTop = logEl.scrollHeight;
   }
-  function whoNode(u, text) { const w = el('span', 'who', text); w.title = 'Whisper ' + u.name; w.onclick = () => { if (u.id !== member) prefill('/w ' + whisperName(u) + ' '); }; return w; }
+  function whoNode(u, text) { const w = el('span', u.vip ? 'who vipn' : 'who', u.vip ? '★' + text : text); w.title = 'Whisper ' + u.name; w.onclick = () => { if (u.id !== member) prefill('/w ' + whisperName(u) + ' '); }; return w; }
   function lineNode(l) {
-    const d = el('div', 'ln ' + (l.kind || 'say') + (l.from && l.from.id === member ? ' me' : ''));
+    const d = el('div', 'ln ' + (l.kind || 'say') + (l.from && l.from.id === member ? ' me' : '') + (l.from && l.from.vip ? ' vipl' : ''));
     d.appendChild(el('span', 'ts', hhmm(l.ts)));
     const f = l.from;
     if (l.kind === 'say' && f) { d.appendChild(document.createTextNode('<')); d.appendChild(whoNode(f, displayName(f))); d.appendChild(document.createTextNode('> ' + shown(l))); }
