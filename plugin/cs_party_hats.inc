@@ -9,13 +9,15 @@
 // changes of race minigames.
 //
 // Drawing: TE_PLAYERATTACHMENT, the temp entity CS uses for the radio icon over a head. The client keeps it on the
-// player, so nothing moves server-side. It's sent on spawn, to each client that joins, and every few minutes; a death or
-// a disconnect takes it off. tools/build_hats.py builds the sprites (S units across).
+// player, so nothing moves server-side. It's sent on spawn, to each client that joins, and again every 30 s (a client
+// still loading when a hat went out never got it; kill + attach in one frame, so nothing flickers); a death or a
+// disconnect takes it off. tools/build_hats.py builds the sprites (S units across).
 
 #define TASK_HATS   57000      // + player id: catch a new client up on everyone's hat; TASK_HATS + 99: the refresh
+#define HAT_REFRESH 30.0       // s between re-sends
 #define HAT_LOOKS   16
 #define HAT_Z       62         // units above the player origin: the sprite's centre, clear of the head
-#define HAT_LIFE    6000       // tenths of a second (10 min); re-sent before it runs out
+#define HAT_LIFE    6000       // tenths of a second (10 min); re-sent long before it runs out
 
 new const HATS[][] = { "sprites/csp/hat_benny.spr", "sprites/csp/hat_snowglobe.spr", "sprites/csp/hat_cabinet.spr", "sprites/csp/hat_owl.spr" };
 new g_hatSpr[sizeof HATS];
@@ -28,7 +30,7 @@ hats_init()
 {
 	register_srvcmd("csp_look", "cmd_look");
 	hats_load();
-	set_task(570.0, "hats_refresh", TASK_HATS + 99, _, _, "b");
+	set_task(HAT_REFRESH, "hats_refresh", TASK_HATS + 99, _, _, "b");
 }
 
 looks_path(out[], len) { new d[96]; get_datadir(d, charsmax(d)); formatex(out, len, "%s/csp_state", d); if (!dir_exists(out)) mkdir(out); formatex(out, len, "%s/csp_state/looks.ini", d); }
@@ -109,7 +111,7 @@ hat_hide(id)
 }
 
 // a client that just joined (or rejoined after a map change) has never seen anyone's hat
-hats_catch_up(id) { if (g_lookN && !is_user_bot(id)) set_task(3.0, "hats_catch_up_t", TASK_HATS + id); }
+hats_catch_up(id) { if (!is_user_bot(id)) set_task(5.0, "hats_catch_up_t", TASK_HATS + id); }   // looks may arrive after they join
 public hats_catch_up_t(t)
 {
 	new to = t - TASK_HATS; if (!is_user_connected(to)) return;
