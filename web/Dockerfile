@@ -5,7 +5,7 @@ FROM ${BASE}
 WORKDIR /app
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund --silent
-COPY relay.js pool-agent.js ./
+COPY relay.js pool-agent.js looks.js ./
 COPY hash_assets.js ./
 COPY public/ ./public/
 # content-hash the engine/code files (relay.js then serves them immutable); gamedata.zip is mounted later

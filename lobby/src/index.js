@@ -22,7 +22,7 @@
 // first served, with its place in line shown).
 import { DurableObject } from "cloudflare:workers";
 import { assertedMember } from "./phattid.js";
-import { drain as arcadeDrain, arcadeOn, looksFor } from "./arcade.js";
+import { drain as arcadeDrain, arcadeOn } from "./arcade.js";
 import { SEATS, ALPHABET, CODE_RE, PID_RE, json, nick, title, rude, charOf, pool, hmac, b64url, sha, safeEqual, ipKey, pidKey, relayHealth, isFree, allow, turnstileOk } from "./util.js";
 import { EVENTS, datapoint, blob, num, secs, hourOf, dayOf, ttsBucket } from "./analytics.js";
 import { adminFetch, ingestFetch, adminOp } from "./admin.js";
@@ -454,7 +454,7 @@ export class Lobby extends DurableObject {
   // seat_result lines name the game pid (_csp_pid); only PHATT ID members come back, with their arcade_id.
   // Guests are dropped here: nothing about them leaves the lobby.
   // PHATT ID members in this lobby, for their looks (PHA-5163): game pid + arcade id, nothing else.
-  lookMembers() { return Object.values(this.s?.members || {}).filter((m) => m.aid && m.gpid).map((m) => ({ gpid: m.gpid, aid: m.aid })); }
+  lookMembers() { return Object.values(this.s?.members || {}).filter((m) => m.aid && m.gpid).map((m) => ({ pid: m.gpid, aid: m.aid })); }
   arcadeSeats(results) {
     const all = Object.values(this.s?.members || {});
     const by = new Map(all.filter((m) => m.aid && m.gpid).map((m) => [m.gpid, m.aid]));
@@ -842,9 +842,9 @@ export class Directory extends DurableObject {
           this.sql.exec("DELETE FROM pmatch WHERE code = ?", code);
         } else {
           await this.record(code, evs);
-          // what members' pawns wear (PHA-5163): the agent passes each look to the plugin by rcon
-          const looks = await looksFor(this.env, await this.lobby(code).lookMembers());
-          if (looks.length) this.sendHost(host, { t: "looks", code, looks });
+          // what members' pawns wear (PHA-5163): the agent asks the arcade (its key stays on the game host) and tells the plugin
+          const members = await this.lobby(code).lookMembers();
+          if (members.length) this.sendHost(host, { t: "looks", code, members });
         }
         break;
       }

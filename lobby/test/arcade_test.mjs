@@ -1,7 +1,7 @@
 // PHA-4091: members' seat results -> signed arcade events (node test/arcade_test.mjs)
 import assert from "node:assert/strict";
 import { createHmac } from "node:crypto";
-import { toEvents, drain, signedHeaders, looksFor } from "../src/arcade.js";
+import { toEvents, drain, signedHeaders } from "../src/arcade.js";
 const aid = "3f2b1c4d-1111-4222-8333-944455556666";
 const it = { code: "ABCD", at: Date.now() - 1000, arcade_id: aid, place: 1, stars: 4, money: 30, mg_wins: 3, awards: 0, timeouts: 2, turns: 10, players: 3 };
 const evs = await toEvents(it);
@@ -55,23 +55,3 @@ console.log("arcade ok");
   assert.deepEqual([r.queue.length, r.dropped], [0, 1], "not a member: dropped");
 }
 console.log("hub ok");
-
-// PHA-5163: looks. Members only (a guest has no aid), mapped to game pids; anything odd from the arcade is dropped.
-{
-  const bid = "4a3b2c1d-2222-4333-8444-a55566667777";
-  let req = null;
-  const arcade = async (url, init) => { req = { url, init }; return new Response(JSON.stringify({ game: "csparty", renders: {
-    [aid]: { hat: "sprites/csp/hat_benny.spr", spray: "bad asset; quit" }, [bid]: { hat: "sprites/csp/hat_owl.spr" } } })); };
-  const looks = await looksFor(env, [{ gpid: "gp-ana-12345", aid }, { gpid: "gp-guest-123" }, { gpid: "gp-bob-12345", aid: bid }], { fetchImpl: arcade });
-  assert.equal(req.url, "https://arcade.example/api/render");
-  assert.deepEqual(JSON.parse(req.init.body), { arcade_ids: [aid, bid] }, "only members' arcade ids leave the lobby");
-  assert.equal(req.init.headers["content-type"], "application/json");
-  assert.equal(req.init.headers["x-arcade-sig"], createHmac("sha256", "s3cret").update(`${req.init.headers["x-arcade-ts"]}.${req.init.body}`).digest("base64url"));
-  assert.deepEqual(looks, [{ pid: "gp-ana-12345", slot: "hat", asset: "sprites/csp/hat_benny.spr" }, { pid: "gp-bob-12345", slot: "hat", asset: "sprites/csp/hat_owl.spr" }]);
-  assert.deepEqual(await looksFor(env, [{ gpid: "gp-guest-123" }], { fetchImpl: arcade }), [], "guests only: no call");
-  assert.deepEqual(await looksFor({}, [{ gpid: "x", aid }], { fetchImpl: arcade }), [], "arcade off");
-  assert.deepEqual(await looksFor(env, [{ gpid: "gp-ana-12345", aid }], { fetchImpl: async () => { throw new Error("down"); } }), [], "arcade down: no looks, no throw");
-  assert.deepEqual(await looksFor(env, [{ gpid: "gp-ana-12345", aid }], { fetchImpl: async () => new Response("nope", { status: 401 }) }), []);
-}
-console.log("arcade_test ok");
-
