@@ -25,6 +25,7 @@
 #include <reapi>
 #include <json>
 #include "cs_party_tips.inc"   // generated from web/public/tips.json by tools/gen_tips.py
+#include "cs_party_hats.inc"   // PHATT ID hats over members' pawns (PHA-5163)
 
 #define PLUGIN  "CS Party"
 #define VERSION "0.2.0"
@@ -356,6 +357,7 @@ public plugin_precache()
 	g_beamSpr = precache_model("sprites/laserbeam.spr");
 	precache_model("sprites/csp_space.spr"); precache_model("sprites/csp_face.spr");   // tools/build_mapicons.py: a frame per space type / character
 	precache_model("models/csp_tile.mdl");
+	hats_precache();
 }
 
 public plugin_init()
@@ -427,6 +429,7 @@ public plugin_init()
 	RegisterHookChain(RG_RoundEnd, "hc_round_end", false);
 	RegisterHookChain(RG_CBasePlayer_Spawn, "hc_spawn_post", true);
 	RegisterHookChain(RG_CBasePlayer_Killed, "hc_killed_post", true);
+	hats_init();
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "hc_takedmg_post", true);
 	RegisterHookChain(RG_CBasePlayer_TakeDamage, "hc_takedmg_pre", false);   // podium: the winner's Deagle kills in one
 	RegisterHookChain(RG_CSGameRules_FPlayerCanTakeDamage, "hc_can_take_damage", false);
@@ -1110,6 +1113,7 @@ new Float:g_seatLeftAt[SEATS], bool:g_seatAway[SEATS];
 public client_putinserver(id)
 {
 	tip_reset(id);
+	hats_catch_up(id);
 	g_xhHidden[id] = false;
 	if (is_user_bot(id)) return;
 	set_task(0.5, "task_name_fix", id + TASK_RACE + 140);
@@ -1285,6 +1289,7 @@ new bool:g_standin[SEATS], g_standinTries[SEATS], Float:g_dropAt[SEATS][3], Floa
 
 public client_disconnected(id)
 {
+	hat_hide(id);
 	if (!is_user_bot(id)) humans_event(id);
 	g_xhHidden[id] = false;
 	g_navMenu[id] = 0; g_navThawed[id] = false; g_navMove[id] = 0.0; g_lateSpec[id] = false;
@@ -1678,6 +1683,7 @@ enter_board()
 public hc_spawn_post(id)
 {
 	if (!is_user_alive(id)) return;
+	hat_show(id);
 	new s = seat_of(id);
 	if (g_state == ST_END && g_pod)
 	{
@@ -5153,6 +5159,7 @@ public hc_takedmg_post(const victim, const inflictor, const attacker, Float:dama
 
 public hc_killed_post(const victim, const killer)
 {
+	hat_hide(victim);
 	if (g_pod) { if (killer != victim && seat_of(victim) >= 0) g_podKills++; return; }
 	if (g_state != ST_MINIGAME || g_mgDone) return;
 	if (mg_respawns(g_mg)) { dm_killed(victim, killer); return; }

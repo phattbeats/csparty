@@ -62,6 +62,24 @@ export async function signedHeaders(env, body, now = Date.now()) {
   return { "content-type": "application/x-ndjson", "x-arcade-surface": "csparty", "x-arcade-kid": env.ARCADE_KID, "x-arcade-ts": ts, "x-arcade-sig": sig };
 }
 
+// PHATT ID looks (PHA-5163): what the plugin draws for each member's seat. members [{gpid, aid}] -> [{pid, slot, asset}],
+// pid being the game pid the member's client carries (_csp_pid). The arcade decides what each member draws (ownership,
+// item registry); the lobby only maps arcade ids to game pids, so guests never reach it. Never throws: no looks is fine.
+const SLOT_RE = /^[a-z0-9_]{1,32}$/, ASSET_RE = /^[A-Za-z0-9_./-]{1,200}$/;
+export async function looksFor(env, members, { fetchImpl = globalThis.fetch, now = Date.now() } = {}) {
+  const ms = (members || []).filter((m) => m?.aid && m?.gpid).slice(0, 16);
+  if (!arcadeSvcOn(env) || !ms.length) return [];
+  try {
+    const body = JSON.stringify({ arcade_ids: [...new Set(ms.map((m) => m.aid))] });
+    const r = await fetchImpl(String(env.ARCADE_URL).replace(/\/+$/, "") + "/api/render", { method: "POST",
+      headers: { ...(await signedHeaders(env, body, now)), "content-type": "application/json" }, body, signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return [];
+    const renders = (await r.json())?.renders || {};
+    return ms.flatMap((m) => Object.entries(renders[m.aid] || {}).filter(([slot, a]) => SLOT_RE.test(slot) && typeof a === "string" && ASSET_RE.test(a))
+      .map(([slot, asset]) => ({ pid: m.gpid, slot, asset })));
+  } catch { return []; }
+}
+
 // One pass over the queue: post up to 4 seats' events (<= 100 lines), keep what should be retried.
 // -> { queue, sent (seats done), dropped (lines refused for good), unlocked, error }. Never throws.
 export async function drain(queue, env, { fetchImpl = globalThis.fetch, now = Date.now() } = {}) {
