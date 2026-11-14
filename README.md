@@ -78,6 +78,7 @@ Optional: comment out `imessage.amxx`, `scrollmsg.amxx` and `multilingual.amxx` 
 | `say /help` | players | show the how-to-play MOTD |
 | `csp_start` / `csp_stop` | server | start / abort |
 | `csp_state` | server | dump seats, money, stars |
+| `csp_look <pid> hat <sprite\|->` | server (the pool-agent) | a PHATT ID member's hat over their pawn (PHA-5163); `<pid>` is their `_csp_pid` |
 | `csp_spec` | server | move every human to spectator |
 | `say /menu` | players | reopen your turn menu |
 | `say /board` / `csp_board <map>` | players / server | switch to another board between matches |
