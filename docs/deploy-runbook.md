@@ -676,3 +676,25 @@ E2E: `tools/dev/touchmenu_e2e.js` (isolated stack; `DESKTOP=1` for the keyboard 
 - Rollback: `/srv/compose.yml.bak-pha4091-0540` + `docker compose up -d`.
 - Live check 2026-11-13: member + guest in one match (lobby VZFDH), `csp_finish 0`; lobby `/healthz` `sent:1 dropped:0`; the member's `/u/<name>`
   showed 1 played, 1 win; the guest produced nothing.
+
+## PHA-5163: PHATT ID hats (server 0.5.42-vq, agent 0.4.44, lobby Worker, 2026-11-14)
+
+- A member's equipped trinket floats over their pawn: `TE_PLAYERATTACHMENT` with a 48-unit sprite (`sprites/csp/hat_*.spr`,
+  `tools/build_hats.py` from the arcade's trinket icons), the way CS shows its radio icon. Guests and bots wear nothing.
+- Flow: lobby Worker, on the agent's `started` -> `{t: "looks", code, members: [{pid, aid}]}` (member seats only) -> agent
+  `web/looks.js` asks the arcade (`POST https://arcade.phatt.vip/api/render`, signed as the **csparty** surface) -> rcon
+  `csp_look <pid> hat <sprite>`, re-sent until the plugin answers (a fresh lobby server drops some rcon right after ready).
+  The plugin re-sends hats every 30 s, so a client still loading when a hat went out gets it.
+- New key: the `csparty` entry of the arcade's `SURFACE_SECRETS` (`/srv/arcade/arcade.env`) and the same value in
+  `/srv/games/env/cs-party-agent.env` (agent only; `ARCADE_URL`, `ARCADE_KID=k1`, `ARCADE_SECRET`). The game server
+  containers never see it. The Worker has no arcade key (its results still go through the hub).
+- Images: `cs-party-server:0.5.42-vq` = 0.5.40-vq + amxx + `sprites/csp/` (build `/srv/cs-party/build/pha5163/`);
+  `cs-party-relay:0.4.44` = 0.4.41 + `pool-agent.js` + `looks.js`, **agent only** (the relay container stays 0.4.41).
+  Lobby Worker (PHATT MEDIA CLUB account, `CLOUDFLARE_TOKEN_WORKERS`) version `5a161ea9`.
+- `gamedata.zip` unchanged on purpose: the sprites (4 x 3 KB) download over the game channel; rewriting the zip would
+  make every returning browser fetch 55 MB again. `web/gamedata.manifest` lists them for the next full repack.
+- Live check (2026-11-14 ~22:19 UTC, lobby P9ZHB): member `pha4091-livetest` (hat equipped) + guest; agent log
+  `looks: 1 of 1 confirmed (hat)`; the guest's screen shows the Benny hat over the member's pawn and none over its own.
+- Rollback: `/srv/compose.yml.bak-pha5163-20261114T213933Z` (all PHA-5163 tags) + `docker compose up -d --no-deps
+  cs-party-server cs-party-agent`; Worker `npx wrangler rollback 7f8abe33-4ff4-4f35-9d99-0c90d64fdb55` (token above).
+  Stale looks are harmless: without the Worker message nothing is sent.

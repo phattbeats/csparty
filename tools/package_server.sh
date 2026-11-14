@@ -44,6 +44,7 @@ for ini in "$REPO"/maps/pool/*.ini; do
 done
 cp "$REPO/assets/csp_dice.mdl" "$REPO/assets/csp_case.mdl" "$REPO/assets/csp_tile.mdl" "$T/cstrike/models/"
 cp "$REPO/assets/csp_space.spr" "$REPO/assets/csp_face.spr" "$T/cstrike/sprites/"   # map overlay (tools/build_mapicons.py)
+mkdir -p "$T/cstrike/sprites/csp"; cp "$REPO"/assets/hats/hat_*.spr "$T/cstrike/sprites/csp/"   # PHATT ID hats (tools/build_hats.py, PHA-5163)
 mkdir -p "$T/cstrike/sound/csp"; cp "$REPO"/assets/snd/cstrike/sound/csp/*.wav "$T/cstrike/sound/csp/"
 cp "$REPO/server/motd.txt" "$REPO/server/server.cfg" "$T/cstrike/"
 

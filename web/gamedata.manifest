@@ -663,6 +663,11 @@ valve/sound/weapons/sshell3.wav
 cstrike/models/csp_tile.mdl
 cstrike/sprites/csp_face.spr
 cstrike/sprites/csp_space.spr
+# PHATT ID hats over members' pawns (tools/build_hats.py, PHA-5163): precached by the plugin
+cstrike/sprites/csp/hat_benny.spr
+cstrike/sprites/csp/hat_snowglobe.spr
+cstrike/sprites/csp/hat_cabinet.spr
+cstrike/sprites/csp/hat_owl.spr
 # CS Party voice lines (radio/bot cheer/sorry pools, #3920): precached by the plugin
 cstrike/sound/radio/bot/alright_lets_do_this.wav
 cstrike/sound/radio/bot/and_thats_how_its_done.wav

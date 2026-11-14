@@ -24,6 +24,7 @@ import dgram from "node:dgram";
 import fs from "node:fs";
 import http from "node:http";
 import { WebSocket } from "ws";
+import { looksFor } from "./looks.js";
 
 const env = process.env;
 const VERSION = "0.1.2";
@@ -212,6 +213,20 @@ const startLobby = async (code) => {
   }
 };
 
+// PHATT ID looks (PHA-5163): the Worker names this lobby's members ([{pid, aid}]); the arcade says what they wear
+// (looks.js); each look goes to the plugin by rcon once the server is ready. The plugin draws only what it precached.
+// Right after "ready" the server can still be busy (bots joining) and drop an rcon packet with no answer, so each look
+// is sent until the plugin confirms it ("[CS Party] look ..."), a few seconds apart.
+const applyLooks = async (l, members) => {
+  const looks = await looksFor(env, members);
+  let ok = 0;
+  for (const x of looks) for (let i = 0; i < 6 && l.state === "ready"; i++) {
+    if (/\[CS Party\] look /.test(await rcon(l.port, l.rcon, `csp_look ${x.pid} ${x.slot} ${x.asset}`) || "")) { ok++; break; }
+    await new Promise((r) => setTimeout(r, 3000));
+  }
+  if (looks.length) log(`[${l.code}] looks: ${ok} of ${looks.length} confirmed (${looks.map((x) => x.slot).join(", ")})`);
+};
+
 // tell: false when the Worker asked for it, or already heard (start_failed)
 const stopLobby = (l, reason, tell = true) => {
   if (l.state === "stopping") return l.stopped;
@@ -313,6 +328,7 @@ const connect = () => {
     let m; try { m = JSON.parse(s); } catch { return; }
     if (m.t === "start" && /^[A-Z2-9]{5}$/.test(m.code)) startLobby(m.code);
     else if (m.t === "stop" && lobbies.has(m.code)) stopLobby(lobbies.get(m.code), m.reason || "lobby", false);
+    else if (m.t === "looks" && lobbies.has(m.code)) applyLooks(lobbies.get(m.code), m.members).catch((e) => log(`[${m.code}] looks: ${e.message}`));
     else if (m.t === "drain") { drain = !!m.on; log(`drain ${drain ? "on" : "off"}`); sendCap(); }
   });
   sock.on("unexpected-response", (req, res) => log(`Worker refused the agent: ${res.statusCode}`));

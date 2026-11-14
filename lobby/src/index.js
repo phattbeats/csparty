@@ -453,6 +453,8 @@ export class Lobby extends DurableObject {
   // match news from the plugin ([CSPEV] lines via the pool-agent), for the "match in progress" view
   // seat_result lines name the game pid (_csp_pid); only PHATT ID members come back, with their arcade_id.
   // Guests are dropped here: nothing about them leaves the lobby.
+  // PHATT ID members in this lobby, for their looks (PHA-5163): game pid + arcade id, nothing else.
+  lookMembers() { return Object.values(this.s?.members || {}).filter((m) => m.aid && m.gpid).map((m) => ({ pid: m.gpid, aid: m.aid })); }
   arcadeSeats(results) {
     const all = Object.values(this.s?.members || {});
     const by = new Map(all.filter((m) => m.aid && m.gpid).map((m) => [m.gpid, m.aid]));
@@ -838,7 +840,12 @@ export class Directory extends DurableObject {
         if (!evs) {
           this.sendHost(host, { t: "stop", code, reason: "lobby moved on" });
           this.sql.exec("DELETE FROM pmatch WHERE code = ?", code);
-        } else await this.record(code, evs);
+        } else {
+          await this.record(code, evs);
+          // what members' pawns wear (PHA-5163): the agent asks the arcade (its key stays on the game host) and tells the plugin
+          const members = await this.lobby(code).lookMembers();
+          if (members.length) this.sendHost(host, { t: "looks", code, members });
+        }
         break;
       }
       case "start_failed":
