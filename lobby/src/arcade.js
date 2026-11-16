@@ -53,6 +53,13 @@ export async function toEvents(it) {
     awards: int(it.awards), mg_wins: int(it.mg_wins), timeouts: int(it.timeouts),
   })];
   for (let i = 1; i <= Math.min(int(it.timeouts), MAX_TIMEOUTS); i++) out.push(ev(`t${i}`, "turn_timeout", { turn: i }));
+  // PHA-5028 dailies (arcade games/csparty.json). We only report that it happened; the arcade decides the XP, pays once per member-local
+  // day inside the dailies cap, and a repeat is a no-op. Daily ids are per member and UTC date, not per match, so a second match the same
+  // day is a duplicate rather than a double count. A seat that timed out of most of the match has not "finished" it.
+  const mid = (await hex(`daily|${it.arcade_id}`)).slice(0, 32), day = new Date(it.at).toISOString().slice(0, 10);
+  const daily = (key) => ({ id: `csp-d-${mid}-${day}-${key}`, game: "csparty", type: "daily_complete", arcade_id: it.arcade_id, at: it.at, run_id: `csp-${it.code}`, payload: { daily: key } });
+  if (int(it.timeouts) < Math.max(1, int(it.turns)) / 2) out.push(daily("finish_match"));
+  if (int(it.mg_wins) >= 1) out.push(daily("win_minigame"));
   return out;
 }
 
