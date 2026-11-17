@@ -17,7 +17,9 @@
     { id: "7dtz", name: "7 Days to Zelda", url: "https://zelda.phatt.vip/", logo: "7-days-to-zelda.webp", w: 640, h: 266,
       blurb: "Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids." },
     { id: "pokernight", name: "Poker Night Multiplayer", url: "https://poker.phatt.vip/", logo: "poker-night-multiplayer.webp", w: 640, h: 410,
-      blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." }
+      blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." },
+    { id: "hp-classic-coop", name: "Harry Potter Classic Co-Op", soon: true, logo: "harry-potter-classic-coop.webp", w: 640, h: 213,
+      blurb: "Revisit the classic adventures with a friend. Magic is in the making." }
   ];
   var script = document.currentScript;
   var current = (script && script.dataset.game) || "";
@@ -51,6 +53,7 @@
     ".tile{position:relative;display:flex;flex-direction:column;height:100%;color:inherit;text-decoration:none;cursor:pointer;text-align:left;font:inherit;width:100%;",
     " background:linear-gradient(#2d221b,#1a130f);border:2px solid #6b5846;border-radius:10px;overflow:hidden;box-shadow:0 4px 0 #000;transition:transform .15s,border-color .15s,box-shadow .15s}",
     ".tile:hover{transform:translateY(-3px);border-color:#e8702a;box-shadow:0 7px 0 #000,0 0 18px #e8702a55}",
+    ".tile.soon,.tile.soon:hover{cursor:default;transform:none;border-color:#a88a50;box-shadow:0 4px 0 #000}",
     ".tile[aria-current]{border-color:#5fb8ac;box-shadow:0 4px 0 #000,0 0 0 2px #5fb8ac55}",
     ".art{display:grid;place-items:center;aspect-ratio:16/10;padding:12px;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
     ".art img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block}",
@@ -125,9 +128,10 @@
     GAMES.forEach(function (g) {
       var li = el("li");
       var isCur = g.id === current;
-      var t = el(isCur ? "button" : "a", "tile");
+      var t = el(g.soon ? "div" : isCur ? "button" : "a", "tile");
+      if (g.soon) t.classList.add("soon");
       if (isCur) { t.type = "button"; t.setAttribute("aria-current", "true"); }
-      else {
+      else if (!g.soon) {
         t.href = g.url;
         t.onclick = function (e) {
           var msg = guard();
@@ -138,7 +142,7 @@
       var meta = el("div", "meta");
       meta.appendChild(el("span", "name", g.name));
       meta.appendChild(el("span", "blurb", g.blurb));
-      meta.appendChild(el("span", "go", isCur ? "YOU ARE HERE" : "PLAY ▶"));
+      meta.appendChild(el("span", "go", g.soon ? "COMING SOON" : isCur ? "YOU ARE HERE" : "PLAY ▶"));
       t.appendChild(meta);
       if (isCur) {
         t.appendChild(el("span", "here", "NOW PLAYING"));
