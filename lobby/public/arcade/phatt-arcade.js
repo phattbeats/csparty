@@ -57,7 +57,7 @@
     ".teaser img{display:block;width:174px;max-width:62%;height:auto;filter:saturate(.65)}",
     ".teaser-status{color:#c9bca3;font:italic 12px/1.4 Georgia,serif;white-space:nowrap}",
     ".tile[aria-current]{border-color:#5fb8ac;box-shadow:0 4px 0 #000,0 0 0 2px #5fb8ac55}",
-    ".art{position:relative;flex:none;aspect-ratio:16/10;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
+    ".art{position:relative;flex:none;width:100%;aspect-ratio:16/10;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
     ".art img{position:absolute;inset:12px;width:calc(100% - 24px);height:calc(100% - 24px);object-fit:contain;display:block}",
     ".meta{display:grid;gap:4px;padding:10px 12px 14px;border-top:2px solid #0008}",
     ".name{font:bold 16px/1.2 Tahoma,Arial,sans-serif;color:#f4e8cc}",
