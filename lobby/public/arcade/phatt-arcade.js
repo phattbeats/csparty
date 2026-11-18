@@ -18,8 +18,7 @@
       blurb: "Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids." },
     { id: "pokernight", name: "Poker Night Multiplayer", url: "https://poker.phatt.vip/", logo: "poker-night-multiplayer.webp", w: 640, h: 410,
       blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." },
-    { id: "hp-classic-coop", name: "Harry Potter Classic Co-Op", soon: true, logo: "harry-potter-classic-coop.webp", w: 640, h: 213,
-      blurb: "Revisit the classic adventures with a friend. Magic is in the making." }
+    { id: "hp-classic-coop", name: "Harry Potter Classic Co-Op", soon: true, logo: "harry-potter-classic-coop.webp", w: 640, h: 213 }
   ];
   var script = document.currentScript;
   var current = (script && script.dataset.game) || "";
@@ -53,7 +52,10 @@
     ".tile{position:relative;padding:0;display:flex;flex-direction:column;height:100%;color:inherit;text-decoration:none;cursor:pointer;text-align:left;font:inherit;width:100%;",
     " background:linear-gradient(#2d221b,#1a130f);border:2px solid #6b5846;border-radius:10px;overflow:hidden;box-shadow:0 4px 0 #000;transition:transform .15s,border-color .15s,box-shadow .15s}",
     ".tile:hover{transform:translateY(-3px);border-color:#e8702a;box-shadow:0 7px 0 #000,0 0 18px #e8702a55}",
-    ".tile.soon,.tile.soon:hover{cursor:default;transform:none;border-color:#a88a50;box-shadow:0 4px 0 #000}",
+    ".preview{grid-column:1/-1;margin-top:6px;padding-top:14px;border-top:1px solid #a88a5038}",
+    ".teaser{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 4px;cursor:default}",
+    ".teaser img{display:block;width:174px;max-width:62%;height:auto;filter:saturate(.65)}",
+    ".teaser-status{color:#c9bca3;font:italic 12px/1.4 Georgia,serif;white-space:nowrap}",
     ".tile[aria-current]{border-color:#5fb8ac;box-shadow:0 4px 0 #000,0 0 0 2px #5fb8ac55}",
     ".art{position:relative;flex:none;aspect-ratio:16/10;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
     ".art img{position:absolute;inset:12px;width:calc(100% - 24px);height:calc(100% - 24px);object-fit:contain;display:block}",
@@ -127,11 +129,19 @@
 
     GAMES.forEach(function (g) {
       var li = el("li");
+      if (g.soon) {
+        li.className = "preview";
+        var teaser = el("div", "teaser");
+        teaser.setAttribute("data-teaser", g.id);
+        teaser.appendChild(img(g.logo, g.w, g.h, g.name));
+        teaser.appendChild(el("span", "teaser-status", "Coming soon"));
+        li.appendChild(teaser); list.appendChild(li);
+        return;
+      }
       var isCur = g.id === current;
-      var t = el(g.soon ? "div" : isCur ? "button" : "a", "tile");
-      if (g.soon) t.classList.add("soon");
+      var t = el(isCur ? "button" : "a", "tile");
       if (isCur) { t.type = "button"; t.setAttribute("aria-current", "true"); }
-      else if (!g.soon) {
+      else {
         t.href = g.url;
         t.onclick = function (e) {
           var msg = guard();
@@ -142,7 +152,7 @@
       var meta = el("div", "meta");
       meta.appendChild(el("span", "name", g.name));
       meta.appendChild(el("span", "blurb", g.blurb));
-      meta.appendChild(el("span", "go", g.soon ? "COMING SOON" : isCur ? "YOU ARE HERE" : "PLAY ▶"));
+      meta.appendChild(el("span", "go", isCur ? "YOU ARE HERE" : "PLAY ▶"));
       t.appendChild(meta);
       if (isCur) {
         t.appendChild(el("span", "here", "NOW PLAYING"));
