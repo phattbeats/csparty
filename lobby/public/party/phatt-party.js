@@ -476,6 +476,7 @@
     '.brow.mine{border-color:var(--o)}.brow{min-width:0;display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;background:#120d0a;border:2px solid var(--line)}.brow .gi{font-size:18px;width:24px;text-align:center;flex:none}.brow .info{flex:1;min-width:0}.brow .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .wh{font-size:12px;color:var(--m);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brow .acts{display:flex;gap:6px;flex:none;flex-wrap:wrap;justify-content:flex-end}',
     '.st{display:inline-block;margin-right:6px;padding:1px 5px;border-radius:4px;font:bold 10px/1.3 "Courier New",monospace;letter-spacing:.08em;vertical-align:1px;background:var(--t);color:#0b2b27}.st.playing{background:var(--o);color:#1a0f06}.st.full{background:#6b5846;color:var(--c)}.st.party{background:#8fd694;color:#0e2a12}',
     '.genre .blurb{font-size:12px;color:var(--d);margin:-2px 0 6px}',
+    '.upcoming{margin:20px 0 4px;padding-top:14px;border-top:1px solid #a88a5038}.teaser{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 4px;cursor:default}.teaser-logo{display:block;width:174px;max-width:62%;height:auto;object-fit:contain;filter:saturate(.65)}.teaser-status{color:#c9bca3;font:italic 12px/1.4 Georgia,serif;white-space:nowrap}',
     '.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px}',
     '.tile{position:relative;display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 10px;border-radius:9px;background:linear-gradient(#2d221b,#1a130f);border:2px solid var(--line);min-height:62px;color:inherit;text-decoration:none}',
     'a.tile:hover,button.tile:hover{border-color:var(--o)}.tile .gi{position:absolute;right:8px;top:6px;font-size:17px;color:var(--o)}.tile .n{font-weight:700;padding-right:22px}.tile .p{font-size:11px;color:var(--t);font-family:"Courier New",monospace}.tile .why{font-size:11px;color:#ff9b8f}',
@@ -1027,6 +1028,17 @@
       games.forEach((g) => tiles.appendChild(tile(g, host, n)));
       gd.appendChild(tiles); sc.appendChild(gd);
     });
+    // A quiet preview follows the playable catalog; it has no navigation or party action.
+    const upcoming = el('section', 'upcoming');
+    upcoming.setAttribute('aria-label', 'Coming soon');
+    const teaser = el('div', 'teaser');
+    teaser.setAttribute('data-teaser', 'hp-classic-coop');
+    const logo = el('img', 'teaser-logo');
+    logo.src = new URL('harry-potter-classic-coop.webp', script.src).href;
+    logo.alt = 'Harry Potter Classic Co-Op'; logo.width = 640; logo.height = 213;
+    teaser.appendChild(logo);
+    teaser.appendChild(el('span', 'teaser-status', 'Coming soon'));
+    upcoming.appendChild(teaser); sc.appendChild(upcoming);
   }
   function tile(g, host, n) {
     const here = state.venue && state.venue.game === g.id;

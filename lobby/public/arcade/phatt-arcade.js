@@ -17,7 +17,8 @@
     { id: "7dtz", name: "7 Days to Zelda", url: "https://zelda.phatt.vip/", logo: "7-days-to-zelda.webp", w: 640, h: 266,
       blurb: "Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids." },
     { id: "pokernight", name: "Poker Night Multiplayer", url: "https://poker.phatt.vip/", logo: "poker-night-multiplayer.webp", w: 640, h: 410,
-      blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." }
+      blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." },
+    { id: "hp-classic-coop", name: "Harry Potter Classic Co-Op", soon: true, logo: "harry-potter-classic-coop.webp", w: 640, h: 213 }
   ];
   var script = document.currentScript;
   var current = (script && script.dataset.game) || "";
@@ -48,12 +49,16 @@
     "h2{margin:12px 0 2px;font:bold 12px/1.3 'Courier New',monospace;letter-spacing:2px;color:#5fb8ac;text-transform:uppercase}",
     ".sub{margin:0 0 12px;color:#cdbf9f;font-size:13px}",
     ".grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;overflow:auto;padding:4px 4px 8px;list-style:none;margin:0;overscroll-behavior:contain}",
-    ".tile{position:relative;display:flex;flex-direction:column;height:100%;color:inherit;text-decoration:none;cursor:pointer;text-align:left;font:inherit;width:100%;",
+    ".tile{position:relative;padding:0;display:flex;flex-direction:column;height:100%;color:inherit;text-decoration:none;cursor:pointer;text-align:left;font:inherit;width:100%;",
     " background:linear-gradient(#2d221b,#1a130f);border:2px solid #6b5846;border-radius:10px;overflow:hidden;box-shadow:0 4px 0 #000;transition:transform .15s,border-color .15s,box-shadow .15s}",
     ".tile:hover{transform:translateY(-3px);border-color:#e8702a;box-shadow:0 7px 0 #000,0 0 18px #e8702a55}",
+    ".preview{grid-column:1/-1;margin-top:6px;padding-top:14px;border-top:1px solid #a88a5038}",
+    ".teaser{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 4px;cursor:default}",
+    ".teaser img{display:block;width:174px;max-width:62%;height:auto;filter:saturate(.65)}",
+    ".teaser-status{color:#c9bca3;font:italic 12px/1.4 Georgia,serif;white-space:nowrap}",
     ".tile[aria-current]{border-color:#5fb8ac;box-shadow:0 4px 0 #000,0 0 0 2px #5fb8ac55}",
-    ".art{display:grid;place-items:center;aspect-ratio:16/10;padding:12px;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
-    ".art img{max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;display:block}",
+    ".art{position:relative;flex:none;width:100%;aspect-ratio:16/10;background:radial-gradient(circle at 50% 40%,#3a2c22,#0f0b08)}",
+    ".art img{position:absolute;inset:12px;width:calc(100% - 24px);height:calc(100% - 24px);object-fit:contain;display:block}",
     ".meta{display:grid;gap:4px;padding:10px 12px 14px;border-top:2px solid #0008}",
     ".name{font:bold 16px/1.2 Tahoma,Arial,sans-serif;color:#f4e8cc}",
     ".blurb{font-size:13px;color:#cdbf9f}",
@@ -63,7 +68,7 @@
     ".warn p{margin:0 0 8px}.warn .row{display:flex;gap:8px;flex-wrap:wrap}",
     ".warn button{min-height:40px;padding:0 14px;cursor:pointer;font:bold 14px Tahoma,Arial,sans-serif;border-radius:6px;border:2px solid #f4e8cc;background:transparent;color:#f4e8cc}",
     ".warn button.leave{background:#e8702a;color:#17110d;border-color:#e8702a}",
-    "@media (max-width:520px){.grid{grid-template-columns:1fr}.art{aspect-ratio:2/1;padding:8px}.top img{height:34px}.cab{padding:10px}}",
+    "@media (max-width:520px){.grid{grid-template-columns:1fr}.art{aspect-ratio:2/1}.art img{inset:8px;width:calc(100% - 16px);height:calc(100% - 16px)}.top img{height:34px}.cab{padding:10px}}",
     "@media (prefers-reduced-motion:no-preference){dialog[open] .cab{animation:pop .22s ease-out}@keyframes pop{from{transform:translateY(10px) scale(.97);opacity:0}}}",
     "@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}"
   ].join("\n");
@@ -124,6 +129,15 @@
 
     GAMES.forEach(function (g) {
       var li = el("li");
+      if (g.soon) {
+        li.className = "preview";
+        var teaser = el("div", "teaser");
+        teaser.setAttribute("data-teaser", g.id);
+        teaser.appendChild(img(g.logo, g.w, g.h, g.name));
+        teaser.appendChild(el("span", "teaser-status", "Coming soon"));
+        li.appendChild(teaser); list.appendChild(li);
+        return;
+      }
       var isCur = g.id === current;
       var t = el(isCur ? "button" : "a", "tile");
       if (isCur) { t.type = "button"; t.setAttribute("aria-current", "true"); }
