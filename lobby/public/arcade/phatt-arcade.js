@@ -12,9 +12,9 @@
 (function () {
   "use strict";
   var GAMES = [
-    { id: "csparty", name: "CS Party", url: "https://csparty.phatt.vip/", logo: "csparty.webp", w: 640, h: 355,
+    { id: "csparty", name: "CS Party", url: "https://csparty.phatt.vip/", logo: "main-event-csparty.webp", w: 640, h: 213,
       blurb: "A Mario Party-style board game inside Counter-Strike 1.6. Up to 4 players, bots fill empty seats." },
-    { id: "7dtz", name: "7 Days to Zelda", url: "https://zelda.phatt.vip/", logo: "7-days-to-zelda.webp", w: 640, h: 266,
+    { id: "7dtz", name: "7 Days to Zelda", url: "https://zelda.phatt.vip/", logo: "main-event-7dtz.webp", w: 640, h: 213,
       blurb: "Co-op Ocarina of Time survival in your browser: craft, build, and hold out through the raids." },
     { id: "pokernight", name: "Poker Night Multiplayer", url: "https://poker.phatt.vip/", logo: "poker-night-multiplayer.webp", w: 640, h: 410,
       blurb: "Poker Night at the Inventory online: private rooms, a 3D table, and a seat for friends." },

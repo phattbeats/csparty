@@ -480,6 +480,7 @@
     '.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));gap:8px}',
     '.tile{position:relative;display:flex;flex-direction:column;gap:2px;text-align:left;padding:8px 10px;border-radius:9px;background:linear-gradient(#2d221b,#1a130f);border:2px solid var(--line);min-height:62px;color:inherit;text-decoration:none}',
     'a.tile:hover,button.tile:hover{border-color:var(--o)}.tile .gi{position:absolute;right:8px;top:6px;font-size:17px;color:var(--o)}.tile .n{font-weight:700;padding-right:22px}.tile .p{font-size:11px;color:var(--t);font-family:"Courier New",monospace}.tile .why{font-size:11px;color:#ff9b8f}',
+    '.tile.event{gap:6px;padding:12px 10px}.event-logo{display:block;width:174px;max-width:100%;height:58px;object-fit:contain;object-position:left center;filter:saturate(.7)}',
     '.tile.here{border-color:var(--t)}.tile .herel{font:bold 10px/1 "Courier New",monospace;color:var(--t);letter-spacing:.1em;margin-top:2px}.tile .ta{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}.tile.dis{opacity:.5}',
     // party
     '.hero h3{margin:2px 0 4px;font-size:18px}.hero p{margin:0;color:var(--m)}',
@@ -1045,8 +1046,18 @@
     let why = '';
     if (host) { if (n > g.max) why = 'Too many for ' + g.name + ' (' + g.max + ' max)'; else if (n < g.min && !g.hub) why = 'Needs ' + g.min + ' players'; }
     const t = host ? el('div', 'tile') : el('a', 'tile');
-    t.appendChild(el('span', 'gi', g.icon || '🎮'));
-    t.appendChild(el('span', 'n', g.name));
+    const eventLogos = {csparty: 'main-event-csparty.webp', '7dtz': 'main-event-7dtz.webp', medieval: 'main-event-medieval.webp', spiderman: 'main-event-spiderman.webp'};
+    if (g.genre === 'mainevents' && Object.prototype.hasOwnProperty.call(eventLogos, g.id)) {
+      t.classList.add('event');
+      const logo = el('img', 'event-logo');
+      logo.src = new URL(eventLogos[g.id], script.src).href;
+      logo.alt = g.name; logo.width = 640; logo.height = 213; logo.decoding = 'async';
+      logo.onerror = () => logo.replaceWith(el('span', 'n', g.name));
+      t.appendChild(logo);
+    } else {
+      t.appendChild(el('span', 'gi', g.icon || '🎮'));
+      t.appendChild(el('span', 'n', g.name));
+    }
     t.appendChild(el('span', 'p', players(g) + (host && n < g.min && g.hub ? ' · bots fill in' : '')));
     if (here) { t.classList.add('here'); t.appendChild(el('span', 'herel', 'THE PARTY IS HERE')); }
     if (!host) { t.href = urlFor(g.id); t.title = 'Play ' + g.name; t.onclick = (e) => { e.preventDefault(); anaTrack('game_open', { game: g.id }); go(t.href); }; return t; } // (--- analytics --- game_open)
