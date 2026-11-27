@@ -30,8 +30,8 @@ function rcon(cmd) {
 
 (async () => {
   const browser = await chromium.launch({ headless: true, args: ["--use-angle=gl-egl", "--ignore-gpu-blocklist", "--enable-gpu", "--autoplay-policy=no-user-gesture-required"] });
-  const pg = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  const states = [];
+  const pg = await browser.newPage({ viewport: { width: +process.env.VW || 1280, height: +process.env.VH || 720 } });
+  const states = []; let fails = 0;
   pg.on("console", (m) => { const t = m.text(); const s = /\[watch\] state (-?\d) -> (\d)/.exec(t); if (s) states.push(+s[2]);
     if (/Host_Error|Sys_Error|abort|csp_space|csp_face|couldn't|not found/i.test(t)) note(`console: ${t.slice(0, 200)}`); });
   pg.on("pageerror", (e) => note(`PAGEERROR: ${e.message}`));
@@ -51,9 +51,14 @@ function rcon(cmd) {
     note((await rcon("csp_mapview")).trim());
     await sleep(2500);
     await pg.screenshot({ path: `${OUT}/${TAG}-${k}-on.png` });
+    const legendOn = await pg.evaluate(() => !document.getElementById("maplegend")?.hidden);
     note((await rcon("csp_mapview")).trim());   // off again: the turns carry on
+    await sleep(2500);
+    const legendOff = await pg.evaluate(() => !document.getElementById("maplegend")?.hidden);
+    note(`legend (PHA-4096): on=${legendOn} off=${legendOff}`); if (!legendOn || legendOff) fails++;
     await sleep(+process.env.GAP || 25000);
   }
   await browser.close();
-  note("done");
+  note(fails ? `FAIL legend ${fails}` : "done");
+  if (fails) process.exit(1);
 })().catch((e) => { note("FAIL " + e.stack); process.exit(1); });

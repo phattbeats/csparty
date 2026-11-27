@@ -265,8 +265,10 @@
       tick(); countdown = setInterval(tick, 250);
     } else if (open) {
       const ready = players.filter((m) => m.ready && m.online).length, online = players.filter((m) => m.online).length;
-      lobbyStatus(online < s.minHumans ? `Waiting for friends (${online}/${s.minHumans} to auto-start). ${isHost ? "Or start now with bots." : ""}`
-        : `${ready}/${online} ready.`);
+      // PHA-4096: a 5th joiner gets no seat and no Ready button; say so instead of leaving them guessing
+      const watch = me && !seated ? `All ${s.seats} seats are taken, so you're watching this one. ` : "";
+      lobbyStatus(watch + (online < s.minHumans ? `Waiting for friends (${online}/${s.minHumans} to auto-start). ${isHost ? "Or start now with bots." : ""}`
+        : `${ready}/${online} ready.`));
     } else if (s.state === "starting") lobbyStatus("Starting your party's server… (up to a minute or two)");
     else if (inMatch) {
       const p = s.progress;   // from the game server: turn and minigame
